@@ -1,0 +1,26 @@
+[package]
+name = "ruscadb"
+description = "Fachada y composition root de RuscaDB."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "../../README.md"
+keywords = ["database", "embedded", "vector", "graph", "multimodal"]
+categories = ["database", "database-implementations", "data-structures"]
+
+[lints]
+workspace = true
+
+[dependencies]
+ruscadb-core = { workspace = true }
+ruscadb-storage = { workspace = true }
+ruscadb-query = { workspace = true }
+ruscadb-vector = { workspace = true }
+ruscadb-graph = { workspace = true }
+ruscadb-multimodal = { workspace = true }
+ruscadb-ai = { workspace = true }
+ruscadb-wal = { workspace = true }
+ruscadb-ffi = { workspace = true }

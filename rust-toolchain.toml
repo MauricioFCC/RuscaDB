@@ -1,0 +1,6 @@
+# Toolchain pinneada de RuscaDB (reproducibilidad de builds).
+# Política: última estable viable; se sube vía mesa de trabajo UPG + ADR.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="RuscaDB mark">
+  <title>RuscaDB</title>
+  <defs>
+    <linearGradient id="rusca-mark-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <path d="M32 5 53 17 53 47 32 59 11 47 11 17Z"
+        fill="none" stroke="url(#rusca-mark-gradient)" stroke-width="3" stroke-linejoin="round"/>
+  <ellipse cx="32" cy="35" rx="8" ry="12" fill="url(#rusca-mark-gradient)"/>
+  <g stroke="#22d3ee" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M29 25 C26 20 23 18 20 15"/>
+    <path d="M35 25 C38 20 41 18 44 15"/>
+  </g>
+  <g stroke="#6366f1" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.9">
+    <path d="M25 30 L19 28"/>
+    <path d="M25 36 L19 38"/>
+    <path d="M25 42 L20 45"/>
+    <path d="M39 30 L45 28"/>
+    <path d="M39 36 L45 38"/>
+    <path d="M39 42 L44 45"/>
+  </g>
+</svg>

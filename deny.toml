@@ -1,0 +1,36 @@
+# cargo-deny — política de supply chain de RuscaDB.
+# Triple herramienta: cargo-audit (advisories) + cargo-deny (licencias/bans) +
+# cargo-vet (auditoría de terceros). Ver docs/RuscaDB-roadmap.md §6.5.
+
+[advisories]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+notice = "warn"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Preferir rustls/ring sobre OpenSSL nativo.
+deny = [{ name = "openssl-sys" }]
+# Crates inseguras/obsoletas conocidas (se amplía por fase).
+skip = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

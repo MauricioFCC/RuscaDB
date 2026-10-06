@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ruscadb"
+version = "0.1.0"
+description = "RuscaDB: base de datos embebida, multi-modelo y multimodal (bindings Python)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "RuscaDB contributors" }]
+keywords = ["database", "embedded", "vector", "graph", "multimodal", "rag"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Database",
+    "Topic :: Database :: Database Engines/Servers",
+]
+# La distribucion real del binding se activa en la Fase F5 (PyO3 + maturin).
+# Este paquete reserva el nombre `ruscadb` en PyPI.
+dependencies = []
+
+[project.urls]
+Homepage = "https://ruscadb.dev"
+Repository = "https://github.com/ruscadb/ruscadb"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ruscadb"]

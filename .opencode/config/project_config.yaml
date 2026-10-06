@@ -1,0 +1,182 @@
+# .opencode/config/project_config.yaml — v2.1.0
+# =============================================================================
+# PROJECT CONFIG — Swarmind Harness
+# =============================================================================
+# Sistema multi-agente evolutivo con orquestacion DAG, memoria vectorial LanceDB,
+# auto-mejora (ASI-Evolve), enrutamiento adaptativo y federated memory.
+# Token Economics v2026: Cache-Shape, Structured Compaction, PSMAS, Failure-Spend.
+# =============================================================================
+
+# ── Universal Project Metadata ────────────────────────────────────────────────
+PROJECT_NAME: "RuscaDB"
+PROJECT_VERSION: "0.1.0"
+DOMAIN: "database"
+TECH_STACK: "Rust"
+ARCH_PATTERN: "hexagonal"
+TEST_FRAMEWORKS: ["cargo test", "criterion"]
+CI_PLATFORM: "github-actions"
+DEPLOYMENT_TYPE: "library"
+CURRENT_PHASE: "A"                             # Analysis — definicion de arquitectura del MVP
+CURRENT_DAY: 1
+
+# ── Outputs / Artifact Warehouse ──────────────────────────────────────────────
+OUTPUTS_WAREHOUSE: "outputs/"
+OUTPUTS_DIRS:
+  workspace: "outputs/workspace/"
+  data: "outputs/data/"
+  models: "outputs/models/"
+  reports: "outputs/reports/"
+  logs: "outputs/logs/"
+
+# ── FDE / EVOLVE Config ───────────────────────────────────────────────────────
+FDE_MISSION: "Construir RuscaDB: base de datos embebida multi-modelo (documentos, grafo, relacional, vectores) y multimodal (imagen, audio, video, texto) en Rust"
+FDE_STAKEHOLDER: "Apps de IA local, pipelines RAG y agentes que embeben la DB (cero servidor, cero red)"
+FDE_METRIC: "Benchmarks de throughput/latencia p95 + invariantes ACID (WAL) + cobertura de tests de invariantes"
+FDE_DAY2: "Mejora continua via cognition store; roadmap 6 meses (core Rust -> parser -> IA -> bindings -> memoria)"
+FDE_DELTA: "MVP: core Rust + Lance/Arrow (blobs/vectores) + RocksDB (meta/grafo) + HNSW + WAL transaccional"
+
+EVOLVE_ENABLED: true
+EVOLVE_LOOP_DIR: ".opencode/loop"
+EVOLVE_MAX_ROUNDS: 50
+EVOLVE_SAMPLE_N: 3
+EVOLVE_PATIENCE: 10
+EVOLVE_BEST_SCORE: 0.0
+EVOLVE_LAST_ROUND: 0
+EVOLVE_COG_COUNT: 0
+
+# ── Token Economics v2026 ─────────────────────────────────────────────────────
+TOKEN_CONFIG:
+  default_budget: 2048
+  compression_level: "medium"
+  include_principles: "space_available"
+  mechanisms:
+    cache_shape_discipline: true        # -38% tokens via KV-cache reuse
+    structured_compaction: true         # -41% costo via compression por relevancia
+    scoped_context_spawn: true          # -44% tiempo via contexto minimo
+    phase_scheduled_mas: true           # -27.3% tokens via ciclo trifasico
+    observation_masking: true           # -60% obs. tokens via placeholders
+    failure_spend_governance: true      # Stop-loss por tarea + WAL
+
+# ── Harness Core Config ───────────────────────────────────────────────────────
+HARNESS:
+  language: "Rust"
+  framework: "Lance/Arrow + RocksDB + HNSW (core) · Swarmind harness (global, Python)"
+  collections_lancedb:
+    - tasks_board
+    - rag_chunks
+    - asi_cognition_store
+    - agent_workspace_logs
+    - procedural_skills
+    - prompt_evolution_log
+    - scheduler_log
+    - hitl_approval_log
+    - semantic_cache
+    - iteration_reports
+    - agent_performance
+    - skill_effectiveness
+    - telemetry_events
+    - session_kpis
+    - agent_interactions
+  agent_count: 24
+  skill_count: 35
+  model_routing: "hybrid (local Ollama + cloud API)"
+  hitl_enabled: true
+  gateway_modes: ["cli"]
+  scheduler_enabled: true
+  evolve_loop_enabled: true
+  hermes_bridge_enabled: true
+  self_healing:
+    circuit_breaker: true
+    timeout_seconds: 300
+    stall_detection_seconds: 120
+    adaptive_replan: true
+
+# ── Agent Ecosystem ───────────────────────────────────────────────────────────
+AGENTS:
+  total: 24
+  agent_list:
+    - architect
+    - backend-engineer
+    - builder
+    - coordinator
+    - data-engineer
+    - database-administrator
+    - devops
+    - evolve
+    - evolve-analyzer
+    - evolve-engineer
+    - evolve-researcher
+    - frontend-engineer
+    - guardian
+    - mobile-engineer
+    - product-manager
+    - platform-engineer
+    - qa-engineer
+    - release-ops
+    - researcher
+    - reviewer
+    - scientist
+    - security-engineer
+    - test-writer
+    - token-budget-auditor
+
+SKILLS:
+  total: 35
+  skill_list:
+    - ads-optimizer
+    - agent-rigor
+    - alpha-research
+    - architecture
+    - atdd-spec
+    - behavioral-economics
+    - business-strategy
+    - communication
+    - creative-design
+    - data-science
+    - devops-infra
+    - diagram-design
+    - education
+    - ethics
+    - evolve
+    - frontend-uiux
+    - healthtech
+    - hedgefund
+    - legal-doc
+    - linguistics
+    - math-doc
+    - physical-sciences
+    - pos-retail
+    - process-over-tools
+    - project-management
+    - psychology
+    - quant-trading
+    - risk-execution
+    - risk-intelligence
+    - rust-lang
+    - science-doc
+    - security-audit
+    - sociology
+    - sustainability
+    - swarm-release-ops
+
+# ── Licencia y Politica Open Source ───────────────────────────────────────────
+# RuscaDB es un proyecto de codigo abierto bajo licencia MIT y se apoya en
+# tecnologias open source. Al reutilizar codigo, snippets o ideas, SIEMPRE se
+# acredita al autor original y su licencia.
+LICENSE: "MIT"
+OPEN_SOURCE_POLICY:
+  uses_open_source: true
+  attribution_required: true
+  attribution_note: "Toda dependencia, snippet o idea reutilizada debe acreditar al autor original y citar su licencia"
+  license_header_required: true
+  preferred_licenses: ["MIT", "Apache-2.0", "BSD-3-Clause", "ISC"]
+  review_copyleft: ["GPL-3.0", "AGPL-3.0", "LGPL-3.0"]   # copyleft fuerte: revisar compatibilidad con MIT antes de adoptar
+
+# ── ADRs y decisiones de diseno (LOCAL-ONLY) ──────────────────────────────────
+# Los ADR y las decisiones de diseno se versionan SOLO en local para preservar
+# el historial; NO se comitean ni se publican al remoto.
+ADR_POLICY:
+  committed: false
+  path: "docs/adr/"
+  format: "madr"                          # Markdown Architectural Decision Records
+  note: "Se documentan en local (gitignoreado); jamas se comitean ni se publican"

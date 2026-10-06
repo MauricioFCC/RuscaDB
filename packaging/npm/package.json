@@ -1,0 +1,19 @@
+{
+  "name": "ruscadb",
+  "version": "0.1.0",
+  "description": "RuscaDB: embedded, multi-model and multimodal database (Node.js bindings).",
+  "keywords": ["database", "embedded", "vector", "graph", "multimodal", "rag"],
+  "license": "Apache-2.0",
+  "homepage": "https://ruscadb.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ruscadb/ruscadb"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "README.md"],
+  "engines": {
+    "node": ">=20"
+  },
+  "private": false
+}

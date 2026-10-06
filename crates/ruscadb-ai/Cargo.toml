@@ -1,0 +1,20 @@
+[package]
+name = "ruscadb-ai"
+description = "Inferencia local de embeddings de RuscaDB (Candle/ONNX)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Backend alterno opcional (F4). Apagado por defecto para no compilar C++ en F0.
+onnx = []
+
+[dependencies]
+ruscadb-core = { workspace = true }

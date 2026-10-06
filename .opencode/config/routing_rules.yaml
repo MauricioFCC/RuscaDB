@@ -1,0 +1,191 @@
+# Routing Rules Configuration v2.1 (H3 ADR-0040)
+# Enterprise-grade intent detection with security & architecture gates
+#
+# H3 (2026-08-04): routing desalineado -> cada skill real tiene ruta propia.
+# Cada domain en domain_routes es un skill real (.opencode/skills/<name>)
+# o un dominio agrupador del set fijo valido. El catch-all universal
+# queda con SOLO coordinator + token-budget-auditor (antes: 10 agentes).
+
+# =============================================================================
+# REGLAS DE ENRUTAMIENTO POR INTENT
+# =============================================================================
+routing_rules:
+  # =============================================================================
+  # ROUTING TYPE: Domain-first dispatch with intent-based fallback
+  # =============================================================================
+  routing_type: domain
+  domain_field: "domain"
+
+  # =============================================================================
+  # DOMAIN ROUTES (primary dispatch — matches skill metadata domain field)
+  #
+  # [1] Rutas agrupadoras (dominios fijos validos, retrocompatibilidad)
+  # [2] Rutas por skill real (cobertura granular, dominio = nombre del skill)
+  # [3] universal (catch-all minimo: coordinator + token-budget-auditor)
+  # =============================================================================
+  domain_routes:
+    # -------------------------------------------------------------------------
+    # [1] RUTAS AGRUPADORAS (dominios fijos validos — no son skills)
+    # -------------------------------------------------------------------------
+    - domain: "quantitative-analysis"
+      agents: ["scientist", "builder"]
+      priority: 9
+    - domain: "risk-management"
+      agents: ["guardian"]
+      priority: 8
+    - domain: "trading"
+      agents: ["builder", "scientist"]
+      priority: 8
+    - domain: "architecture"
+      agents: ["scientist", "coordinator", "architect"]
+      priority: 9
+    - domain: "ai-ml"
+      agents: ["scientist", "evolve"]
+      priority: 8
+    - domain: "memory"
+      agents: ["evolve", "coordinator"]
+      priority: 9
+    - domain: "quality"
+      agents: ["guardian", "qa-engineer"]
+      priority: 8
+    - domain: "documentation"
+      agents: ["builder", "scientist"]
+      priority: 7
+    - domain: "security"
+      agents: ["guardian", "security-engineer"]
+      priority: 9
+    - domain: "devops"
+      agents: ["builder", "devops"]
+      priority: 7
+    - domain: "mobile"
+      agents: ["builder", "mobile-engineer"]
+      priority: 7
+    - domain: "data"
+      agents: ["scientist", "data-engineer"]
+      priority: 7
+    - domain: "frontend"
+      agents: ["builder", "frontend-engineer"]
+      priority: 8
+
+    # -------------------------------------------------------------------------
+    # [2] RUTAS POR SKILL REAL (dominio = nombre del directorio del skill)
+    # -------------------------------------------------------------------------
+    # --- Quant / riesgo / finanzas ---
+    - domain: "alpha-research"
+      agents: ["scientist", "builder"]
+      priority: 8
+    - domain: "quant-trading"
+      agents: ["scientist", "builder"]
+      priority: 8
+    - domain: "risk-execution"
+      agents: ["guardian", "scientist"]
+      priority: 8
+    - domain: "risk-intelligence"
+      agents: ["guardian", "scientist"]
+      priority: 7
+    - domain: "hedgefund"
+      agents: ["coordinator", "scientist"]
+      priority: 8
+    - domain: "ads-optimizer"
+      agents: ["scientist", "builder"]
+      priority: 7
+
+    # --- Sistemas / lenguajes ---
+    - domain: "rust-lang"
+      agents: ["builder", "backend-engineer"]
+      priority: 8
+    - domain: "devops-infra"
+      agents: ["devops", "builder"]
+      priority: 8
+
+    # --- Datos / ML ---
+    - domain: "data-science"
+      agents: ["scientist", "data-engineer"]
+      priority: 8
+
+    # --- Frontend / UX / diseño ---
+    - domain: "frontend-uiux"
+      agents: ["builder", "frontend-engineer"]
+      priority: 8
+    - domain: "creative-design"
+      agents: ["frontend-engineer", "builder"]
+      priority: 7
+
+    # --- Seguridad ---
+    - domain: "security-audit"
+      agents: ["guardian", "security-engineer"]
+      priority: 8
+
+    # --- Documentos academicos / ciencia ---
+    - domain: "science-doc"
+      agents: ["scientist", "researcher"]
+      priority: 7
+    - domain: "math-doc"
+      agents: ["scientist"]
+      priority: 7
+    - domain: "physical-sciences"
+      agents: ["scientist"]
+      priority: 7
+    - domain: "legal-doc"
+      agents: ["researcher", "reviewer"]
+      priority: 7
+
+    # --- Negocio / gestion / comunicacion ---
+    - domain: "business-strategy"
+      agents: ["product-manager", "coordinator"]
+      priority: 7
+    - domain: "project-management"
+      agents: ["coordinator", "product-manager"]
+      priority: 7
+    - domain: "communication"
+      agents: ["coordinator", "builder"]
+      priority: 7
+
+    # --- Dominios contextuales (retail, health) ---
+    - domain: "pos-retail"
+      agents: ["builder", "backend-engineer"]
+      priority: 7
+    - domain: "healthtech"
+      agents: ["scientist", "guardian"]
+      priority: 7
+
+    # --- Ciencias sociales / humanidades ---
+    - domain: "behavioral-economics"
+      agents: ["scientist"]
+      priority: 7
+    - domain: "psychology"
+      agents: ["scientist"]
+      priority: 7
+    - domain: "sociology"
+      agents: ["scientist"]
+      priority: 7
+    - domain: "linguistics"
+      agents: ["scientist", "researcher"]
+      priority: 7
+    - domain: "education"
+      agents: ["scientist", "coordinator"]
+      priority: 7
+    - domain: "ethics"
+      agents: ["guardian", "coordinator"]
+      priority: 7
+    - domain: "sustainability"
+      agents: ["scientist", "coordinator"]
+      priority: 7
+
+    # --- Meta / sistema ---
+    - domain: "evolve"
+      agents: ["evolve", "coordinator"]
+      priority: 9
+    - domain: "swarm-release-ops"
+      agents: ["release-ops", "devops", "builder"]
+      priority: 9
+    - domain: "agent-rigor"
+      agents: ["guardian", "coordinator"]
+      priority: 9
+
+    # -------------------------------------------------------------------------
+    # [3] CATCH-ALL (minimo: solo coordinacion + auditoria de tokens)
+    # -------------------------------------------------------------------------
+    - domain: "universal"
+      agents: ["coordinator", "token-budget-auditor"]
+      priority: 10

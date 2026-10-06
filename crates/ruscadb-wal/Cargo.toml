@@ -1,0 +1,15 @@
+[package]
+name = "ruscadb-wal"
+description = "Write-Ahead Log global y MVCC de RuscaDB."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ruscadb-core = { workspace = true }

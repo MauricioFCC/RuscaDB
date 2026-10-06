@@ -1,0 +1,79 @@
+# CI de RuscaDB — Gate T1 (determinista, < 90 s, bloquea merge).
+#
+# Pipeline alineado con docs/RuscaDB-roadmap.md §7.1:
+#   Lint        -> fmt + clippy -D warnings
+#   Test        -> cargo test --workspace --locked
+#   Architecture-> guards de hexagonal + unsafe (scripts/check_*.py)
+#   Security    -> cargo-deny + cargo-audit
+#
+# Los jobs T2 (LLM-judge) y T3 (nightly: mutation full, fuzz, crash-recovery,
+# differential) se añaden en fases posteriores.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test
+        run: cargo test --workspace --all-features --locked
+
+  architecture:
+    name: Architecture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: hexagonal + dependency cycles
+        run: python scripts/check_architecture.py
+      - name: unsafe policy
+        run: python scripts/check_core_unsafe.py
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo-deny (advisories, licenses, bans, sources)
+        uses: EmbarkStudios/cargo-deny-action@v2
+      - name: cargo-audit (RustSec advisories)
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,19 @@
+# cargo-mutants — configuración de TDD adversarial (AdverTest).
+# Merge gate: `cargo mutants --in-diff pr.diff --shard k/n --in-place --baseline=skip`
+# Nightly:    `cargo mutants --workspace --shard k/32 --in-place`
+# Mutation score objetivo: >= 70% merge / >= 85% nightly.
+
+# Fallar el run si algun mutante tarda mas de 300 s (evita hangs).
+timeout = 300
+
+# No mutar tests ni benches (el mutante debe atacar codigo de produccion).
+exclude_globs = [
+    "crates/*/tests/**",
+    "crates/*/benches/**",
+]
+
+# Ejecutar bajo nextest si esta disponible (mas rapido, early-exit).
+# test_tool = "nextest"
+
+# Argumentos extra para `cargo test` (perfil determinista).
+additional_cargo_test_args = ["--locked"]

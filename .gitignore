@@ -1,0 +1,18 @@
+# ── Rust ──────────────────────────────────────────────────────────────────────
+/target/
+**/*.rs.bk
+*.pdb
+
+# ── Swarmind mirror (.opencode/) ──────────────────────────────────────────────
+# El cerebro (agents/skills/core/plugin) se regenera con deploy_all; solo se
+# versiona la config propia del proyecto.
+.opencode/*
+!.opencode/config/
+
+# ── ADRs y decisiones de diseno (LOCAL-ONLY) ──────────────────────────────────
+# Politica ADR_POLICY en .opencode/config/project_config.yaml: no se comitean.
+docs/adr/
+
+# ── Varios ────────────────────────────────────────────────────────────────────
+.env
+.DS_Store

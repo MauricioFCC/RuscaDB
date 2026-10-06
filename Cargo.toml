@@ -1,0 +1,68 @@
+# RuscaDB — workspace Cargo raíz.
+#
+# Base de datos embebida, multi-modelo y multimodal. Core en Rust.
+# Arquitectura hexagonal: las dependencias apuntan SIEMPRE hacia `ruscadb-core`.
+# El guard `scripts/check_architecture.py` verifica el grafo en CI (T1).
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/ruscadb-core",
+    "crates/ruscadb-storage",
+    "crates/ruscadb-query",
+    "crates/ruscadb-vector",
+    "crates/ruscadb-graph",
+    "crates/ruscadb-multimodal",
+    "crates/ruscadb-ai",
+    "crates/ruscadb-wal",
+    "crates/ruscadb-ffi",
+    "crates/ruscadb-py",
+    "crates/ruscadb-node",
+    "crates/ruscadb",
+    "crates/ruscadb-testkit",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/ruscadb/ruscadb"
+homepage = "https://ruscadb.dev"
+authors = ["RuscaDB contributors"]
+
+[workspace.dependencies]
+# Crates internas (path). Se referencian con `{ workspace = true }`.
+ruscadb-core = { path = "crates/ruscadb-core" }
+ruscadb-storage = { path = "crates/ruscadb-storage" }
+ruscadb-query = { path = "crates/ruscadb-query" }
+ruscadb-vector = { path = "crates/ruscadb-vector" }
+ruscadb-graph = { path = "crates/ruscadb-graph" }
+ruscadb-multimodal = { path = "crates/ruscadb-multimodal" }
+ruscadb-ai = { path = "crates/ruscadb-ai" }
+ruscadb-wal = { path = "crates/ruscadb-wal" }
+ruscadb-ffi = { path = "crates/ruscadb-ffi" }
+ruscadb-testkit = { path = "crates/ruscadb-testkit" }
+
+# Dependencias externas (se activarán por fase; F0 no las requiere todavía).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# ── Lints compartidos (cada crate activa con `[lints] workspace = true`) ──────
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unsafe_code = "deny"
+missing_docs = "warn"
+# Prioridad -1: la tabla no respeta el orden; evita el conflicto con missing_docs.
+rust_2018_idioms = { level = "deny", priority = -1 }
+
+[workspace.lints.clippy]
+# Seguridad: todo bloque unsafe exige justificación explícita.
+undocumented_unsafe_blocks = "deny"
+missing_safety_doc = "deny"
+multiple_unsafe_ops_per_block = "deny"
+# Calidad.
+unwrap_used = "warn"
+expect_used = "warn"
+todo = "warn"
+dbg_macro = "warn"

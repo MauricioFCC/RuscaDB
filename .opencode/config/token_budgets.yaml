@@ -1,0 +1,212 @@
+# .opencode/config/token_budgets.yaml — v2.1.0
+# Presupuestos de tokens por agente (5 core) + tecnicas de economia v2026
+# SSOT: unica fuente para presupuestos de tokens del sistema.
+# (Las abreviaturas viven en core/base_principles.md)
+
+defaults:
+  base_budget: 2048
+  response_buffer: 256
+  compression_threshold: 0.85
+
+# Presupuestos por agente core (5 roles activos)
+role_budgets:
+  coordinator:
+    budget: 4096
+    compression_level: medium
+    include_principles: always
+    reason: "Orquestador Swiss Watch: contexto completo de delegacion + token economics"
+  builder:
+    budget: 3072
+    compression_level: medium
+    include_principles: always
+    reason: "Implementacion + CP: necesita contexto algoritmico completo, compresion moderada"
+
+  scientist:
+    budget: 4096
+    compression_level: low
+    include_principles: always
+    reason: "Investigacion + papers: contexto completo, compresion minima para preservar detalles"
+
+  guardian:
+    budget: 2048
+    compression_level: high
+    include_principles: space_available
+    reason: "Testing + calidad: reglas concisas, compresion agresiva por diseno"
+
+  evolve:
+    budget: 3072
+    compression_level: medium
+    include_principles: always
+    reason: "Auto-mejora: contexto de cognition store + experiment history"
+
+  release-ops:
+    budget: 2048
+    compression_level: medium
+    include_principles: space_available
+    reason: "Releases/CI: contexto de workflows + branch protection, presupuesto moderado"
+
+  token-budget-auditor:
+    budget: 2048
+    compression_level: high
+    include_principles: space_available
+    reason: "Auditoria de tokens: reglas concisas, compresion agresiva por diseno"
+
+  architect:
+    budget: 3072
+    compression_level: medium
+    include_principles: space_available
+    reason: "Diseno de sistemas: contexto de decisiones y trade-offs"
+
+  backend-engineer:
+    budget: 3072
+    compression_level: medium
+    include_principles: space_available
+    reason: "APIs y servidores: contexto de contratos y esquemas"
+
+  data-engineer:
+    budget: 3072
+    compression_level: medium
+    include_principles: space_available
+    reason: "Pipelines ETL: contexto de esquemas y transformaciones"
+
+  database-administrator:
+    budget: 2048
+    compression_level: high
+    include_principles: space_available
+    reason: "Modelado SQL: reglas concisas, compresion alta"
+
+  devops:
+    budget: 3072
+    compression_level: medium
+    include_principles: space_available
+    reason: "CI/CD e infraestructura: contexto de workflows"
+
+  evolve-analyzer:
+    budget: 2048
+    compression_level: high
+    include_principles: space_available
+    reason: "Analisis de experimentos: salidas concisas por diseno"
+
+  evolve-engineer:
+    budget: 3072
+    compression_level: medium
+    include_principles: space_available
+    reason: "Ingenieria de mejoras: contexto de implementacion"
+
+  evolve-researcher:
+    budget: 3072
+    compression_level: low
+    include_principles: space_available
+    reason: "Investigacion para evolve: preservar detalles de hallazgos"
+
+  frontend-engineer:
+    budget: 2048
+    compression_level: high
+    include_principles: space_available
+    reason: "UI/UX: componentes y estilos, compresion alta"
+
+  mobile-engineer:
+    budget: 2048
+    compression_level: high
+    include_principles: space_available
+    reason: "Apps moviles: snippets de plataforma, compresion alta"
+
+  product-manager:
+    budget: 2048
+    compression_level: high
+    include_principles: space_available
+    reason: "Requerimientos y roadmap: resumenes ejecutivos"
+
+  qa-engineer:
+    budget: 2048
+    compression_level: high
+    include_principles: space_available
+    reason: "Testing: planes de prueba concisos"
+
+  researcher:
+    budget: 4096
+    compression_level: low
+    include_principles: always
+    reason: "Investigacion + papers: contexto completo como scientist"
+
+  reviewer:
+    budget: 2048
+    compression_level: high
+    include_principles: space_available
+    reason: "Code review: diffs y criterios, compresion alta"
+
+  security-engineer:
+    budget: 3072
+    compression_level: medium
+    include_principles: always
+    reason: "Auditorias OWASP: contexto de controles y estandares"
+
+# Tecnicas de compresion por nivel
+compression_levels:
+  low:
+    remove_redundant_phrases: false
+    abbreviate_terms: false
+    collapse_lists: false
+    remove_examples: false
+    aggressive_truncate: false
+    
+  medium:
+    remove_redundant_phrases: true
+    abbreviate_terms: true
+    collapse_lists: true
+    remove_examples: false
+    aggressive_truncate: false
+    
+  high:
+    remove_redundant_phrases: true
+    abbreviate_terms: true
+    collapse_lists: true
+    remove_examples: true
+    aggressive_truncate: true
+
+# Abreviaturas centralizadas (SSOT con base_principles.md)
+abbreviations:
+  "out-of-sample": "OOS"
+  "walk-forward validation": "WFV"
+  "deflated sharpe ratio": "DSR"
+  "stop loss": "SL"
+  "take profit": "TP"
+  "risk-reward ratio": "RR"
+  "position sizing": "pos_size"
+  "dependency injection": "DI"
+
+# Frases redundantes a eliminar
+redundant_phrases:
+  - "es decir"
+  - "en otras palabras"
+  - "dicho de otro modo"
+  - "cabe destacar que"
+  - "por favor"
+  - "como puedes ver"
+  - "como se menciono anteriormente"
+  - "en resumen"
+  - "para concluir"
+
+# Monitor de uso de tokens
+monitoring:
+  enabled: true
+  log_threshold: 0.85
+  metrics:
+    - tokens_used
+    - compression_applied
+    - cache_hit_rate
+    - failure_spend_ratio
+    - phase_activation_count
+    - fan_out_factor
+    - tokens_per_parallel_agent
+    - provider_cache_hit_rate
+
+# Stop rules / abstencion (ADR-0039 #8, CONVOLVE 2606.28733)
+# Politica declarativa: el runtime (Failure-Spend Governance + Circuit Breaker
+# del coordinator) aplica la mecanica; estos umbrales son la config SSOT.
+abstention_policy:
+  enabled: true
+  max_failure_spend_ratio: 0.30      # >30% del presupuesto en fallos -> abstener/re-planificar
+  max_steps_without_progress: 5      # 5 pasos sin progreso medible -> parar y reportar
+  abstain_message: "Sin progreso medible; se abstiene y reporta estado actual + siguiente accion"
+  re_plan_after_abstain: true        # tras abstener, re-planificar con contexto reducido

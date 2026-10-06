@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="RuscaDB logo">
+  <title>RuscaDB</title>
+  <desc>Cucaracha geometrica dentro de un chip hexagonal con nodos de grafo.</desc>
+  <defs>
+    <linearGradient id="rusca-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo -->
+  <rect width="128" height="128" rx="24" fill="#0b1020"/>
+
+  <!-- Chip hexagonal -->
+  <path d="M64 14 106 38 106 90 64 114 22 90 22 38Z"
+        fill="none" stroke="url(#rusca-gradient)" stroke-width="4" stroke-linejoin="round"/>
+
+  <!-- Aristas de grafo hacia los nodos -->
+  <g stroke="#38bdf8" stroke-width="2" opacity="0.65">
+    <line x1="64" y1="14" x2="64" y2="42"/>
+    <line x1="106" y1="38" x2="82" y2="62"/>
+    <line x1="106" y1="90" x2="82" y2="74"/>
+    <line x1="64" y1="114" x2="64" y2="94"/>
+    <line x1="22" y1="90" x2="46" y2="74"/>
+    <line x1="22" y1="38" x2="46" y2="62"/>
+  </g>
+
+  <!-- Nodos -->
+  <g fill="#22d3ee">
+    <circle cx="64" cy="14" r="4"/>
+    <circle cx="106" cy="38" r="4"/>
+    <circle cx="106" cy="90" r="4"/>
+    <circle cx="64" cy="114" r="4"/>
+    <circle cx="22" cy="90" r="4"/>
+    <circle cx="22" cy="38" r="4"/>
+  </g>
+
+  <!-- Cuerpo de la cucaracha (geometrico) -->
+  <ellipse cx="64" cy="70" rx="16" ry="24" fill="url(#rusca-gradient)"/>
+  <line x1="64" y1="48" x2="64" y2="92" stroke="#0b1020" stroke-width="2" opacity="0.55"/>
+
+  <!-- Antenas -->
+  <g stroke="#22d3ee" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M58 50 C52 40 46 36 40 30"/>
+    <path d="M70 50 C76 40 82 36 88 30"/>
+  </g>
+
+  <!-- Patas -->
+  <g stroke="#6366f1" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.9">
+    <path d="M50 60 L38 56"/>
+    <path d="M50 72 L38 76"/>
+    <path d="M50 84 L40 90"/>
+    <path d="M78 60 L90 56"/>
+    <path d="M78 72 L90 76"/>
+    <path d="M78 84 L88 90"/>
+  </g>
+</svg>

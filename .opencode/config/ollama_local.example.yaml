@@ -1,0 +1,15 @@
+# PLANTILLA de configuracion local confidencial (NO commitear el real).
+# Copiar a `ollama_local.yaml` (gitignored) y ajustar a tu maquina:
+#   copy .opencode\config\ollama_local.example.yaml .opencode\config\ollama_local.yaml
+# Sobreescribe caps (0..1) y trust por model_id. Lo ausente usa builtin.
+# Ejemplo: si Qwen3.8 te rinde mejor en codigo que el prior, sube su coding.
+models:
+  # "hf.co/bartowski/MiMo-V2.6-Distill-Qwen-9B-GGUF:IQ4_XS":
+  #   caps: {coding: 0.80}
+  #   trust: 1.0
+  # "mannix/JackOD-9B-Coder:IQ4_XS":
+  #   trust: 0.9
+# Politica local-first (sobreescribe local_first de ollama_models.yaml):
+# local_first:
+#   target_local_ratio: 0.65
+#   sample_rate: 0.15

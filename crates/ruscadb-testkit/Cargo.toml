@@ -1,0 +1,15 @@
+[package]
+name = "ruscadb-testkit"
+description = "Utilidades de test, PBT, oráculos y mutantes de RuscaDB."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ruscadb-core = { workspace = true }
