@@ -1,6 +1,6 @@
 [package]
 name = "ruscadb-query"
-description = "Motor de consultas de RuscaDB (DataFusion + dialecto extendido)."
+description = "Motor de consultas de RuscaDB (RQL: lexer + parser + IR)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,5 +11,14 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 ruscadb-core = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }

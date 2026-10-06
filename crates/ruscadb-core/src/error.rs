@@ -63,4 +63,13 @@ pub enum RuscaError {
     /// Configuración inválida del motor.
     #[error("configuración inválida: {0}")]
     InvalidConfig(String),
+
+    /// La consulta no se pudo analizar sintácticamente.
+    #[error("error de sintaxis en posición {position}: {message}")]
+    ParseError {
+        /// Descripción del error.
+        message: String,
+        /// Posición (byte) dentro del texto de la consulta.
+        position: usize,
+    },
 }
