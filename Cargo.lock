@@ -549,6 +549,8 @@ dependencies = [
 name = "ruscadb-vector"
 version = "0.1.0"
 dependencies = [
+ "pretty_assertions",
+ "proptest",
  "ruscadb-core",
 ]
 
