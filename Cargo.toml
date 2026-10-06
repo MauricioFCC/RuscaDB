@@ -75,3 +75,6 @@ unwrap_used = "warn"
 expect_used = "warn"
 todo = "warn"
 dbg_macro = "warn"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
