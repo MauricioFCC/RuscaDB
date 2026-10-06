@@ -38,7 +38,7 @@
 
 ---
 
-## 🧠 Skills (35 — potencia total)
+## 🧠 Skills (36 — potencia total)
 
   - `ads-optimizer`
   - `agent-rigor`
@@ -72,6 +72,7 @@
   - `rust-lang`
   - `science-doc`
   - `security-audit`
+  - `skill-engineering`
   - `sociology`
   - `sustainability`
   - `swarm-release-ops`
