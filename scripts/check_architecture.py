@@ -46,6 +46,7 @@ ALLOWED: dict[str, set[str]] = {
         "ruscadb-ffi",
     },
     "ruscadb-testkit": {"ruscadb-core"},
+    "xtask": set(),
 }
 
 

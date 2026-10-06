@@ -1,0 +1,4 @@
+# Alias de Cargo del workspace.
+[alias]
+# `cargo xtask <cmd>` -> ejecuta la crate `xtask` (tareas de desarrollo).
+xtask = "run --quiet --package xtask --"

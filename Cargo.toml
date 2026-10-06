@@ -20,6 +20,7 @@ members = [
     "crates/ruscadb-node",
     "crates/ruscadb",
     "crates/ruscadb-testkit",
+    "crates/xtask",
 ]
 
 [workspace.package]
@@ -52,6 +53,9 @@ ulid = { version = "3.0.0", features = ["serde"] }
 crc32c = "0.6.8"
 tempfile = "3.27.0"
 proptest = "1.11.0"
+rstest = "0.27.0"
+pretty_assertions = "1.4.1"
+insta = "1.49.0"
 
 # ── Lints compartidos (cada crate activa con `[lints] workspace = true`) ──────
 [workspace.lints.rust]

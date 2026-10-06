@@ -1,18 +1,57 @@
-# ── Rust ──────────────────────────────────────────────────────────────────────
+# ── Rust / Cargo ─────────────────────────────────────────────────────────────
 /target/
 **/*.rs.bk
 *.pdb
+*.profraw
+*.profdata
+# Artefactos de cargo-mutants (no versionar resultados locales)
+/mutants.out/
+/mutants.out.old/
 
-# ── Swarmind mirror (.opencode/) ──────────────────────────────────────────────
+# ── Cobertura / benchmarks ───────────────────────────────────────────────────
+/lcov.info
+/coverage/
+*.lcov
+
+# ── Datos locales de RuscaDB (scratch) ───────────────────────────────────────
+*.ruscadb
+*.wal
+*.data
+!packaging/**/*.data
+
+# ── Python (packaging/pypi) ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+/dist/
+/build/
+.venv/
+venv/
+
+# ── Node (packaging/npm) ─────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── Secretos ─────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Editores / OS ────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ── Swarmind mirror (.opencode/) ─────────────────────────────────────────────
 # El cerebro (agents/skills/core/plugin) se regenera con deploy_all; solo se
 # versiona la config propia del proyecto.
 .opencode/*
 !.opencode/config/
 
-# ── ADRs y decisiones de diseno (LOCAL-ONLY) ──────────────────────────────────
+# ── ADRs y decisiones de diseno (LOCAL-ONLY) ─────────────────────────────────
 # Politica ADR_POLICY en .opencode/config/project_config.yaml: no se comitean.
 docs/adr/
-
-# ── Varios ────────────────────────────────────────────────────────────────────
-.env
-.DS_Store

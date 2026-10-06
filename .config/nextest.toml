@@ -1,0 +1,21 @@
+# cargo-nextest — perfiles de test profesionales.
+# T1 usa `default`/`ci`; T3 (nightly) usa `crash` para recovery pesado.
+
+[store]
+dir = "target/nextest"
+
+[profile.default]
+retries = 0
+fail-fast = true
+slow-timeout = { period = "30s", terminate-after = 3 }
+
+[profile.ci]
+retries = 1
+fail-fast = false
+status-level = "pass"
+
+# Perfil para pruebas de recovery/crash (T3, nightly).
+[profile.crash]
+retries = 0
+fail-fast = false
+slow-timeout = { period = "120s", terminate-after = 2 }
