@@ -12,9 +12,20 @@
 //! - Solo tipos y contratos; ninguna operación de I/O.
 //!
 //! La implementación del `Record` y el catálogo se especifica en
-//! `specs/core_record.md` (SPEC-0001) y se sintetiza en la Fase F1.
+//! `specs/core_record.md` (SPEC-0001).
 
 #![forbid(unsafe_code)]
+
+pub mod error;
+pub mod id;
+pub mod record;
+
+pub use error::RuscaError;
+pub use id::RecordId;
+pub use record::{
+    BlobPointer, Edge, EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordMeta, ScalarMap,
+    ScalarValue,
+};
 
 /// Versión del dominio, tomada de la del paquete.
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");

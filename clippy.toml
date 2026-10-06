@@ -1,0 +1,6 @@
+# Clippy — configuración del workspace.
+# Permite unwrap/expect/panic en tests (el oráculo puede fallar ruidosamente);
+# el código de producción sigue bajo los lints `unwrap_used`/`expect_used`.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

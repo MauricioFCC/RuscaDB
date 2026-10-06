@@ -44,9 +44,13 @@ ruscadb-wal = { path = "crates/ruscadb-wal" }
 ruscadb-ffi = { path = "crates/ruscadb-ffi" }
 ruscadb-testkit = { path = "crates/ruscadb-testkit" }
 
-# Dependencias externas (se activarán por fase; F0 no las requiere todavía).
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Dependencias externas (versiones estables verificadas 2026-10-06).
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.21"
+ulid = { version = "3.0.0", features = ["serde"] }
+crc32c = "0.6.8"
+tempfile = "3.27.0"
 
 # ── Lints compartidos (cada crate activa con `[lints] workspace = true`) ──────
 [workspace.lints.rust]
