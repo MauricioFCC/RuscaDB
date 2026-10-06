@@ -4,9 +4,13 @@
 //! puertos del dominio (inyección de dependencias). Es el único crate que
 //! conoce las implementaciones concretas.
 //!
-//! Diseño: `docs/RuscaDB-roadmap.md` §4.2/§4.3. Fase: F1+.
+//! Diseño: `docs/RuscaDB-roadmap.md` §4.2/§4.3.
 
 #![forbid(unsafe_code)]
+
+mod database;
+
+pub use database::{Database, DbConfig};
 
 /// Versión de la fachada, tomada de la del paquete.
 pub const RUSCADB_VERSION: &str = env!("CARGO_PKG_VERSION");

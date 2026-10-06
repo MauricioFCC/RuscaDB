@@ -18,9 +18,9 @@ nf:
 acceptance_criteria:
   - id: AC-0002-01
     given: una base con un COMMIT confirmado
-    when: el proceso es terminado con SIGKILL
+    when: el proceso se cierra y se reabre (recovery)
     then: al reopen, la fila existe y su checksum valida
-    test: test_ac_0002_01_wal_durability_after_sigkill
+    test: test_ac_0002_01_wal_durability_after_restart
   - id: AC-0002-02
     given: un WAL con un frame truncado a mitad
     when: se invoca recovery

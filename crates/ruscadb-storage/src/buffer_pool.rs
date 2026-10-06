@@ -178,6 +178,28 @@ impl BufferPool {
     where
         F: FnOnce(PageId) -> Result<Page, RuscaError>,
     {
+        let idx = self.ensure_loaded(id, load)?;
+        Ok(&self.frames[idx].page)
+    }
+
+    /// Igual que [`BufferPool::get`] pero devuelve una referencia mutable a la
+    /// página (para escritura in-place en el marco).
+    ///
+    /// Errors:
+    ///     [`RuscaError::BufferPoolFull`] si no hay marcos desalojables.
+    pub fn get_mut<F>(&mut self, id: PageId, load: F) -> Result<&mut Page, RuscaError>
+    where
+        F: FnOnce(PageId) -> Result<Page, RuscaError>,
+    {
+        let idx = self.ensure_loaded(id, load)?;
+        Ok(&mut self.frames[idx].page)
+    }
+
+    /// Garantiza que `id` está cargada y pinneada; devuelve el índice del marco.
+    fn ensure_loaded<F>(&mut self, id: PageId, load: F) -> Result<usize, RuscaError>
+    where
+        F: FnOnce(PageId) -> Result<Page, RuscaError>,
+    {
         self.clock += 1;
 
         if let Some(&idx) = self.index.get(&id) {
@@ -185,7 +207,7 @@ impl BufferPool {
             let frame = &mut self.frames[idx];
             frame.pin_count += 1;
             frame.record_ref(self.clock);
-            return Ok(&self.frames[idx].page);
+            return Ok(idx);
         }
 
         self.misses += 1;
@@ -205,7 +227,7 @@ impl BufferPool {
         let page = load(id)?;
         self.frames[idx] = Frame::with_page(page, self.clock);
         self.index.insert(id, idx);
-        Ok(&self.frames[idx].page)
+        Ok(idx)
     }
 
     /// Despinnea una página y opcionalmente la marca como sucia.

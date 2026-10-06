@@ -24,3 +24,9 @@ ruscadb-multimodal = { workspace = true }
 ruscadb-ai = { workspace = true }
 ruscadb-wal = { workspace = true }
 ruscadb-ffi = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+proptest = { workspace = true }
+rstest = { workspace = true }
+pretty_assertions = { workspace = true }

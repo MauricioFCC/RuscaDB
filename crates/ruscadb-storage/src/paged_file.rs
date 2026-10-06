@@ -59,11 +59,10 @@ impl PagedFile {
     pub fn allocate(&mut self) -> Result<PageId, RuscaError> {
         let id = PageId(self.pages);
         self.write_page(&Page::new(id))?;
-        self.pages += 1;
         Ok(id)
     }
 
-    /// Escribe una página en su offset.
+    /// Escribe una página en su offset, extendiendo el archivo si es necesario.
     ///
     /// Errors:
     ///     [`RuscaError::Io`] si falla la escritura.
@@ -71,6 +70,9 @@ impl PagedFile {
         let offset = page.id().0 * PAGE_SIZE as u64;
         self.file.seek(SeekFrom::Start(offset))?;
         self.file.write_all(page.data())?;
+        if page.id().0 >= self.pages {
+            self.pages = page.id().0 + 1;
+        }
         Ok(())
     }
 
