@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RuscaDB - Tarjeta social (Open Graph / Twitter) 1200x630.
+  Fondo #0b1020, marca a la izquierda, wordmark, tagline y badge Rust.
+  Tipografias con fallback de sistema: Inter/system-ui y JetBrains Mono.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630"
+     role="img" aria-labelledby="rusca-og-title ruscadb-og-desc">
+  <title id="rusca-og-title">RuscaDB - Embedded · Multi-model · Multimodal</title>
+  <desc id="ruscadb-og-desc">Tarjeta social de RuscaDB: cucaracha geometrica en chip hexagonal, wordmark y tagline. Base de datos embebida, multi-modelo y multimodal escrita en Rust.</desc>
+
+  <defs>
+    <linearGradient id="rusca-gradient" gradientUnits="userSpaceOnUse" x1="20" y1="12" x2="108" y2="116">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="og-accent" gradientUnits="userSpaceOnUse" x1="432" y1="352" x2="580" y2="360">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <radialGradient id="og-glow" cx="30%" cy="40%" r="70%">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.14"/>
+      <stop offset="0.55" stop-color="#6366f1" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#0b1020" stop-opacity="0"/>
+    </radialGradient>
+
+    <g id="rusca-mark">
+      <path d="M64 12 L108 38 L108 90 L64 116 L20 90 L20 38 Z"
+            fill="none" stroke="url(#rusca-gradient)" stroke-width="5" stroke-linejoin="round"/>
+      <g fill="#22d3ee">
+        <circle cx="64" cy="12" r="6"/>
+        <circle cx="108" cy="38" r="6"/>
+        <circle cx="108" cy="90" r="6"/>
+        <circle cx="64" cy="116" r="6"/>
+        <circle cx="20" cy="90" r="6"/>
+        <circle cx="20" cy="38" r="6"/>
+      </g>
+      <g stroke="#22d3ee" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.92">
+        <path d="M54 63 L40 52"/>
+        <path d="M50 74 L36 74"/>
+        <path d="M55 84 L42 96"/>
+        <path d="M74 63 L88 52"/>
+        <path d="M78 74 L92 74"/>
+        <path d="M73 84 L86 96"/>
+      </g>
+      <g stroke="#22d3ee" stroke-width="4" stroke-linecap="round" fill="none">
+        <path d="M59 48 C54 42 49 36 44 27"/>
+        <path d="M69 48 C74 42 79 36 84 27"/>
+      </g>
+      <path d="M64 57 L49 62 L48 74 L53 87 L64 96 Z" fill="url(#rusca-gradient)"/>
+      <path d="M64 57 L79 62 L80 74 L75 87 L64 96 Z" fill="url(#rusca-gradient)"/>
+      <path d="M64 57 L64 96" stroke="#0b1020" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+      <path d="M64 44 L74 49 L77 60 L51 60 L54 49 Z" fill="url(#rusca-gradient)"
+            stroke="#0b1020" stroke-width="1.5" stroke-linejoin="round" opacity="0.98"/>
+    </g>
+  </defs>
+
+  <!-- Fondo -->
+  <rect x="0" y="0" width="1200" height="630" fill="#0b1020"/>
+  <rect x="0" y="0" width="1200" height="630" fill="url(#og-glow)"/>
+
+  <!-- Textura de grafo tenue (esquina superior derecha) -->
+  <g opacity="0.14" fill="none" stroke="#22d3ee" stroke-width="2">
+    <path d="M1052 74 L1108 106 L1108 170 L1052 202 L996 170 L996 106 Z"/>
+    <line x1="1052" y1="74" x2="1052" y2="202"/>
+    <line x1="996" y1="106" x2="1108" y2="170"/>
+  </g>
+  <g opacity="0.18" fill="#22d3ee">
+    <circle cx="1052" cy="74" r="4"/>
+    <circle cx="1108" cy="106" r="4"/>
+    <circle cx="1108" cy="170" r="4"/>
+    <circle cx="1052" cy="202" r="4"/>
+    <circle cx="996" cy="170" r="4"/>
+    <circle cx="996" cy="106" r="4"/>
+  </g>
+
+  <!-- Marca -->
+  <use href="#rusca-mark" transform="translate(90 171) scale(2.25)"/>
+
+  <!-- Wordmark -->
+  <text x="432" y="326" fill="#f8fafc"
+        font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="118" font-weight="700" letter-spacing="-3">RuscaDB</text>
+
+  <!-- Acento bajo el wordmark -->
+  <rect x="434" y="352" width="146" height="8" rx="4" fill="url(#og-accent)"/>
+
+  <!-- Tagline -->
+  <text x="434" y="416" fill="#94a3b8"
+        font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="34" font-weight="500" letter-spacing="0.5">Embedded · Multi-model · Multimodal</text>
+
+  <!-- Badge Rust -->
+  <rect x="434" y="452" width="128" height="50" rx="25" fill="none" stroke="#22d3ee" stroke-width="2"/>
+  <text x="498" y="485" fill="#22d3ee" text-anchor="middle"
+        font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="26" font-weight="600">Rust</text>
+
+  <!-- Dominio -->
+  <text x="1110" y="580" fill="#94a3b8" text-anchor="end"
+        font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="24" font-weight="500">ruscadb.dev</text>
+</svg>

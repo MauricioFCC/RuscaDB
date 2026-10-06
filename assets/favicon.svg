@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RuscaDB - Favicon simplificado y bold para <=32 px.
+  Sin patas, silueta clara y alto contraste sobre tile oscuro.
+  Geometria ajustada al grid de 32 px para mantener nitidez a 16 px.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"
+     role="img" aria-labelledby="rusca-favicon-title rusca-favicon-desc">
+  <title id="rusca-favicon-title">RuscaDB</title>
+  <desc id="rusca-favicon-desc">Icono simplificado de RuscaDB para favicon: silueta de cucaracha dentro de un chip hexagonal sobre tile oscuro.</desc>
+
+  <defs>
+    <linearGradient id="rusca-gradient" gradientUnits="userSpaceOnUse" x1="6" y1="5" x2="26" y2="27">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Tile oscuro -->
+  <rect x="0" y="0" width="32" height="32" rx="7" fill="#0b1020"/>
+
+  <!-- Chip hexagonal (bold) -->
+  <path d="M16 5 L26 11 L26 21 L16 27 L6 21 L6 11 Z"
+        fill="none" stroke="url(#rusca-gradient)" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Nodos -->
+  <g fill="#22d3ee">
+    <circle cx="16" cy="5" r="2.4"/>
+    <circle cx="26" cy="11" r="2.4"/>
+    <circle cx="26" cy="21" r="2.4"/>
+    <circle cx="16" cy="27" r="2.4"/>
+    <circle cx="6" cy="21" r="2.4"/>
+    <circle cx="6" cy="11" r="2.4"/>
+  </g>
+
+  <!-- Antenas (dos) -->
+  <g stroke="#22d3ee" stroke-width="1.8" stroke-linecap="round" fill="none">
+    <path d="M14.5 13 L12.2 8.8"/>
+    <path d="M17.5 13 L19.8 8.8"/>
+  </g>
+
+  <!-- Cuerpo: elitros divididos + pronoto -->
+  <path d="M16 15.5 L12.6 16.8 L12.2 19 L14 23 L16 24 Z" fill="url(#rusca-gradient)"/>
+  <path d="M16 15.5 L19.4 16.8 L19.8 19 L18 23 L16 24 Z" fill="url(#rusca-gradient)"/>
+  <path d="M16 15.5 L16 24" stroke="#0b1020" stroke-width="1" stroke-linecap="round" opacity="0.5"/>
+  <path d="M16 11.6 L20.2 13.4 L21.2 16 L10.8 16 L11.8 13.4 Z" fill="url(#rusca-gradient)"/>
+</svg>

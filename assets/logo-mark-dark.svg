@@ -1,22 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  RuscaDB - Lockup horizontal: marca + wordmark.
-  El fondo es transparente y el texto usa currentColor, por lo que se adapta
-  a tema claro u oscuro heredando el color del contexto.
-  Tipografia: Inter / system-ui (weight 700) con fallback sin dependencias.
+  RuscaDB - Icono sobre tile redondeado oscuro (avatar / app icon).
+  Tile #0b1020 con radio 28 px y marca centrada.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 128" width="440" height="128"
-     role="img" aria-labelledby="ruscadb-lockup-title ruscadb-lockup-desc">
-  <title id="ruscadb-lockup-title">RuscaDB</title>
-  <desc id="ruscadb-lockup-desc">Logotipo horizontal de RuscaDB: la marca de la cucaracha en un chip hexagonal junto al wordmark adaptable al color del texto.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"
+     role="img" aria-labelledby="rusca-dark-title rusca-dark-desc">
+  <title id="rusca-dark-title">RuscaDB</title>
+  <desc id="rusca-dark-desc">Icono de RuscaDB sobre tile oscuro redondeado, con la cucaracha geometrica dentro del chip hexagonal y sus nodos de grafo.</desc>
 
   <defs>
     <linearGradient id="rusca-gradient" gradientUnits="userSpaceOnUse" x1="20" y1="12" x2="108" y2="116">
       <stop offset="0" stop-color="#22d3ee"/>
       <stop offset="1" stop-color="#6366f1"/>
     </linearGradient>
+    <radialGradient id="rusca-glow" cx="50%" cy="42%" r="64%">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
 
-    <!-- Marca reutilizable (misma geometria que logo-mark.svg) -->
     <g id="rusca-mark">
       <path d="M64 12 L108 38 L108 90 L64 116 L20 90 L20 38 Z"
             fill="none" stroke="url(#rusca-gradient)" stroke-width="5" stroke-linejoin="round"/>
@@ -48,10 +49,11 @@
     </g>
   </defs>
 
-  <use href="#rusca-mark"/>
+  <!-- Tile oscuro + halo sutil + borde tenue -->
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="#0b1020"/>
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="url(#rusca-glow)"/>
+  <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27.25"
+        fill="none" stroke="#1b2340" stroke-width="1.5"/>
 
-  <!-- Wordmark: hereda currentColor para adaptarse a claro/oscuro -->
-  <text x="152" y="84" fill="currentColor"
-        font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
-        font-size="56" font-weight="700" letter-spacing="-1.5">RuscaDB</text>
+  <use href="#rusca-mark"/>
 </svg>
