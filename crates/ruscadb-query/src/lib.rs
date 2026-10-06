@@ -107,10 +107,27 @@ mod tests {
         assert_eq!(query.filter, Some(expected));
     }
 
-    /// Un número con dos puntos decimales es un error léxico.
+    /// Un número con dos puntos decimales es un error léxico en el segundo `.`.
     #[test]
     fn test_number_with_two_dots_is_error() {
-        assert!(parse("SELECT * FROM t WHERE a = 1.2.3").is_err());
+        let error = parse("SELECT * FROM t WHERE a = 1.2.3").unwrap_err();
+        match error {
+            RuscaError::ParseError { message, position } => {
+                assert!(
+                    message.contains("carácter inesperado"),
+                    "mensaje: {message}"
+                );
+                assert_eq!(position, 29, "el segundo '.' está en la posición 29");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Un entero fuera del rango de `i64` es error (sin overflow silencioso).
+    #[test]
+    fn test_integer_overflow_is_error() {
+        assert!(parse("SELECT * FROM t WHERE a = 99999999999999999999999999").is_err());
+        assert!(parse("SELECT * FROM t WHERE a = 9223372036854775807").is_ok());
     }
 
     /// Un flotante entero conserva el punto decimal en el roundtrip.

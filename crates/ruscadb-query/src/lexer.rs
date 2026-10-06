@@ -28,6 +28,24 @@ impl Keyword {
             Self::Limit => "LIMIT",
         }
     }
+
+    /// Reconoce una palabra clave a partir de su forma en minúsculas.
+    ///
+    /// Args:
+    ///     word: Palabra en minúsculas.
+    ///
+    /// Returns:
+    ///     La palabra clave, o `None` si no es reservada.
+    pub fn from_lowercase(word: &str) -> Option<Self> {
+        match word {
+            "select" => Some(Self::Select),
+            "from" => Some(Self::From),
+            "where" => Some(Self::Where),
+            "and" => Some(Self::And),
+            "limit" => Some(Self::Limit),
+            _ => None,
+        }
+    }
 }
 
 /// Token léxico de RQL.
@@ -77,7 +95,7 @@ impl Spanned {
 }
 
 /// Construye un [`RuscaError::ParseError`] con posición.
-pub fn parse_error(message: impl Into<String>, position: usize) -> RuscaError {
+pub(crate) fn parse_error(message: impl Into<String>, position: usize) -> RuscaError {
     RuscaError::ParseError {
         message: message.into(),
         position,
@@ -93,118 +111,144 @@ pub fn parse_error(message: impl Into<String>, position: usize) -> RuscaError {
 ///     La lista de tokens con posición.
 ///
 /// Errors:
-///     [`RuscaError::ParseError`] ante un carácter o literal inválido.
+///     [`RuscaError::ParseError`] ante un carácter, número o literal inválido.
 pub fn tokenize(input: &str) -> Result<Vec<Spanned>, RuscaError> {
-    let bytes = input.as_bytes();
+    let mut lexer = Lexer::new(input);
     let mut tokens = Vec::new();
-    let mut index = 0;
-    while index < bytes.len() {
-        let byte = bytes[index];
-        if byte.is_ascii_whitespace() {
-            index += 1;
-            continue;
+    while let Some(spanned) = lexer.next_token()? {
+        tokens.push(spanned);
+    }
+    Ok(tokens)
+}
+
+/// Estado del lexer: texto y cursor de bytes.
+struct Lexer<'a> {
+    input: &'a str,
+    bytes: &'a [u8],
+    index: usize,
+}
+
+impl<'a> Lexer<'a> {
+    /// Crea un lexer sobre el texto dado.
+    fn new(input: &'a str) -> Self {
+        Self {
+            input,
+            bytes: input.as_bytes(),
+            index: 0,
         }
-        let position = index;
-        match byte {
-            b'*' => push(&mut tokens, Token::Star, position, &mut index, 1),
-            b',' => push(&mut tokens, Token::Comma, position, &mut index, 1),
-            b'=' => push(&mut tokens, Token::Eq, position, &mut index, 1),
-            b'!' if bytes.get(index + 1) == Some(&b'=') => {
-                push(&mut tokens, Token::NotEq, position, &mut index, 2);
+    }
+
+    /// Devuelve el siguiente token, o `None` al agotar la entrada.
+    fn next_token(&mut self) -> Result<Option<Spanned>, RuscaError> {
+        while self.index < self.bytes.len() && self.bytes[self.index].is_ascii_whitespace() {
+            self.index += 1;
+        }
+        if self.index >= self.bytes.len() {
+            return Ok(None);
+        }
+        let position = self.index;
+        let token = match self.bytes[self.index] {
+            b'*' => self.single(Token::Star),
+            b',' => self.single(Token::Comma),
+            b'=' => self.single(Token::Eq),
+            b'!' if self.peek_next() == Some(b'=') => {
+                self.index += 2;
+                Token::NotEq
             }
             b'!' => return Err(parse_error("se esperaba '!='", position)),
-            b'<' if bytes.get(index + 1) == Some(&b'=') => {
-                push(&mut tokens, Token::LtEq, position, &mut index, 2);
-            }
-            b'<' => push(&mut tokens, Token::Lt, position, &mut index, 1),
-            b'>' if bytes.get(index + 1) == Some(&b'=') => {
-                push(&mut tokens, Token::GtEq, position, &mut index, 2);
-            }
-            b'>' => push(&mut tokens, Token::Gt, position, &mut index, 1),
-            b'\'' => {
-                let (text, next) = read_string(input, index)?;
-                tokens.push(Spanned::new(Token::Text(text), position));
-                index = next;
-            }
-            b'0'..=b'9' => {
-                let (token, next) = read_number(input, index);
-                tokens.push(Spanned::new(token, position));
-                index = next;
-            }
-            byte if byte.is_ascii_alphabetic() || byte == b'_' => {
-                let (token, next) = read_word(input, index);
-                tokens.push(Spanned::new(token, position));
-                index = next;
-            }
+            b'<' => self.consume_optional_eq(Token::LtEq, Token::Lt),
+            b'>' => self.consume_optional_eq(Token::GtEq, Token::Gt),
+            b'\'' => Token::Text(self.read_string(position)?),
+            b'0'..=b'9' => self.read_number(position)?,
+            byte if byte.is_ascii_alphabetic() || byte == b'_' => self.read_word(),
             other => {
                 return Err(parse_error(
                     format!("carácter inesperado '{}'", other as char),
                     position,
                 ));
             }
+        };
+        Ok(Some(Spanned::new(token, position)))
+    }
+
+    /// Byte siguiente al cursor, si existe.
+    fn peek_next(&self) -> Option<u8> {
+        self.bytes.get(self.index + 1).copied()
+    }
+
+    /// Consume un token de un byte y avanza.
+    fn single(&mut self, token: Token) -> Token {
+        self.index += 1;
+        token
+    }
+
+    /// Consume `<=`/`>=` si el siguiente byte es `=`, o `<`/`>` si no.
+    fn consume_optional_eq(&mut self, with_eq: Token, without: Token) -> Token {
+        if self.peek_next() == Some(b'=') {
+            self.index += 2;
+            with_eq
+        } else {
+            self.index += 1;
+            without
         }
     }
-    Ok(tokens)
-}
 
-/// Empuja un token de longitud `width` y avanza el índice.
-fn push(tokens: &mut Vec<Spanned>, token: Token, position: usize, index: &mut usize, width: usize) {
-    tokens.push(Spanned::new(token, position));
-    *index += width;
-}
-
-/// Lee un identificador o palabra clave.
-fn read_word(input: &str, start: usize) -> (Token, usize) {
-    let bytes = input.as_bytes();
-    let mut end = start;
-    while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
-        end += 1;
+    /// Lee un identificador o palabra clave.
+    fn read_word(&mut self) -> Token {
+        let start = self.index;
+        while self.index < self.bytes.len()
+            && (self.bytes[self.index].is_ascii_alphanumeric() || self.bytes[self.index] == b'_')
+        {
+            self.index += 1;
+        }
+        let word = &self.input[start..self.index];
+        Keyword::from_lowercase(&word.to_ascii_lowercase())
+            .map_or_else(|| Token::Ident(word.to_string()), Token::Keyword)
     }
-    let word = &input[start..end];
-    let token = match word.to_ascii_lowercase().as_str() {
-        "select" => Token::Keyword(Keyword::Select),
-        "from" => Token::Keyword(Keyword::From),
-        "where" => Token::Keyword(Keyword::Where),
-        "and" => Token::Keyword(Keyword::And),
-        "limit" => Token::Keyword(Keyword::Limit),
-        _ => Token::Ident(word.to_string()),
-    };
-    (token, end)
-}
 
-/// Lee un número entero o flotante.
-fn read_number(input: &str, start: usize) -> (Token, usize) {
-    let bytes = input.as_bytes();
-    let mut end = start;
-    let mut is_float = false;
-    while end < bytes.len() {
-        match bytes[end] {
-            b'0'..=b'9' => end += 1,
-            b'.' if !is_float => {
-                is_float = true;
-                end += 1;
+    /// Lee un número entero o flotante, rechazando overflow y no-finitos.
+    fn read_number(&mut self, position: usize) -> Result<Token, RuscaError> {
+        let start = self.index;
+        let mut is_float = false;
+        while self.index < self.bytes.len() {
+            match self.bytes[self.index] {
+                b'0'..=b'9' => self.index += 1,
+                b'.' if !is_float => {
+                    is_float = true;
+                    self.index += 1;
+                }
+                _ => break,
             }
-            _ => break,
+        }
+        let text = &self.input[start..self.index];
+        if is_float {
+            let value: f64 = text
+                .parse()
+                .map_err(|_| parse_error("número flotante inválido", position))?;
+            if !value.is_finite() {
+                return Err(parse_error("número flotante no finito", position));
+            }
+            Ok(Token::Float(value))
+        } else {
+            let value: i64 = text
+                .parse()
+                .map_err(|_| parse_error("entero fuera de rango", position))?;
+            Ok(Token::Int(value))
         }
     }
-    let text = &input[start..end];
-    let token = if is_float {
-        Token::Float(text.parse().unwrap_or(0.0))
-    } else {
-        Token::Int(text.parse().unwrap_or(0))
-    };
-    (token, end)
-}
 
-/// Lee un literal de texto entre comillas simples.
-fn read_string(input: &str, start: usize) -> Result<(String, usize), RuscaError> {
-    let bytes = input.as_bytes();
-    let mut end = start + 1;
-    while end < bytes.len() && bytes[end] != b'\'' {
-        end += 1;
+    /// Lee un literal de texto entre comillas simples.
+    fn read_string(&mut self, position: usize) -> Result<String, RuscaError> {
+        self.index += 1;
+        let start = self.index;
+        while self.index < self.bytes.len() && self.bytes[self.index] != b'\'' {
+            self.index += 1;
+        }
+        if self.index >= self.bytes.len() {
+            return Err(parse_error("cadena sin cerrar", position));
+        }
+        let text = self.input[start..self.index].to_string();
+        self.index += 1;
+        Ok(text)
     }
-    if end >= bytes.len() {
-        return Err(parse_error("cadena sin cerrar", start));
-    }
-    Ok((input[start + 1..end].to_string(), end + 1))
 }

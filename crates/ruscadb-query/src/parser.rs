@@ -4,6 +4,9 @@ use crate::ast::{CompareOp, Expr, Projection, Select};
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use ruscadb_core::RuscaError;
 
+/// Prefijo común de los mensajes de error de sintaxis.
+const EXPECTED_PREFIX: &str = "se esperaba ";
+
 /// Analiza el texto de una consulta RQL.
 ///
 /// Args:
@@ -15,10 +18,6 @@ use ruscadb_core::RuscaError;
 /// Errors:
 ///     [`RuscaError::ParseError`] ante entrada inválida (con posición).
 pub fn parse(input: &str) -> Result<Select, RuscaError> {
-    parse_impl(input)
-}
-
-fn parse_impl(input: &str) -> Result<Select, RuscaError> {
     let tokens = tokenize(input)?;
     let mut parser = Parser::new(tokens, input.len());
     let select = parser.parse_select()?;
@@ -56,8 +55,8 @@ impl Parser {
     }
 
     /// Construye un error de sintaxis en la posición actual.
-    fn error<T>(&self, message: impl Into<String>) -> Result<T, RuscaError> {
-        Err(crate::lexer::parse_error(message, self.current_position()))
+    fn error(&self, message: impl Into<String>) -> RuscaError {
+        crate::lexer::parse_error(message, self.current_position())
     }
 
     /// Avanza el cursor.
@@ -80,7 +79,7 @@ impl Parser {
         if self.match_keyword(keyword) {
             Ok(())
         } else {
-            self.error(format!("se esperaba {}", keyword.as_str()))
+            Err(self.error(format!("{EXPECTED_PREFIX}{}", keyword.as_str())))
         }
     }
 
@@ -91,7 +90,7 @@ impl Parser {
                 self.advance();
                 Ok(name)
             }
-            _ => self.error("se esperaba un identificador"),
+            _ => Err(self.error(format!("{EXPECTED_PREFIX}un identificador"))),
         }
     }
 
@@ -164,7 +163,7 @@ impl Parser {
             Some(Token::LtEq) => CompareOp::LtEq,
             Some(Token::Gt) => CompareOp::Gt,
             Some(Token::GtEq) => CompareOp::GtEq,
-            _ => return self.error("se esperaba un operador de comparación"),
+            _ => return Err(self.error(format!("{EXPECTED_PREFIX}un operador de comparación"))),
         };
         self.advance();
         Ok(op)
@@ -177,7 +176,7 @@ impl Parser {
             Some(Token::Int(value)) => Expr::Int(value),
             Some(Token::Float(value)) => Expr::Float(value),
             Some(Token::Text(value)) => Expr::Text(value),
-            _ => return self.error("se esperaba una columna o un literal"),
+            _ => return Err(self.error(format!("{EXPECTED_PREFIX}una columna o un literal"))),
         };
         self.advance();
         Ok(expr)
@@ -186,11 +185,13 @@ impl Parser {
     /// Parsea el entero no negativo de `LIMIT`.
     fn parse_limit(&mut self) -> Result<u64, RuscaError> {
         match self.peek().cloned() {
-            Some(Token::Int(value)) if value >= 0 => {
+            Some(Token::Int(value)) => {
+                let limit = u64::try_from(value)
+                    .map_err(|_| self.error("se esperaba un entero no negativo tras LIMIT"))?;
                 self.advance();
-                Ok(value as u64)
+                Ok(limit)
             }
-            _ => self.error("se esperaba un entero no negativo tras LIMIT"),
+            _ => Err(self.error("se esperaba un entero no negativo tras LIMIT")),
         }
     }
 
@@ -199,7 +200,7 @@ impl Parser {
         if self.position == self.tokens.len() {
             Ok(())
         } else {
-            self.error("tokens sobrantes tras la consulta")
+            Err(self.error("tokens sobrantes tras la consulta"))
         }
     }
 }
