@@ -11,8 +11,9 @@ use crate::error::RuscaError;
 /// Identificador de un [`crate::Record`] basado en ULID.
 ///
 /// Un ULID combina 48 bits de timestamp (ms) y 80 bits aleatorios, codificados
-/// en 26 caracteres Crockford base32. Su orden lexicográfico coincide con el
-/// orden temporal, lo que permite paginar por tiempo sin índice adicional.
+/// en 26 caracteres Crockford base32. Su orden lexicográfico respeta el orden
+/// de **milisegundo** de creación (no es monótono dentro del mismo ms), lo que
+/// permite paginar por tiempo sin índice adicional.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordId(Ulid);
 
@@ -21,6 +22,7 @@ impl RecordId {
     ///
     /// Returns:
     ///     Un `RecordId` único y ordenable por tiempo de creación.
+    #[allow(clippy::new_without_default)] // un ID aleatorio no tiene "default" neutro
     pub fn new() -> Self {
         Self(Ulid::generate())
     }
@@ -37,12 +39,6 @@ impl RecordId {
         Ulid::from_string(text)
             .map(Self)
             .map_err(|error| RuscaError::InvalidId(error.to_string()))
-    }
-}
-
-impl Default for RecordId {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

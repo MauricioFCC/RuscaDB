@@ -28,46 +28,52 @@ use ruscadb_core::RuscaError;
 /// Número de secuencia del log (monótono creciente).
 pub type Lsn = u64;
 
+// ── Layout binario del frame ─────────────────────────────────────────────────
 const LEN_SIZE: usize = 4;
 const CRC_SIZE: usize = 4;
-const BODY_HEADER: usize = 8 + 8 + 1;
-/// Tamaño mínimo válido del `body` (lsn + tx_id + kind).
-const MIN_BODY: usize = BODY_HEADER;
+const LSN_SIZE: usize = 8;
+const TX_ID_SIZE: usize = 8;
+const KIND_SIZE: usize = 1;
+const LSN_OFFSET: usize = 0;
+const TX_ID_OFFSET: usize = LSN_OFFSET + LSN_SIZE;
+const KIND_OFFSET: usize = TX_ID_OFFSET + TX_ID_SIZE;
+const PAYLOAD_OFFSET: usize = KIND_OFFSET + KIND_SIZE;
+/// Tamaño mínimo válido del `body` (cabecera sin payload).
+const BODY_HEADER: usize = PAYLOAD_OFFSET;
 /// Tamaño máximo aceptado del `body` (protección anti-DoS, 64 MiB).
 const MAX_BODY: usize = 64 * 1024 * 1024;
 
 /// Tipo de registro del WAL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum RecordKind {
     /// Inicio de transacción.
-    Begin,
+    Begin = 1,
     /// Confirmación de transacción.
-    Commit,
+    Commit = 2,
     /// Aborto de transacción.
-    Abort,
+    Abort = 3,
     /// Punto de control (checkpoint).
-    Checkpoint,
+    Checkpoint = 4,
 }
 
 impl RecordKind {
     /// Codifica el tipo como un byte estable en disco.
     fn to_u8(self) -> u8 {
-        match self {
-            Self::Begin => 1,
-            Self::Commit => 2,
-            Self::Abort => 3,
-            Self::Checkpoint => 4,
-        }
+        self as u8
     }
+}
 
-    /// Decodifica un byte en un tipo, o `None` si es desconocido.
-    fn from_u8(value: u8) -> Option<Self> {
+impl TryFrom<u8> for RecordKind {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            1 => Some(Self::Begin),
-            2 => Some(Self::Commit),
-            3 => Some(Self::Abort),
-            4 => Some(Self::Checkpoint),
-            _ => None,
+            1 => Ok(Self::Begin),
+            2 => Ok(Self::Commit),
+            3 => Ok(Self::Abort),
+            4 => Ok(Self::Checkpoint),
+            other => Err(other),
         }
     }
 }
@@ -145,20 +151,30 @@ impl Wal {
     ///
     /// Returns:
     ///     El `Lsn` asignado (monótono creciente).
+    ///
+    /// Errors:
+    ///     [`RuscaError::WalCorrupt`] si el payload excede el tamaño máximo por
+    ///     frame; [`RuscaError::Io`] si falla la escritura.
     pub fn append(
         &mut self,
         tx_id: u64,
         kind: RecordKind,
         payload: &[u8],
     ) -> Result<Lsn, RuscaError> {
+        if BODY_HEADER + payload.len() > MAX_BODY {
+            return Err(RuscaError::WalCorrupt(format!(
+                "payload de {} bytes excede el máximo de {} bytes por frame",
+                payload.len(),
+                MAX_BODY - BODY_HEADER
+            )));
+        }
         let record = WalRecord {
             lsn: self.next_lsn,
             tx_id,
             kind,
             payload: payload.to_vec(),
         };
-        let frame = encode_frame(&record);
-        self.file.write_all(&frame)?;
+        self.file.write_all(&frame::encode(&record))?;
         self.next_lsn += 1;
         Ok(record.lsn)
     }
@@ -192,7 +208,7 @@ impl Wal {
 ///     Los registros válidos hasta el primer frame inválido.
 pub fn read_records(path: impl AsRef<Path>) -> Result<Vec<WalRecord>, RuscaError> {
     let bytes = std::fs::read(path.as_ref())?;
-    let (records, _valid_offset) = scan(&bytes)?;
+    let (records, _valid_offset) = scan(&bytes);
     Ok(records)
 }
 
@@ -213,56 +229,14 @@ pub fn recover(path: impl AsRef<Path>) -> Result<RecoveryOutcome, RuscaError> {
 
 /// Escanea los bytes del WAL y devuelve los registros válidos y el offset del
 /// final del último frame válido.
-fn scan(bytes: &[u8]) -> Result<(Vec<WalRecord>, usize), RuscaError> {
+fn scan(bytes: &[u8]) -> (Vec<WalRecord>, usize) {
     let mut records = Vec::new();
     let mut offset = 0usize;
-    while offset + LEN_SIZE <= bytes.len() {
-        let len = u32::from_le_bytes(read_array::<4>(bytes, offset)?) as usize;
-        if !(MIN_BODY..=MAX_BODY).contains(&len) {
-            break;
-        }
-        let body_start = offset + LEN_SIZE;
-        let crc_start = body_start + len;
-        let frame_end = crc_start + CRC_SIZE;
-        if frame_end > bytes.len() {
-            break;
-        }
-        let body = &bytes[body_start..crc_start];
-        let stored_crc = u32::from_le_bytes(read_array::<4>(bytes, crc_start)?);
-        if crc32c::crc32c(body) != stored_crc {
-            break;
-        }
-        let lsn = u64::from_le_bytes(read_array::<8>(body, 0)?);
-        let tx_id = u64::from_le_bytes(read_array::<8>(body, 8)?);
-        let Some(kind) = RecordKind::from_u8(body[BODY_HEADER - 1]) else {
-            break;
-        };
-        let payload = body[MIN_BODY..].to_vec();
-        records.push(WalRecord {
-            lsn,
-            tx_id,
-            kind,
-            payload,
-        });
-        offset = frame_end;
+    while let Some((record, next)) = frame::decode(bytes, offset) {
+        records.push(record);
+        offset = next;
     }
-    Ok((records, offset))
-}
-
-/// Serializa un registro a su frame binario.
-fn encode_frame(record: &WalRecord) -> Vec<u8> {
-    let mut body = Vec::with_capacity(BODY_HEADER + record.payload.len());
-    body.extend_from_slice(&record.lsn.to_le_bytes());
-    body.extend_from_slice(&record.tx_id.to_le_bytes());
-    body.push(record.kind.to_u8());
-    body.extend_from_slice(&record.payload);
-    let crc = crc32c::crc32c(&body);
-
-    let mut frame = Vec::with_capacity(LEN_SIZE + body.len() + CRC_SIZE);
-    frame.extend_from_slice(&(body.len() as u32).to_le_bytes());
-    frame.extend_from_slice(&body);
-    frame.extend_from_slice(&crc.to_le_bytes());
-    frame
+    (records, offset)
 }
 
 /// Escanea el archivo y trunca la cola inválida.
@@ -271,9 +245,8 @@ fn scan_and_truncate(file: &mut File) -> Result<RecoveryOutcome, RuscaError> {
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
 
-    let (records, valid_offset) = scan(&bytes)?;
-    let file_len = bytes.len() as u64;
-    let truncated_bytes = file_len - valid_offset as u64;
+    let (records, valid_offset) = scan(&bytes);
+    let truncated_bytes = bytes.len() as u64 - valid_offset as u64;
     if truncated_bytes > 0 {
         file.set_len(valid_offset as u64)?;
         file.sync_all()?;
@@ -285,12 +258,77 @@ fn scan_and_truncate(file: &mut File) -> Result<RecoveryOutcome, RuscaError> {
     })
 }
 
-/// Lee `N` bytes en `at` como array, o devuelve [`RuscaError::WalCorrupt`].
-fn read_array<const N: usize>(bytes: &[u8], at: usize) -> Result<[u8; N], RuscaError> {
-    bytes
-        .get(at..at + N)
-        .and_then(|slice| slice.try_into().ok())
-        .ok_or_else(|| RuscaError::WalCorrupt(format!("frame truncado en offset {at}")))
+/// Codificación y decodificación del frame binario del WAL.
+///
+/// Aísla el layout (`len`/`body`/`crc`) y los offsets internos del `body`, de
+/// modo que el escaneo y la escritura no manipulen bytes directamente.
+mod frame {
+    use super::{
+        BODY_HEADER, CRC_SIZE, KIND_OFFSET, LEN_SIZE, LSN_OFFSET, LSN_SIZE, MAX_BODY,
+        PAYLOAD_OFFSET, RecordKind, TX_ID_OFFSET, TX_ID_SIZE, WalRecord,
+    };
+
+    /// Serializa un registro a su frame binario.
+    pub(super) fn encode(record: &WalRecord) -> Vec<u8> {
+        let mut body = Vec::with_capacity(BODY_HEADER + record.payload.len());
+        body.extend_from_slice(&record.lsn.to_le_bytes());
+        body.extend_from_slice(&record.tx_id.to_le_bytes());
+        body.push(record.kind.to_u8());
+        body.extend_from_slice(&record.payload);
+        let crc = crc32c::crc32c(&body);
+
+        let mut out = Vec::with_capacity(LEN_SIZE + body.len() + CRC_SIZE);
+        out.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        out.extend_from_slice(&body);
+        out.extend_from_slice(&crc.to_le_bytes());
+        out
+    }
+
+    /// Decodifica el frame en `offset`.
+    ///
+    /// Returns:
+    ///     `Some((registro, offset_siguiente))` si el frame es válido, o `None`
+    ///     si la cola está rasgada, el CRC no valida o el tipo es desconocido
+    ///     (fin del prefijo válido).
+    pub(super) fn decode(bytes: &[u8], offset: usize) -> Option<(WalRecord, usize)> {
+        let len =
+            u32::from_le_bytes(bytes.get(offset..offset + LEN_SIZE)?.try_into().ok()?) as usize;
+        if !(BODY_HEADER..=MAX_BODY).contains(&len) {
+            return None;
+        }
+        let body_start = offset + LEN_SIZE;
+        let crc_start = body_start + len;
+        let frame_end = crc_start + CRC_SIZE;
+
+        let body = bytes.get(body_start..crc_start)?;
+        let stored_crc = u32::from_le_bytes(bytes.get(crc_start..frame_end)?.try_into().ok()?);
+        if crc32c::crc32c(body) != stored_crc {
+            return None;
+        }
+        decode_body(body).map(|record| (record, frame_end))
+    }
+
+    /// Decodifica el `body` de un frame ya validado por CRC.
+    fn decode_body(body: &[u8]) -> Option<WalRecord> {
+        let lsn = u64::from_le_bytes(
+            body.get(LSN_OFFSET..LSN_OFFSET + LSN_SIZE)?
+                .try_into()
+                .ok()?,
+        );
+        let tx_id = u64::from_le_bytes(
+            body.get(TX_ID_OFFSET..TX_ID_OFFSET + TX_ID_SIZE)?
+                .try_into()
+                .ok()?,
+        );
+        let kind = RecordKind::try_from(*body.get(KIND_OFFSET)?).ok()?;
+        let payload = body.get(PAYLOAD_OFFSET..)?.to_vec();
+        Some(WalRecord {
+            lsn,
+            tx_id,
+            kind,
+            payload,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -370,5 +408,18 @@ mod tests {
             model.insert(record.lsn, record.payload.clone());
         }
         assert_eq!(once, model);
+    }
+
+    /// Un payload por encima del máximo se rechaza antes de escribir (no se
+    /// pierde silenciosamente en recovery).
+    #[test]
+    fn test_append_rejects_oversized_payload() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        let mut wal = Wal::open(&path).expect("abre");
+        let oversized = vec![0u8; MAX_BODY];
+        let result = wal.append(1, RecordKind::Commit, &oversized);
+        assert!(matches!(result, Err(RuscaError::WalCorrupt(_))));
+        assert_eq!(wal.next_lsn(), 0, "no se asigna LSN si el append falla");
     }
 }
