@@ -51,6 +51,7 @@ thiserror = "2.0.21"
 ulid = { version = "3.0.0", features = ["serde"] }
 crc32c = "0.6.8"
 tempfile = "3.27.0"
+proptest = "1.11.0"
 
 # ── Lints compartidos (cada crate activa con `[lints] workspace = true`) ──────
 [workspace.lints.rust]

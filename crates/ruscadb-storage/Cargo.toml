@@ -1,6 +1,6 @@
 [package]
 name = "ruscadb-storage"
-description = "Adapter de almacenamiento columnar de RuscaDB (Lance/Arrow)."
+description = "Adapter de almacenamiento de RuscaDB (buffer pool LRU-K + paged file)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,3 +13,7 @@ workspace = true
 
 [dependencies]
 ruscadb-core = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }

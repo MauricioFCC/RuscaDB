@@ -36,4 +36,31 @@ pub enum RuscaError {
     /// El proceso de recuperación del WAL falló.
     #[error("recovery de WAL falló: {0}")]
     WalRecoveryFailed(String),
+
+    /// El buffer pool no tiene marcos desalojables (todas pinneadas o sucias).
+    #[error("buffer pool lleno: capacidad {capacity}, sin páginas desalojables")]
+    BufferPoolFull {
+        /// Capacidad configurada del pool (número de marcos).
+        capacity: usize,
+    },
+
+    /// El `PageId` solicitado está fuera del rango del archivo.
+    #[error("página fuera de rango: id {id}, total {page_count}")]
+    PageOutOfRange {
+        /// Identificador de página solicitado.
+        id: u64,
+        /// Número total de páginas del archivo.
+        page_count: u64,
+    },
+
+    /// Se intentó despinnear una página que no está en el pool.
+    #[error("página no presente en el buffer pool: id {id}")]
+    PageNotInPool {
+        /// Identificador de página.
+        id: u64,
+    },
+
+    /// Configuración inválida del motor.
+    #[error("configuración inválida: {0}")]
+    InvalidConfig(String),
 }
