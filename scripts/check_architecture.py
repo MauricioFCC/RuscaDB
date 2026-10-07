@@ -24,12 +24,12 @@ from collections import defaultdict
 # Aristas internas permitidas: crate -> crates de las que PUEDE depender.
 ALLOWED: dict[str, set[str]] = {
     "ruscadb-core": set(),
-    "ruscadb-wal": {"ruscadb-core"},
+    "ruscadb-wal": {"ruscadb-core", "ruscadb-crypto"},
     "ruscadb-storage": {"ruscadb-core"},
     "ruscadb-query": {"ruscadb-core"},
     "ruscadb-vector": {"ruscadb-core"},
     "ruscadb-graph": {"ruscadb-core"},
-    "ruscadb-multimodal": {"ruscadb-core", "ruscadb-storage"},
+    "ruscadb-multimodal": {"ruscadb-core", "ruscadb-storage", "ruscadb-crypto"},
     "ruscadb-ai": {"ruscadb-core"},
     "ruscadb-ffi": {"ruscadb-core", "ruscadb"},
     "ruscadb-py": {"ruscadb-ffi"},
@@ -43,6 +43,7 @@ ALLOWED: dict[str, set[str]] = {
         "ruscadb-multimodal",
         "ruscadb-ai",
         "ruscadb-wal",
+        "ruscadb-crypto",
     },
     "ruscadb-testkit": {"ruscadb-core"},
     "ruscadb-crypto": {"ruscadb-core"},

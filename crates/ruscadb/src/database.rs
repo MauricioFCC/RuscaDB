@@ -12,6 +12,8 @@ use ruscadb_core::RuscaError;
 use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
 use ruscadb_wal::{Lsn, RecordKind, Wal};
 
+use crate::encryption::EncryptionConfig;
+
 const COUNT_SIZE: usize = 4;
 const ID_SIZE: usize = 8;
 
@@ -22,10 +24,12 @@ pub struct DbConfig {
     pub data_path: PathBuf,
     /// Número de marcos del buffer pool (presupuesto = `pool_capacity * 4 KiB`).
     pub pool_capacity: usize,
+    /// Cifrado en reposo (`None` = modo claro). Ver [`EncryptionConfig`].
+    pub encryption: Option<EncryptionConfig>,
 }
 
 impl DbConfig {
-    /// Crea una configuración de apertura.
+    /// Crea una configuración de apertura (sin cifrado por defecto).
     ///
     /// Args:
     ///     data_path: Ruta del archivo de páginas.
@@ -34,6 +38,7 @@ impl DbConfig {
         Self {
             data_path: data_path.into(),
             pool_capacity,
+            encryption: None,
         }
     }
 }
@@ -44,10 +49,14 @@ pub struct Database {
     pool: BufferPool,
     wal: Wal,
     wal_path: PathBuf,
+    encryption: Option<EncryptionConfig>,
 }
 
 impl Database {
     /// Abre (o crea) la base y ejecuta el recovery antes de servir I/O.
+    ///
+    /// Si `config.encryption` está presente, el WAL se abre con
+    /// `Wal::open_encrypted` y el replay descifra con esa clave (SPEC-0013).
     ///
     /// Args:
     ///     config: Configuración de apertura.
@@ -57,16 +66,21 @@ impl Database {
     ///
     /// Errors:
     ///     [`RuscaError::Io`] si falla el acceso a disco;
-    ///     [`RuscaError::InvalidConfig`] si `pool_capacity == 0`.
+    ///     [`RuscaError::InvalidConfig`] si `pool_capacity == 0`;
+    ///     [`RuscaError::WalCorrupt`] si la clave falta o no autentica.
     pub fn open(config: DbConfig) -> Result<Self, RuscaError> {
         let wal_path = wal_path_for(&config.data_path);
         let file = PagedFile::open(&config.data_path)?;
-        let wal = Wal::open(&wal_path)?;
+        let wal = match config.encryption.as_ref() {
+            Some(encryption) => Wal::open_encrypted(&wal_path, encryption.key())?,
+            None => Wal::open(&wal_path)?,
+        };
         let mut database = Self {
             file,
             pool: BufferPool::new(config.pool_capacity)?,
             wal,
             wal_path,
+            encryption: config.encryption,
         };
         database.replay()?;
         Ok(database)
@@ -118,14 +132,7 @@ impl Database {
         let payload = encode_commit(&dirty);
         let lsn = self.wal.append(0, RecordKind::Commit, &payload)?;
         self.wal.sync()?;
-
-        for page in &dirty {
-            self.file.write_page(page)?;
-        }
-        self.file.flush()?;
-        for page in &dirty {
-            self.pool.mark_clean(page.id())?;
-        }
+        self.publish(dirty)?;
         Ok(lsn)
     }
 
@@ -140,16 +147,46 @@ impl Database {
     }
 
     /// Reaplica los commit records del WAL (replay idempotente).
+    ///
+    /// Con cifrado, el replay descifra con la clave de apertura y restaura las
+    /// páginas solo en el pool (el WAL es la fuente de verdad, SPEC-0013).
     fn replay(&mut self) -> Result<(), RuscaError> {
-        for record in ruscadb_wal::read_records(&self.wal_path)? {
+        let key = self.encryption.as_ref().map(|encryption| *encryption.key());
+        let mut pages = Vec::new();
+        for record in ruscadb_wal::read_records_with_key(&self.wal_path, key.as_ref())? {
             if record.kind != RecordKind::Commit {
                 continue;
             }
-            for page in decode_commit(&record.payload)? {
-                self.file.write_page(&page)?;
+            pages.extend(decode_commit(&record.payload)?);
+        }
+        if self.encryption.is_some() {
+            for page in &pages {
+                self.write_page(page)?;
             }
+            return Ok(());
+        }
+        for page in &pages {
+            self.file.write_page(page)?;
         }
         self.file.flush()?;
+        Ok(())
+    }
+
+    /// Publica páginas sucias tras el fsync del WAL.
+    ///
+    /// En modo claro escribe al `.data` y marca limpio; en modo cifrado no toca
+    /// el `.data` (las páginas quedan `dirty` en el pool, nunca desalojables).
+    fn publish(&mut self, dirty: Vec<Page>) -> Result<(), RuscaError> {
+        if self.encryption.is_some() {
+            return Ok(());
+        }
+        for page in &dirty {
+            self.file.write_page(page)?;
+        }
+        self.file.flush()?;
+        for page in &dirty {
+            self.pool.mark_clean(page.id())?;
+        }
         Ok(())
     }
 }

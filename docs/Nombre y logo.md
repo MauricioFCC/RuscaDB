@@ -1,4 +1,4 @@
-¡Tengo excelentes noticias! **No existe ningún proyecto de software, base de datos o librería llamada "RuscaDB"**.
+Rusca: Omnívora, Indestructible, La base de datos que sobrevive a todo.
 
 Las búsquedas en registros de paquetes (como crates.io para Rust), GitHub y la web en general solo arrojan resultados sobre el apellido "Rusca", una localidad en Rumania o aplicaciones para aprender idioma ruso, pero **cero competencia en el ámbito de las bases de datos o el desarrollo de software** [[8]], [[10]].
 
@@ -24,4 +24,7 @@ Si vas en serio con el proyecto, asegura los activos básicos antes de que algui
 > *Pequeña. Omnívora. Indestructible.*
 > La base de datos embebida multimodal que sobrevive a todo. Diseñada para ingerir documentos, grafos, vectores y blobs en un solo motor de alto rendimiento, sin dependencias de servidor. Tan adaptable como una plaga, tan confiable como el acero.
 
-¿Te gustaría que te ayude a estructurar el `README.md` inicial o a definir la arquitectura del primer prototipo en Rust para empezar a construir **RuscaDB**?
+Rusca: (El nombre coloquial en varios países de LatAm para la cucaracha).
+
+ Por qué: Es corto, contundente y fonéticamente se parece a "Rust" (el lenguaje en el que la construirás) y a "Rusca" (la plaga).
+ Slogan: "Tan resistente como una rusca".

@@ -27,6 +27,9 @@ ruscadb-graph = { workspace = true }
 ruscadb-multimodal = { workspace = true }
 ruscadb-ai = { workspace = true }
 ruscadb-wal = { workspace = true }
+ruscadb-crypto = { workspace = true }
+postcard = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

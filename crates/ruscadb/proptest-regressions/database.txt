@@ -5,3 +5,6 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 2e918387cda855876f538de19f6ed616c917d09debdf95491753e52bb7b59126 # shrinks to markers = [(0, 0)]
+cc 033cb1852f04baf547b8930074d38c253cbaaa51880e5959d5c36ce82fa4ff33 # shrinks to markers = [(0, 0)]
+cc 676fd6d5ab20080733233f908f2a8b644839ab193bd582fa2ba586651d7f71fe # shrinks to markers = [(0, 0), (1, 1)]
+cc f85effb230b98086abc63349492efd833a0c068ecb272ddfb4e683202ec03c46 # shrinks to markers = [(1, 0), (2, 1)]

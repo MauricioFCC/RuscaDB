@@ -72,4 +72,27 @@ pub enum RuscaError {
         /// Posición (byte) dentro del texto de la consulta.
         position: usize,
     },
+
+    /// La tabla solicitada no existe en el catálogo.
+    #[error("tabla no encontrada: '{table}' (no existe en el catálogo; créala con create_table)")]
+    TableNotFound {
+        /// Nombre de la tabla solicitada.
+        table: String,
+    },
+
+    /// La columna solicitada no existe en el esquema de la tabla.
+    #[error(
+        "columna no encontrada: '{column}' (no existe en el esquema de la tabla; revisa las columnas de create_table)"
+    )]
+    ColumnNotFound {
+        /// Nombre de la columna solicitada.
+        column: String,
+    },
+
+    /// Los tipos de un valor y su columna (o de una comparación) no coinciden.
+    #[error("tipos incompatibles: {message}")]
+    TypeMismatch {
+        /// Descripción accionable del desajuste (qué valor, dónde, qué se esperaba).
+        message: String,
+    },
 }

@@ -17,6 +17,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 ruscadb-core = { workspace = true }
+ruscadb-crypto = { workspace = true }
 crc32c = { workspace = true }
 
 [dev-dependencies]
