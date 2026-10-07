@@ -60,3 +60,8 @@ Ver `.opencode/config/rust-isolation.md`. Resumen:
 - Conventional Commits: `type(scope): descripción`.
 - Docstrings ES con `Args/Returns/Raises`; sin `unwrap/expect` en producción.
 - `#![forbid(unsafe_code)]` salvo `ruscadb-ffi`.
+- `README.md` es **mantenido a mano** (público, inglés): **no** lo regeneres con
+  `SWARMIND/scripts/deploy_all.py`; en este proyecto ejecútalo con `--sync-only`.
+- Información **local-only** (no se pushea): ADRs en `docs/adr/` y el mirror
+  `.opencode/` (salvo `.opencode/config/` y `.opencode/plugin/`). Al copiar el
+  proyecto a otro disco, inclúyelos aparte si quieres preservarlos.

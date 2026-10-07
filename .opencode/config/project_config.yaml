@@ -160,10 +160,10 @@ SKILLS:
     - swarm-release-ops
 
 # ── Licencia y Politica Open Source ───────────────────────────────────────────
-# RuscaDB es un proyecto de codigo abierto bajo licencia MIT y se apoya en
+# RuscaDB es un proyecto de codigo abierto bajo licencia Apache-2.0 y se apoya en
 # tecnologias open source. Al reutilizar codigo, snippets o ideas, SIEMPRE se
 # acredita al autor original y su licencia.
-LICENSE: "MIT"
+LICENSE: "Apache-2.0"
 OPEN_SOURCE_POLICY:
   uses_open_source: true
   attribution_required: true
