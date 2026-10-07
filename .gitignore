@@ -1,12 +1,16 @@
 # ── Rust / Cargo ─────────────────────────────────────────────────────────────
 /target/
+**/target/
+.target/
 **/*.rs.bk
+*.orig
+*.rej
 *.pdb
 *.profraw
 *.profdata
 # Artefactos de cargo-mutants (no versionar resultados locales)
-/mutants.out/
-/mutants.out.old/
+mutants.out/
+mutants.out.old/
 
 # ── Cobertura / benchmarks ───────────────────────────────────────────────────
 /lcov.info
@@ -23,34 +27,67 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-/dist/
-/build/
+dist/
+build/
 .venv/
 venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.tox/
+.nox/
+.coverage
+coverage.xml
+htmlcov/
 
 # ── Node (packaging/npm) ─────────────────────────────────────────────────────
 node_modules/
 npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+.eslintcache
+.npm/
+.yarn/
+.parcel-cache/
+*.tgz
+
+# ── SBOM (CycloneDX) y logs ──────────────────────────────────────────────────
+bom.json
+*.cdx.json
+*.log
 
 # ── Secretos ─────────────────────────────────────────────────────────────────
 .env
 .env.*
 !.env.example
+.envrc
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
+secrets.json
+credentials.json
 
 # ── Editores / OS ────────────────────────────────────────────────────────────
 .idea/
 .vscode/
 *.swp
+*.swo
+*.iml
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # ── Swarmind mirror (.opencode/) ─────────────────────────────────────────────
 # El cerebro (agents/skills/core/plugin) se regenera con deploy_all; solo se
 # versiona la config propia del proyecto.
 .opencode/*
 !.opencode/config/
+!.opencode/plugin/
 
 # ── ADRs y decisiones de diseno (LOCAL-ONLY) ─────────────────────────────────
 # Politica ADR_POLICY en .opencode/config/project_config.yaml: no se comitean.

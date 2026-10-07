@@ -1,0 +1,12 @@
+# CODEOWNERS de RuscaDB
+#
+# Documentación: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# El owner por defecto recibe revisión solicitada en TODA PR. Se pueden añadir
+# owners por ruta cuando el equipo crezca (p. ej. `crates/ruscadb-ffi/` para el
+# C-ABI, `crates/ruscadb-crypto/` para cripto).
+#
+# Sintaxis: <patrón> <@usuario-o-equipo>...
+
+# Owner por defecto (catch-all).
+* @MauricioFCC

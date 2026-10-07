@@ -1,0 +1,38 @@
+# Configuración de gitleaks para RuscaDB.
+#
+# Estrategia CONSERVADORA:
+#   - Se hereda el ruleset por defecto COMPLETO (`useDefault = true`). No se
+#     desactiva ninguna regla: eso cegaría patrones reales (AWS, claves PEM,
+#     tokens, etc.).
+#   - La allowlist es SOLO por RUTA, nunca por regex que pueda hacer match con
+#     contrapartes reales de un secreto. Las rutas listadas no contienen
+#     secretos por diseño (specs, documentación y fixtures de test).
+#
+# Ejecutar:  gitleaks detect --no-git --redact -c .gitleaks.toml
+
+title = "RuscaDB gitleaks config"
+
+[extend]
+# Hereda TODAS las reglas del ruleset por defecto. No tocar.
+useDefault = true
+
+[allowlist]
+description = "Rutas no sensibles por diseño (fixtures, specs y docs)."
+
+# Las rutas se evalúan como regex Go contra la ruta del archivo (relativa al
+# repo). Comodines literales vía cadenas TOML de comillas simples triples.
+paths = [
+  # Claves de PRUEBA en ruscadb-crypto: son literales Rust deterministas como
+  # `[0x2au8; KEY_SIZE]`, `[0x42u8; KEY_SIZE]`, `[0x01u8; KEY_SIZE]`, usados en
+  # los tests `test_ac_0011_*` (roundtrip AEAD, detección de tampering, KDF
+  # determinista). NO son secretos: no hay material criptográfico real y el
+  # valor es público en el test. Cualquier secreto REAL sigue detectándose en
+  # el resto del workspace.
+  '''crates/ruscadb-crypto/''',
+  # Especificaciones (SDD): describen contratos y ACs; sin credenciales.
+  '''specs/''',
+  # Documentación de Markdown (README, SECURITY, CONTRIBUTING, docs guía).
+  # Sin secretos por política; si alguna vez se pegara uno aquí, el secret
+  # scanning de GitHub lo cubre en el push.
+  '''.*\.md$''',
+]
