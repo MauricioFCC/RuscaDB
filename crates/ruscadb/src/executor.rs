@@ -7,7 +7,7 @@
 //! devuelven [`RuscaError::TypeMismatch`].
 
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ruscadb_core::{Record, RecordId, RuscaError, ScalarMap, ScalarValue};
 use ruscadb_query::{CompareOp, Expr, KnnClause, Projection, Select, TraverseClause};
@@ -339,7 +339,14 @@ fn apply_matches(
         .collect())
 }
 
-/// Aplica `KNN`: ordena por distancia HNSW y respeta `k`.
+/// Aplica `KNN`: top-k exacto restringido al filtro `WHERE` mediante FVS.
+///
+/// `records` ya viene filtrado por visibilidad MVCC y por el `WHERE` escalar,
+/// de modo que sus ids son el conjunto `allowed`. La búsqueda delega en
+/// [`TableIndexes::filtered_vector_search`], que elige la estrategia FVS
+/// (pre/in/post) por selectividad y garantiza el top-k exacto restringido al
+/// filtro (SPEC-0024, NF-0024-01). Sin `WHERE` el conjunto es todo el corpus y
+/// el resultado coincide con el KNN clásico.
 fn apply_knn(
     database: &Database,
     table: &TableDef,
@@ -362,26 +369,15 @@ fn apply_knn(
         return Ok(Vec::new());
     }
     let query: Vec<f32> = knn.query.iter().map(|value| *value as f32).collect();
-    let ranked = index.vector_search(&query)?;
-    let position: BTreeMap<RecordId, usize> = ranked
-        .iter()
-        .enumerate()
-        .map(|(rank, id)| (*id, rank))
-        .collect();
+    let allowed: BTreeSet<RecordId> = records.iter().map(|record| record.id).collect();
+    let ranked = index.filtered_vector_search(&query, knn.k as usize, &allowed)?;
     let mut by_id: BTreeMap<RecordId, Record> = records
         .into_iter()
         .map(|record| (record.id, record))
         .collect();
-    let mut ordered: Vec<RecordId> = by_id
-        .keys()
-        .copied()
-        .filter(|id| position.contains_key(id))
-        .collect();
-    ordered.sort_by_key(|id| position.get(id).copied().unwrap_or(usize::MAX));
-    ordered.truncate(knn.k as usize);
-    Ok(ordered
+    Ok(ranked
         .into_iter()
-        .filter_map(|id| by_id.remove(&id))
+        .filter_map(|(id, _)| by_id.remove(&id))
         .collect())
 }
 

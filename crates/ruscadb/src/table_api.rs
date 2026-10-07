@@ -113,6 +113,7 @@ impl Database {
         let definition = catalog.get(table)?.clone();
         record.scalars = validate_scalars(&definition, table, record.scalars)?;
         let locator = heap_insert(self, &mut catalog, table, &record)?;
+        self.primary_insert(table, record.id, locator)?;
         maintain_index(self, &mut catalog, table, &record, locator)?;
         let entry = self.indexes.entry(table.to_string()).or_default();
         entry.index_record(&record, &definition)?;

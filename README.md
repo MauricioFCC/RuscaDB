@@ -120,6 +120,7 @@ facade and filters by MVCC snapshot visibility.
 | `ruscadb-crypto` | XChaCha20-Poly1305 + Argon2id. |
 | `ruscadb-ffi` | Stable C-ABI. |
 | `ruscadb-py` / `ruscadb-node` | Python / Node bindings. |
+| `ruscadb-wasm` | WebAssembly (browser) bindings. |
 | `ruscadb` | **Facade / composition root** (wires everything; `Database`). |
 | `ruscadb-testkit` | Test utilities and oracles. |
 | `xtask` | Developer tasks (`cargo xtask trace`). |

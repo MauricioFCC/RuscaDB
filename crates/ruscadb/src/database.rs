@@ -9,12 +9,14 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use ruscadb_core::RuscaError;
+use ruscadb_btree::BPlusTree;
+use ruscadb_core::{RecordId, RuscaError};
 use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
 use ruscadb_txn::{CURRENT_SCHEMA_VERSION, Manifest, Snapshot, TxId, TxnManager};
 use ruscadb_wal::{Lsn, RecordKind, Wal};
 
 use crate::encryption::EncryptionConfig;
+use crate::heap::RowLocator;
 use crate::indexes::TableIndexes;
 
 const COUNT_SIZE: usize = 4;
@@ -55,6 +57,11 @@ pub struct Database {
     encryption: Option<EncryptionConfig>,
     /// Índices derivados por tabla (HNSW/CSR/invertido), SPEC-0017.
     pub(crate) indexes: BTreeMap<String, TableIndexes>,
+    /// Índice primario en memoria `RecordId -> RowLocator` por tabla, SPEC-0024.
+    ///
+    /// Se puebla en cada inserción y se reconstruye desde el heap al abrir la
+    /// base; `Database::delete` lo usa para localizar la fila en `O(log n)`.
+    pub(crate) primary: BTreeMap<String, BPlusTree<RecordId, RowLocator>>,
     /// Manifiesto versionado (`schema_version`, `epoch`, `checkpoint_lsn`), SPEC-0019.
     manifest: Manifest,
     /// Ruta del fichero `MANIFEST.json` derivada de la ruta de datos.
@@ -103,6 +110,7 @@ impl Database {
             wal_path,
             encryption: config.encryption,
             indexes: BTreeMap::new(),
+            primary: BTreeMap::new(),
             manifest,
             manifest_path,
             txn: TxnManager::new(),
@@ -116,6 +124,7 @@ impl Database {
             database.manifest.store(&database.manifest_path)?;
         }
         database.rebuild_indexes()?;
+        database.rebuild_primary_index()?;
         database.restore_txn_watermark()?;
         Ok(database)
     }

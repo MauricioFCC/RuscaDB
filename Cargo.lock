@@ -712,9 +712,11 @@ dependencies = [
  "proptest",
  "rstest",
  "ruscadb-ai",
+ "ruscadb-btree",
  "ruscadb-core",
  "ruscadb-crypto",
  "ruscadb-fts",
+ "ruscadb-fvs",
  "ruscadb-graph",
  "ruscadb-multimodal",
  "ruscadb-query",
@@ -897,6 +899,22 @@ dependencies = [
  "ruscadb-core",
  "ruscadb-crypto",
  "tempfile",
+]
+
+[[package]]
+name = "ruscadb-wasm"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "ruscadb-core",
+ "ruscadb-crypto",
+ "ruscadb-fts",
+ "ruscadb-fvs",
+ "ruscadb-query",
+ "ruscadb-vector",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
 ]
 
 [[package]]

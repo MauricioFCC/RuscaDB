@@ -10,11 +10,13 @@
 //!
 //! ## Localización del locator
 //!
-//! El borrado es por [`RecordId`], no por una columna indexada. No existe un
-//! índice primario sobre `RecordId` (el índice secundario de `SPEC-0012` indexa
-//! una columna escalar elegida por el usuario), así que la fila se localiza con
-//! un **scan del heap** que compara `record.id`; el diseño de SPEC-0022 admite
-//! este fallback cuando no hay índice primario.
+//! El borrado es por [`RecordId`], no por una columna indexada. Desde
+//! `SPEC-0024` la fachada mantiene un **índice primario** B+tree en memoria
+//! `RecordId -> RowLocator`, que `Database::delete` consulta en `O(log n)`; si
+//! la tabla no tiene entrada en el índice (p. ej. una base sin inserción en
+//! esta sesión y sin reconstrucción), cae a un **scan del heap** como
+//! *fallback* documentado. Eliminar la entrada del índice tras el borrado deja
+//! la estructura coherente con el heap.
 
 use ruscadb_core::{Record, RecordId, RuscaError, ScalarValue};
 use ruscadb_txn::TxId;
@@ -22,7 +24,7 @@ use ruscadb_wal::Lsn;
 
 use crate::catalog::{Catalog, TableDef};
 use crate::database::Database;
-use crate::heap::{RowLocator, heap_scan, heap_update};
+use crate::heap::{RowLocator, heap_read, heap_scan, heap_update};
 use crate::index::index_remove;
 
 impl Database {
@@ -68,6 +70,7 @@ impl Database {
         if let Some(indexes) = self.indexes.get_mut(table) {
             indexes.remove_record(&deleted);
         }
+        self.primary_remove(table, id);
         catalog.save(self)?;
         if is_auto_commit {
             self.txn.commit(tx)?;
@@ -77,6 +80,9 @@ impl Database {
 }
 
 /// Busca por `RecordId` la fila viva o borrada y devuelve su localizador.
+///
+/// Consulta primero el índice primario (`O(log n)`, SPEC-0024) y, si la tabla
+/// no tiene entrada en él, recurre a un scan del heap como *fallback*.
 ///
 /// Args:
 ///     database: Base abierta.
@@ -93,6 +99,9 @@ fn locate_row(
     table: &TableDef,
     id: &RecordId,
 ) -> Result<Option<(RowLocator, Record)>, RuscaError> {
+    if let Some(locator) = database.primary_lookup(&table.name, id) {
+        return Ok(Some((locator, heap_read(database, locator)?)));
+    }
     for (locator, record) in heap_scan(database, table)? {
         if record.id == *id {
             return Ok(Some((locator, record)));

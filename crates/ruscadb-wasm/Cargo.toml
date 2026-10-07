@@ -1,0 +1,36 @@
+[package]
+name = "ruscadb-wasm"
+description = "Bindings WebAssembly de RuscaDB (query, vector y full-text en el navegador)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = []
+# Bindings JS (wasm-bindgen). Opcional para que el crate compile y se testee en
+# el host sin el target wasm32 ni dependencias de bindgen.
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+ruscadb-core = { workspace = true }
+ruscadb-query = { workspace = true }
+ruscadb-vector = { workspace = true }
+ruscadb-fts = { workspace = true }
+ruscadb-fvs = { workspace = true }
+ruscadb-crypto = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
