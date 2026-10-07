@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/MauricioFCC/RuscaDB/security/advisories/new
+    about: Reporta vulnerabilidades de forma privada (ver SECURITY.md). No abras un issue público.
+  - name: Preguntas y discusión
+    url: https://github.com/MauricioFCC/RuscaDB/discussions
+    about: Preguntas de uso, ideas y discusión general.
