@@ -719,6 +719,7 @@ dependencies = [
  "ruscadb-multimodal",
  "ruscadb-query",
  "ruscadb-storage",
+ "ruscadb-txn",
  "ruscadb-vector",
  "ruscadb-wal",
  "tempfile",
@@ -727,6 +728,16 @@ dependencies = [
 
 [[package]]
 name = "ruscadb-ai"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "ruscadb-core",
+]
+
+[[package]]
+name = "ruscadb-btree"
 version = "0.1.0"
 dependencies = [
  "pretty_assertions",

@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f140f2652da81fea742b4083f1ee0486458fec8fc0a1905cdf72e70be09ab99f # shrinks to ops = [Insert(0), Range(20, 0)], order = 3
+cc 120456b88fdbb466ff65f5c577a65c7660ee778fcd6af35c208d3bf69fc72508 # shrinks to ops = [Insert(2), Insert(0), Insert(31), Insert(32), Insert(11), Insert(19), Insert(0), Insert(33), Insert(12), Remove(19), Remove(11)], order = 3
+cc 932eef023d6066fbae246181ef6fab0d8c806b87e34a8d60e77ff53a4bc17212 # shrinks to ops = [Insert(12), Insert(0), Insert(11), Insert(1), Insert(11), Insert(11), Insert(11), Insert(13), Insert(14), Insert(11), Insert(11), Remove(2), Insert(15), Insert(16), Remove(11)], order = 3
+cc d7b03d4864893a78d371f02bf2b43d70d555b0132b9296553a90abdd5179acea # shrinks to ops = [Insert(0), Insert(1), Insert(2), Insert(3), Insert(45), Insert(43), Insert(4), Remove(45), Remove(43)], order = 5

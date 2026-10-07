@@ -1,6 +1,6 @@
 # Limpieza de artefactos de compilacion y mutacion (anti-contaminacion).
 #
-# Uso:  pwsh scripts/clean-workspace.ps1
+# Uso:  powershell -File scripts/clean-workspace.ps1   (o  pwsh -File ...)
 #
 # Elimina:
 #   - target/ de Cargo (workspace)
@@ -9,13 +9,16 @@
 #
 # Es idempotente y seguro: no toca codigo fuente ni Cargo.lock.
 
-$ErrorActionPreference = "Stop"
+# "Continue": los comandos nativos (cargo) escriben progreso por stderr y en
+# Windows PowerShell 5.1 eso se convierte en ErrorRecord; no debe abortar.
+$ErrorActionPreference = "Continue"
 
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
     Write-Host "[clean] cargo clean"
-    cargo clean
+    cargo clean 2>$null
+    if ($LASTEXITCODE -ne 0) { Write-Host "[clean] aviso: cargo clean devolvio $LASTEXITCODE" }
 
     Write-Host "[clean] eliminando mutants.out*"
     Get-ChildItem -Path $root -Recurse -Force -Directory -ErrorAction SilentlyContinue |

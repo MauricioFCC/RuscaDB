@@ -9,10 +9,11 @@
 
 use ruscadb_core::{EdgeSet, Record, RecordId, RecordMeta, RuscaError, ScalarMap, ScalarValue};
 use ruscadb_query::parse;
+use ruscadb_txn::Snapshot;
 
 use crate::catalog::{Catalog, ColumnDef, ColumnType, TableDef};
 use crate::database::Database;
-use crate::executor::{Row, execute_select};
+use crate::executor::{Row, execute_select_at};
 use crate::heap::{blank_slotted_page, heap_insert};
 use crate::index::index_insert;
 use crate::indexes::TableIndexes;
@@ -80,6 +81,10 @@ impl Database {
     /// memoria de la tabla: HNSW (vectores), CSR (aristas salientes) e inverso
     /// (columnas `TEXT`). Confirma con auto-commit WAL-first.
     ///
+    /// MVCC (SPEC-0019): estampa `meta.created_tx` con la transacción activa
+    /// ([`Database::begin`]) o con una transacción de auto-commit que se publica
+    /// tras el commit; además estampa `meta.lsn` con el próximo LSN del WAL.
+    ///
     /// Args:
     ///     table: Tabla destino.
     ///     record: Registro completo (scalars + vector + edges).
@@ -98,6 +103,12 @@ impl Database {
         table: &str,
         mut record: Record,
     ) -> Result<RecordId, RuscaError> {
+        let (tx, is_auto_commit) = match self.active_tx {
+            Some(tx) => (tx, false),
+            None => (self.txn.begin(), true),
+        };
+        record.meta.created_tx = tx;
+        record.meta.lsn = self.wal.next_lsn();
         let mut catalog = Catalog::load(self)?;
         let definition = catalog.get(table)?.clone();
         record.scalars = validate_scalars(&definition, table, record.scalars)?;
@@ -107,6 +118,9 @@ impl Database {
         entry.index_record(&record, &definition)?;
         entry.finalize();
         catalog.save(self)?;
+        if is_auto_commit {
+            self.txn.commit(tx)?;
+        }
         Ok(record.id)
     }
 
@@ -144,6 +158,8 @@ impl Database {
 
     /// Ejecuta una consulta RQL y devuelve las filas proyectadas.
     ///
+    /// Usa el snapshot más reciente (todos los commits visibles).
+    ///
     /// Args:
     ///     query: Texto RQL (`SELECT ... FROM ... WHERE ... LIMIT ...`).
     ///
@@ -154,8 +170,25 @@ impl Database {
     ///     [`RuscaError::ParseError`] si el texto no parsea;
     ///     errores de esquema del ejecutor en otro caso.
     pub fn execute(&mut self, query: &str) -> Result<Vec<Row>, RuscaError> {
+        let snapshot = self.snapshot();
+        self.execute_at(query, &snapshot)
+    }
+
+    /// Ejecuta una consulta RQL con visibilidad "as of" un snapshot MVCC.
+    ///
+    /// Args:
+    ///     query: Texto RQL (`SELECT ... FROM ... WHERE ... LIMIT ...`).
+    ///     snapshot: Vista fija de visibilidad ([`Database::snapshot`]).
+    ///
+    /// Returns:
+    ///     Filas visibles para `snapshot`, como mapas columna → escalar.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si el texto no parsea;
+    ///     errores de esquema del ejecutor en otro caso.
+    pub fn execute_at(&mut self, query: &str, snapshot: &Snapshot) -> Result<Vec<Row>, RuscaError> {
         let select = parse(query)?;
-        execute_select(self, &select)
+        execute_select_at(self, &select, snapshot)
     }
 
     /// Carga el catálogo actual (instantánea para planificar e inspeccionar).

@@ -22,17 +22,19 @@ pub use catalog::{
 };
 pub use database::{Database, DbConfig};
 pub use encryption::EncryptionConfig;
-pub use executor::{Plan, Row, execute_select, execute_with_plan, plan_for};
+pub use executor::{
+    Plan, Row, execute_select, execute_select_at, execute_with_plan, execute_with_plan_at, plan_for,
+};
 pub use heap::{RowLocator, heap_insert, heap_read, heap_scan};
 pub use index::{canonical_key, index_build, index_insert, index_lookup_eq};
-// Re-export del vocabulario de páginas para los adapters de la frontera FFI
-// (`ruscadb-ffi`, SPEC-0010 §FR-0010-01): el C-ABI trabaja con `PageId`, `Page`
-// y `PAGE_SIZE` de `ruscadb-storage` sin reimplementar el motor.
 pub use ruscadb_core::{
     Edge, EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError,
     ScalarMap, ScalarValue,
 };
 pub use ruscadb_storage::{PAGE_SIZE, Page, PageId};
+// Vocabulario transaccional / de manifiesto para consumidores de la fachada
+// (SPEC-0019): snapshots, versiones y el manifiesto versionado.
+pub use ruscadb_txn::{CURRENT_SCHEMA_VERSION, Manifest, Snapshot, TxId, Version};
 
 /// Versión de la fachada, tomada de la del paquete.
 pub const RUSCADB_VERSION: &str = env!("CARGO_PKG_VERSION");

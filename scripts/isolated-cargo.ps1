@@ -12,10 +12,10 @@ param(
     [string[]] $CargoArgs
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 if (-not $CargoArgs -or $CargoArgs.Count -eq 0) {
-    Write-Error "Uso: pwsh scripts/isolated-cargo.ps1 <args de cargo...>"
+    Write-Error "Uso: powershell -File scripts/isolated-cargo.ps1 <args de cargo...>"
     exit 2
 }
 

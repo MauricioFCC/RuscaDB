@@ -291,6 +291,36 @@ impl Database {
         Ok(())
     }
 
+    /// Restaura el agua (*watermark*) del gestor MVCC tras reabrir la base.
+    ///
+    /// Los registros persistidos conservan su `created_tx`/`deleted_tx` de la
+    /// sesión anterior, pero [`TxnManager`] arranca en el primer `TxId`. Para
+    /// que los commits previos sigan siendo visibles (sin dirty reads) se
+    /// reconstruye el conjunto confirmado: se reservan y publican tantos `TxId`
+    /// como indique el mayor `created_tx`/`deleted_tx` observado (SPEC-0019).
+    ///
+    /// Errors:
+    ///     [`RuscaError::TableNotFound`] si el catálogo referencia una tabla
+    ///     ausente; [`RuscaError::CorruptManifest`] si el heap es inválido.
+    pub(crate) fn restore_txn_watermark(&mut self) -> Result<(), RuscaError> {
+        let catalog = Catalog::load(self)?;
+        let mut max_tx = 0;
+        for name in catalog.table_names() {
+            let table = catalog.get(&name)?.clone();
+            for (_, record) in heap_scan(self, &table)? {
+                max_tx = max_tx.max(record.meta.created_tx);
+                if let Some(deleted) = record.meta.deleted_tx {
+                    max_tx = max_tx.max(deleted);
+                }
+            }
+        }
+        for _ in 0..max_tx {
+            let tx = self.txn.begin();
+            self.txn.commit(tx)?;
+        }
+        Ok(())
+    }
+
     /// Acceso de solo lectura a los índices de una tabla.
     ///
     /// Args:

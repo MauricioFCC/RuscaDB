@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use ruscadb_core::RuscaError;
 use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
+use ruscadb_txn::{CURRENT_SCHEMA_VERSION, Manifest, Snapshot, TxId, TxnManager};
 use ruscadb_wal::{Lsn, RecordKind, Wal};
 
 use crate::encryption::EncryptionConfig;
@@ -49,11 +50,21 @@ impl DbConfig {
 pub struct Database {
     file: PagedFile,
     pool: BufferPool,
-    wal: Wal,
+    pub(crate) wal: Wal,
     wal_path: PathBuf,
     encryption: Option<EncryptionConfig>,
     /// Índices derivados por tabla (HNSW/CSR/invertido), SPEC-0017.
     pub(crate) indexes: BTreeMap<String, TableIndexes>,
+    /// Manifiesto versionado (`schema_version`, `epoch`, `checkpoint_lsn`), SPEC-0019.
+    manifest: Manifest,
+    /// Ruta del fichero `MANIFEST.json` derivada de la ruta de datos.
+    manifest_path: PathBuf,
+    /// Gestor MVCC de transacciones y snapshots, SPEC-0019.
+    pub(crate) txn: TxnManager,
+    /// Transacción explícita en vuelo (`Database::begin`), si la hay.
+    pub(crate) active_tx: Option<TxId>,
+    /// Último LSN confirmado (checkpoint en memoria).
+    last_lsn: Lsn,
 }
 
 impl Database {
@@ -61,6 +72,8 @@ impl Database {
     ///
     /// Si `config.encryption` está presente, el WAL se abre con
     /// `Wal::open_encrypted` y el replay descifra con esa clave (SPEC-0013).
+    /// Carga (o crea) el manifiesto `<data>.manifest.json` y valida su
+    /// `schema_version` (SPEC-0019).
     ///
     /// Args:
     ///     config: Configuración de apertura.
@@ -71,14 +84,18 @@ impl Database {
     /// Errors:
     ///     [`RuscaError::Io`] si falla el acceso a disco;
     ///     [`RuscaError::InvalidConfig`] si `pool_capacity == 0`;
+    ///     [`RuscaError::CorruptManifest`] si el manifiesto es inválido o tiene
+    ///     una `schema_version` desconocida;
     ///     [`RuscaError::WalCorrupt`] si la clave falta o no autentica.
     pub fn open(config: DbConfig) -> Result<Self, RuscaError> {
         let wal_path = wal_path_for(&config.data_path);
+        let manifest_path = manifest_path_for(&config.data_path);
         let file = PagedFile::open(&config.data_path)?;
         let wal = match config.encryption.as_ref() {
             Some(encryption) => Wal::open_encrypted(&wal_path, encryption.key())?,
             None => Wal::open(&wal_path)?,
         };
+        let (manifest, is_new) = load_or_create_manifest(&manifest_path)?;
         let mut database = Self {
             file,
             pool: BufferPool::new(config.pool_capacity)?,
@@ -86,9 +103,20 @@ impl Database {
             wal_path,
             encryption: config.encryption,
             indexes: BTreeMap::new(),
+            manifest,
+            manifest_path,
+            txn: TxnManager::new(),
+            active_tx: None,
+            last_lsn: 0,
         };
-        database.replay()?;
+        let applied = database.replay()?;
+        database.last_lsn = applied;
+        database.manifest.checkpoint_lsn = applied;
+        if is_new {
+            database.manifest.store(&database.manifest_path)?;
+        }
         database.rebuild_indexes()?;
+        database.restore_txn_watermark()?;
         Ok(database)
     }
 
@@ -139,20 +167,35 @@ impl Database {
 
     /// Confirma los cambios: WAL-first (append + fsync) y luego publica páginas.
     ///
+    /// Si había páginas sucias, incrementa el `epoch` del manifiesto, fija
+    /// `checkpoint_lsn` al LSN del commit y persiste el manifiesto de forma
+    /// atómica. Si hay una transacción explícita en vuelo, la publica (SPEC-0019).
+    ///
     /// Returns:
     ///     El `Lsn` del commit, o el siguiente LSN si no había páginas sucias.
     ///
     /// Errors:
-    ///     [`RuscaError::Io`] si falla la escritura o el fsync.
+    ///     [`RuscaError::Io`] si falla la escritura, el fsync o el manifiesto;
+    ///     [`RuscaError::CorruptManifest`] si no se puede serializar el manifiesto;
+    ///     [`RuscaError::InvalidConfig`] si la transacción activa no estaba en vuelo.
     pub fn commit(&mut self) -> Result<Lsn, RuscaError> {
         let dirty = self.pool.dirty_pages();
-        if dirty.is_empty() {
-            return Ok(self.wal.next_lsn());
+        let lsn = if dirty.is_empty() {
+            self.wal.next_lsn()
+        } else {
+            let payload = encode_commit(&dirty);
+            let lsn = self.wal.append(0, RecordKind::Commit, &payload)?;
+            self.wal.sync()?;
+            self.publish(dirty)?;
+            self.manifest.bump_epoch();
+            self.manifest.checkpoint_lsn = lsn;
+            self.manifest.store(&self.manifest_path)?;
+            self.last_lsn = lsn;
+            lsn
+        };
+        if let Some(tx) = self.active_tx.take() {
+            self.txn.commit(tx)?;
         }
-        let payload = encode_commit(&dirty);
-        let lsn = self.wal.append(0, RecordKind::Commit, &payload)?;
-        self.wal.sync()?;
-        self.publish(dirty)?;
         Ok(lsn)
     }
 
@@ -170,26 +213,35 @@ impl Database {
     ///
     /// Con cifrado, el replay descifra con la clave de apertura y restaura las
     /// páginas solo en el pool (el WAL es la fuente de verdad, SPEC-0013).
-    fn replay(&mut self) -> Result<(), RuscaError> {
+    ///
+    /// Returns:
+    ///     El LSN del último commit aplicado (`0` si el WAL no tiene commits).
+    ///
+    /// Errors:
+    ///     [`RuscaError::WalCorrupt`] si un commit record está truncado;
+    ///     [`RuscaError::Io`] si falla la escritura del archivo de datos.
+    fn replay(&mut self) -> Result<Lsn, RuscaError> {
         let key = self.encryption.as_ref().map(|encryption| *encryption.key());
         let mut pages = Vec::new();
+        let mut last_applied = 0;
         for record in ruscadb_wal::read_records_with_key(&self.wal_path, key.as_ref())? {
             if record.kind != RecordKind::Commit {
                 continue;
             }
             pages.extend(decode_commit(&record.payload)?);
+            last_applied = record.lsn;
         }
         if self.encryption.is_some() {
             for page in &pages {
                 self.write_page(page)?;
             }
-            return Ok(());
+            return Ok(last_applied);
         }
         for page in &pages {
             self.file.write_page(page)?;
         }
         self.file.flush()?;
-        Ok(())
+        Ok(last_applied)
     }
 
     /// Publica páginas sucias tras el fsync del WAL.
@@ -209,11 +261,91 @@ impl Database {
         }
         Ok(())
     }
+
+    /// Acceso de solo lectura al manifiesto versionado.
+    ///
+    /// Returns:
+    ///     El manifiesto actual (`schema_version`, `epoch`, `checkpoint_lsn`).
+    pub fn manifest(&self) -> &Manifest {
+        &self.manifest
+    }
+
+    /// Último LSN confirmado (coincide con `checkpoint_lsn` tras un commit).
+    ///
+    /// Returns:
+    ///     El LSN del último commit aplicado (`0` en una base nueva).
+    pub fn last_lsn(&self) -> Lsn {
+        self.last_lsn
+    }
+
+    /// Inicia una transacción MVCC explícita y la marca como activa.
+    ///
+    /// Returns:
+    ///     El `TxId` monótono de la nueva transacción.
+    pub fn begin(&mut self) -> TxId {
+        let tx = self.txn.begin();
+        self.active_tx = Some(tx);
+        tx
+    }
+
+    /// Toma un snapshot de visibilidad con el estado transaccional actual.
+    ///
+    /// Returns:
+    ///     La vista fija de visibilidad para consultas "as of".
+    pub fn snapshot(&self) -> Snapshot {
+        self.txn.snapshot()
+    }
+
+    /// Transacción explícita en vuelo, si [`Database::begin`] fue llamada.
+    ///
+    /// Returns:
+    ///     El `TxId` activo o `None`.
+    pub fn active_tx(&self) -> Option<TxId> {
+        self.active_tx
+    }
 }
 
 /// Ruta del WAL derivada de la ruta de datos (extensión `.wal`).
 fn wal_path_for(data_path: &Path) -> PathBuf {
     data_path.with_extension("wal")
+}
+
+/// Ruta del manifiesto derivada de la ruta de datos (`.manifest.json`).
+///
+/// Args:
+///     data_path: Ruta del archivo de páginas.
+///
+/// Returns:
+///     La ruta del manifiesto.
+fn manifest_path_for(data_path: &Path) -> PathBuf {
+    data_path.with_extension("manifest.json")
+}
+
+/// Carga el manifiesto si existe o crea uno nuevo, validando la versión.
+///
+/// Args:
+///     path: Ruta del fichero `MANIFEST.json`.
+///
+/// Returns:
+///     El manifiesto y `true` si acaba de crearse (hay que persistirlo).
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si el JSON es inválido o la
+///     `schema_version` es desconocida;
+///     [`RuscaError::Io`] si el fichero existe pero no se puede leer.
+fn load_or_create_manifest(path: &Path) -> Result<(Manifest, bool), RuscaError> {
+    if !path.exists() {
+        return Ok((Manifest::new(), true));
+    }
+    let manifest = Manifest::load(path)?;
+    if manifest.schema_version != CURRENT_SCHEMA_VERSION {
+        return Err(RuscaError::CorruptManifest(format!(
+            "schema_version {} desconocida en {} (se esperaba {CURRENT_SCHEMA_VERSION})",
+            manifest.schema_version,
+            path.display()
+        )));
+    }
+    Ok((manifest, false))
 }
 
 /// Serializa el conjunto de páginas sucias de un commit.

@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 
 use ruscadb_core::{Record, RecordId, RuscaError, ScalarMap, ScalarValue};
 use ruscadb_query::{CompareOp, Expr, KnnClause, Projection, Select, TraverseClause};
+use ruscadb_txn::{Snapshot, Version};
 
 use crate::catalog::{Catalog, ColumnType, TableDef};
 use crate::database::Database;
@@ -82,7 +83,7 @@ pub fn plan_for(select: &Select, catalog: &Catalog) -> Result<Plan, RuscaError> 
     Ok(Plan::FullScan)
 }
 
-/// Ejecuta un `SELECT` analizado (planifica y evalúa).
+/// Ejecuta un `SELECT` analizado con el snapshot más reciente.
 ///
 /// Args:
 ///     database: Base abierta.
@@ -95,9 +96,31 @@ pub fn plan_for(select: &Select, catalog: &Catalog) -> Result<Plan, RuscaError> 
 ///     [`RuscaError::TableNotFound`] / [`RuscaError::ColumnNotFound`] /
 ///     [`RuscaError::TypeMismatch`] ante errores de esquema.
 pub fn execute_select(database: &mut Database, select: &Select) -> Result<Vec<Row>, RuscaError> {
+    let snapshot = database.snapshot();
+    execute_select_at(database, select, &snapshot)
+}
+
+/// Ejecuta un `SELECT` analizado con visibilidad "as of" `snapshot` (SPEC-0019).
+///
+/// Args:
+///     database: Base abierta.
+///     select: Consulta analizada.
+///     snapshot: Vista fija de visibilidad MVCC.
+///
+/// Returns:
+///     Filas visibles para `snapshot` (hasta `LIMIT`).
+///
+/// Errors:
+///     [`RuscaError::TableNotFound`] / [`RuscaError::ColumnNotFound`] /
+///     [`RuscaError::TypeMismatch`] ante errores de esquema.
+pub fn execute_select_at(
+    database: &mut Database,
+    select: &Select,
+    snapshot: &Snapshot,
+) -> Result<Vec<Row>, RuscaError> {
     let catalog = Catalog::load(database)?;
     let plan = plan_for(select, &catalog)?;
-    execute_with_plan(database, select, plan)
+    execute_with_plan_at(database, select, plan, snapshot)
 }
 
 /// Ejecuta un `SELECT` con un plan fijado resolviendo cláusulas en orden.
@@ -131,12 +154,45 @@ pub fn execute_with_plan(
     select: &Select,
     plan: Plan,
 ) -> Result<Vec<Row>, RuscaError> {
+    let snapshot = database.snapshot();
+    execute_with_plan_at(database, select, plan, &snapshot)
+}
+
+/// Ejecuta un `SELECT` con un plan fijado y visibilidad "as of" `snapshot`.
+///
+/// Mismo pipeline que [`execute_with_plan`], pero descarta las filas no
+/// visibles para el snapshot MVCC antes de resolver `WHERE`/`MATCH`/`KNN`/
+/// `TRAVERSE` (SPEC-0019, NF-0019-01).
+///
+/// Args:
+///     database: Base abierta.
+///     select: Consulta analizada.
+///     plan: Plan de acceso a usar para la lectura base.
+///     snapshot: Vista fija de visibilidad MVCC.
+///
+/// Returns:
+///     Filas visibles y proyectadas (hasta `LIMIT`).
+///
+/// Errors:
+///     [`RuscaError::TableNotFound`] / [`RuscaError::ColumnNotFound`] /
+///     [`RuscaError::TypeMismatch`] ante errores de esquema;
+///     [`RuscaError::MissingTextColumn`] / [`RuscaError::MissingVector`] /
+///     [`RuscaError::MissingGraph`] / [`RuscaError::DimensionMismatch`] ante
+///     cláusulas que no encajan con los datos de la tabla.
+pub fn execute_with_plan_at(
+    database: &mut Database,
+    select: &Select,
+    plan: Plan,
+    snapshot: &Snapshot,
+) -> Result<Vec<Row>, RuscaError> {
     let table = Catalog::load(database)?.get(&select.from)?.clone();
     let candidates = fetch_candidates(database, &table, &plan, select.filter.as_ref())?;
     let (matches, scalar_filter) = split_matches(select.filter.as_ref());
     let mut records = Vec::new();
     for (_, record) in candidates {
-        if keeps_row(&table, scalar_filter.as_ref(), &record.scalars)? {
+        if is_visible(snapshot, &record)
+            && keeps_row(&table, scalar_filter.as_ref(), &record.scalars)?
+        {
             records.push(record);
         }
     }
@@ -159,6 +215,25 @@ pub fn execute_with_plan(
         }
     }
     Ok(rows)
+}
+
+/// Decide si un registro es visible para el snapshot MVCC (SPEC-0019).
+///
+/// Traduce la metadata del registro (`created_tx`/`deleted_tx`) a una
+/// [`Version`] y delega en [`Snapshot::is_visible`].
+///
+/// Args:
+///     snapshot: Vista fija de visibilidad.
+///     record: Registro candidato.
+///
+/// Returns:
+///     `true` si la versión del registro es visible para el snapshot.
+fn is_visible(snapshot: &Snapshot, record: &Record) -> bool {
+    let version = Version {
+        created_tx: record.meta.created_tx,
+        deleted_tx: record.meta.deleted_tx,
+    };
+    snapshot.is_visible(&version)
 }
 
 /// Obtiene los registros candidatos según el plan.
