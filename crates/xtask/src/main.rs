@@ -136,3 +136,84 @@ fn walk(dir: &Path, visit: &mut impl FnMut(&Path)) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Tests de aceptación de SPEC-0016 (endurecimiento de CI T3 y supply
+    //! chain). Solo `std`: leen los artefactos de configuración como texto y
+    //! verifican estructura/secciones (el gate canónico es
+    //! `scripts/check_ci_config.py`).
+
+    use super::workspace_root;
+    use std::fs;
+
+    /// Lee un archivo relativo a la raíz del workspace.
+    fn read_root_file(relative: &str) -> String {
+        let root = workspace_root().expect("raíz del workspace");
+        let path = root.join(relative);
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("no se pudo leer {relative}: {e}"))
+    }
+
+    /// AC-0016-01: el workflow nightly es válido y declara mutation/fuzz/miri.
+    #[test]
+    fn test_ac_0016_01_nightly_workflow_is_valid() {
+        let yaml = read_root_file(".github/workflows/nightly.yml");
+        for trigger in ["schedule:", "workflow_dispatch:"] {
+            assert!(
+                yaml.contains(trigger),
+                "nightly.yml sin trigger '{trigger}'"
+            );
+        }
+        for job in ["mutation:", "fuzz:", "miri:"] {
+            assert!(yaml.contains(job), "nightly.yml sin job '{job}'");
+        }
+        assert!(
+            yaml.contains("continue-on-error: true"),
+            "nightly.yml debe ser alert-only (continue-on-error)"
+        );
+        assert!(
+            yaml.contains("--shard="),
+            "nightly.yml debe ejecutar mutation sharded"
+        );
+        assert!(
+            yaml.contains("-max_total_time=300"),
+            "nightly.yml debe acotar el fuzzing a 300 s"
+        );
+        assert!(
+            yaml.contains("dtolnay/rust-toolchain@nightly") && yaml.contains("miri"),
+            "nightly.yml debe correr miri con el toolchain nightly"
+        );
+    }
+
+    /// AC-0016-02: la config de cargo-mutants define exclude y toolchain (vía
+    /// pin en `rust-toolchain.toml`) sin romper T1 (`deny_unknown_fields`).
+    #[test]
+    fn test_ac_0016_02_mutants_config_is_valid() {
+        let toml = read_root_file(".cargo/mutants.toml");
+        for key in ["exclude_globs", "test_tool", "additional_cargo_test_args"] {
+            assert!(toml.contains(key), "mutants.toml sin clave '{key}'");
+        }
+        assert!(
+            toml.contains("toolchain"),
+            "mutants.toml debe documentar la política de toolchain"
+        );
+        // cargo-mutants usa `deny_unknown_fields`: una clave `toolchain` real
+        // rompería el parseo. Solo se admite como documentación (comentario).
+        for line in toml.lines() {
+            let trimmed = line.trim_start();
+            assert!(
+                !trimmed.starts_with("toolchain") || trimmed.starts_with('#'),
+                "mutants.toml declara la clave no soportada 'toolchain'"
+            );
+        }
+    }
+
+    /// AC-0016-03: `deny.toml` declara las 4 secciones requeridas.
+    #[test]
+    fn test_ac_0016_03_deny_config_has_required_sections() {
+        let toml = read_root_file("deny.toml");
+        for section in ["[advisories]", "[licenses]", "[bans]", "[sources]"] {
+            assert!(toml.contains(section), "deny.toml sin sección '{section}'");
+        }
+    }
+}

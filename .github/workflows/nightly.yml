@@ -1,0 +1,128 @@
+# Nightly de RuscaDB — Gate T3 (regresión, alert-only).
+#
+# Alineado con docs/RuscaDB-roadmap.md §7.1 y SPEC-0016. Este pipeline NO
+# bloquea PRs: corre en `schedule`/`workflow_dispatch`, todos los jobs son
+# `continue-on-error: true` (alert-only) y suben artifacts para inspección.
+#   mutation -> cargo-mutants full sharded, umbral documentado MS >= 85 %
+#   fuzz     -> cargo-fuzz sobre query_parse y wal_recover (libFuzzer, nightly)
+#   miri     -> UB/unsafe en crates sin unsafe (query, fts, core)
+#
+# El gate T1 (determinista, bloquea merge) vive en `.github/workflows/ci.yml`.
+
+name: Nightly (T3)
+
+on:
+  schedule:
+    # 03:00 UTC diario (fuera de horario laboral).
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── T3.1 — Mutation full sharded (alert-only, MS documentado >= 85 %) ────────
+  mutation:
+    name: Mutation (${{ matrix.shard }}/8)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+
+      - name: cargo mutants (shard ${{ matrix.shard }}/8)
+        # Umbral T3 documentado: mutation score >= 85 % (roadmap FF-08).
+        # Alert-only: no bloquea merge; el reporte se adjunta como artifact.
+        run: cargo mutants --workspace --shard=${{ matrix.shard }}/8 --in-place
+
+      - name: Mutation score (informativo, umbral MS >= 85 %)
+        if: always()
+        run: |
+          file=mutants.out/outcomes.json
+          if [ ! -f "$file" ]; then
+            echo "No hay outcomes.json; se omite el cálculo del mutation score."
+            exit 0
+          fi
+          caught=$(jq '[.outcomes[] | select(.summary == "CaughtMutant")] | length' "$file")
+          missed=$(jq '[.outcomes[] | select(.summary == "MissedMutant")] | length' "$file")
+          total=$((caught + missed))
+          if [ "$total" -eq 0 ]; then
+            echo "Sin mutantes evaluables en este shard."
+            exit 0
+          fi
+          awk -v c="$caught" -v t="$total" \
+            'BEGIN { printf "MS shard = %.2f %% (objetivo >= 85 %%)\n", 100 * c / t }'
+
+      - name: Upload mutants outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-outcomes-${{ matrix.shard }}
+          path: mutants.out/outcomes.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  # ── T3.2 — Fuzzing continuo (libFuzzer, nightly) ────────────────────────────
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [query_parse, wal_recover]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - name: cargo fuzz run ${{ matrix.target }} (300 s)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=300
+
+      - name: Upload fuzz artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # ── T3.3 — Miri: UB/unsafe en crates sin `unsafe` ───────────────────────────
+  miri:
+    name: Miri (UB/unsafe)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+
+      - name: miri setup
+        run: cargo +nightly miri setup
+
+      - name: cargo miri test (crates sin unsafe)
+        run: cargo +nightly miri test -p ruscadb-query -p ruscadb-fts -p ruscadb-core

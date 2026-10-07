@@ -6,8 +6,9 @@
 #   Architecture-> guards de hexagonal + unsafe (scripts/check_*.py)
 #   Security    -> cargo-deny + cargo-audit
 #
-# Los jobs T2 (LLM-judge) y T3 (nightly: mutation full, fuzz, crash-recovery,
-# differential) se añaden en fases posteriores.
+# T2 (LLM-judge) corre sobre el diff del PR. T3 (regresión nightly: mutation
+# full sharded, fuzz, miri, crash-recovery) es alert-only y vive en
+# `.github/workflows/nightly.yml` (SPEC-0016). Ver docs/verification.md.
 
 name: CI
 

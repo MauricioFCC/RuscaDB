@@ -1,0 +1,36 @@
+# Pre-commit de RuscaDB — gates locales (roadmap §2.1/§6.5).
+#
+# Instalación:
+#   pipx install pre-commit   # o: pip install pre-commit
+#   pre-commit install
+#   pre-commit run --all-files
+#
+# Cubre: detección de secretos (gitleaks) + formato (rustfmt) + lints (clippy).
+# El gate determinista completo (tests, arquitectura, unsafe, deny/audit) corre
+# en CI T1 (`.github/workflows/ci.yml`); ver docs/verification.md.
+
+repos:
+  # 1) Secret scanning — 0 secrets en el árbol (supply chain §6.5).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # 2) Formato y lints de Rust (mismos comandos que T1).
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt --all -- --check
+        description: Formato consistente del workspace (rustfmt).
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+        files: \.rs$
+
+      - id: cargo-clippy
+        name: cargo clippy -- -D warnings
+        description: Lints de clippy sin warnings (gate T1).
+        entry: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        language: system
+        pass_filenames: false
+        files: \.rs$

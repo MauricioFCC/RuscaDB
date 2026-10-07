@@ -12,12 +12,13 @@ pub mod ast;
 pub mod lexer;
 mod parser;
 
-pub use ast::{CompareOp, Expr, Projection, Select};
-pub use parser::parse;
+pub use ast::{CompareOp, Explain, Expr, KnnClause, Projection, Select, Statement, TraverseClause};
+pub use parser::{parse, parse_statement};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lexer::Keyword;
     use pretty_assertions::assert_eq;
     use proptest::prelude::*;
     use rstest::rstest;
@@ -202,11 +203,192 @@ mod tests {
                 projection: Projection::Columns(columns),
                 from: table,
                 filter: None,
+                knn: None,
+                traverse: None,
                 limit,
             };
             let text = select.to_string();
             let reparsed = parse(&text).expect("reparse");
             prop_assert_eq!(reparsed, select);
+        }
+    }
+
+    /// AC-0015-01 — parseo de `KNN`.
+    #[test]
+    fn test_ac_0015_01_parse_knn() {
+        let statement = parse_statement("SELECT * FROM docs KNN embedding <|5|> [0.1, 0.2, 0.3]")
+            .expect("parse");
+        let Statement::Select(select) = statement else {
+            panic!("se esperaba Statement::Select");
+        };
+        assert_eq!(
+            select.knn,
+            Some(KnnClause {
+                column: "embedding".to_string(),
+                k: 5,
+                query: vec![0.1, 0.2, 0.3],
+            })
+        );
+        assert_eq!(select.traverse, None);
+        assert_eq!(select.limit, None);
+    }
+
+    /// AC-0015-02 — parseo de `TRAVERSE`.
+    #[test]
+    fn test_ac_0015_02_parse_traverse() {
+        let statement =
+            parse_statement("SELECT * FROM nodes TRAVERSE edges DEPTH 3").expect("parse");
+        let Statement::Select(select) = statement else {
+            panic!("se esperaba Statement::Select");
+        };
+        assert_eq!(
+            select.traverse,
+            Some(TraverseClause {
+                column: "edges".to_string(),
+                depth: 3,
+            })
+        );
+        assert_eq!(select.knn, None);
+    }
+
+    /// AC-0015-03 — parseo de `EXPLAIN` que envuelve el `Select` interno.
+    #[test]
+    fn test_ac_0015_03_parse_explain() {
+        let statement = parse_statement("EXPLAIN SELECT * FROM t WHERE a = 1").expect("parse");
+        let Statement::Explain(explain) = statement else {
+            panic!("se esperaba Statement::Explain");
+        };
+        assert_eq!(explain.inner.from, "t");
+        assert!(matches!(explain.inner.filter, Some(Expr::Compare { .. })));
+        assert_eq!(
+            parse_statement(&explain.to_string()).expect("reparse"),
+            Statement::Explain(explain)
+        );
+        assert!(
+            parse("EXPLAIN SELECT * FROM t").is_err(),
+            "parse (solo SELECT) debe rechazar EXPLAIN"
+        );
+    }
+
+    /// AC-0015-04 — roundtrip `Display → parse` con KNN/TRAVERSE (orden canónico).
+    #[test]
+    fn test_ac_0015_04_display_parse_roundtrip_extensions() {
+        let query = parse(
+            "SELECT a, b FROM t WHERE a = 1 KNN emb <|3|> [1, 2.5] TRAVERSE edges DEPTH 2 LIMIT 7",
+        )
+        .expect("parse");
+        let text = query.to_string();
+        assert_eq!(
+            text,
+            "SELECT a, b FROM t WHERE a = 1 KNN emb <|3|> [1.0, 2.5] TRAVERSE edges DEPTH 2 LIMIT 7"
+        );
+        assert_eq!(parse(&text).expect("reparse"), query);
+    }
+
+    /// AC-0015-05 — formas mal formadas devuelven `ParseError`.
+    #[test]
+    fn test_ac_0015_05_malformed_extensions_are_errors() {
+        let cases = [
+            "SELECT * FROM t KNN embedding <|x|> []",
+            "SELECT * FROM t KNN embedding <||> []",
+            "SELECT * FROM t KNN embedding <|3|> [1, 2",
+            "SELECT * FROM t KNN embedding <|3|> [x]",
+            "SELECT * FROM t TRAVERSE edges",
+            "SELECT * FROM t TRAVERSE edges DEPTH x",
+            "SELECT * FROM t TRAVERSE edges DEPTH",
+            "SELECT * FROM t TRAVERSE edges DEPTH 70000",
+        ];
+        for input in cases {
+            let error = parse_statement(input).unwrap_err();
+            assert!(
+                matches!(error, RuscaError::ParseError { .. }),
+                "input: {input} -> {error:?}"
+            );
+        }
+        let missing_depth = parse_statement("SELECT * FROM t TRAVERSE edges").unwrap_err();
+        match missing_depth {
+            RuscaError::ParseError { message, .. } => assert!(message.contains("DEPTH")),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Un vector de consulta vacío es válido.
+    #[test]
+    fn test_knn_empty_vector_is_valid() {
+        let select = parse("SELECT * FROM t KNN embedding <|0|> []").expect("parse");
+        assert_eq!(select.knn.expect("knn").query, Vec::<f64>::new());
+    }
+
+    /// Un `|` suelto (sin `>`) es un error léxico de la familia `|>`.
+    #[test]
+    fn test_lone_pipe_is_error() {
+        let error = parse("SELECT * FROM t WHERE a | 1").unwrap_err();
+        match error {
+            RuscaError::ParseError { message, .. } => {
+                assert!(message.contains("|>"), "mensaje: {message}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// `as_str` cubre las nuevas palabras clave.
+    #[test]
+    fn test_extension_keywords_as_str() {
+        assert_eq!(Keyword::Knn.as_str(), "KNN");
+        assert_eq!(Keyword::Traverse.as_str(), "TRAVERSE");
+        assert_eq!(Keyword::Depth.as_str(), "DEPTH");
+        assert_eq!(Keyword::Explain.as_str(), "EXPLAIN");
+    }
+
+    proptest! {
+        /// Metamórfica: roundtrip `Display → parse` con cláusulas aleatorias.
+        #[test]
+        fn prop_display_parse_roundtrip_with_extensions(
+            columns in prop::collection::vec("[a-z]{1,8}", 1..4),
+            table in "[a-z]{1,8}",
+            knn_column in "[a-z]{1,8}",
+            k in 0u64..1000,
+            query in prop::collection::vec(0.0f64..1000.0, 0..4),
+            traverse_column in "[a-z]{1,8}",
+            depth in 0u16..1000,
+            limit in prop::option::of(0u64..1000),
+        ) {
+            let select = Select {
+                projection: Projection::Columns(columns),
+                from: table,
+                filter: None,
+                knn: Some(KnnClause { column: knn_column, k, query }),
+                traverse: Some(TraverseClause { column: traverse_column, depth }),
+                limit,
+            };
+            let text = select.to_string();
+            let reparsed = parse(&text).expect("reparse");
+            prop_assert_eq!(reparsed, select);
+        }
+
+        /// Metamórfica: roundtrip `Display → parse_statement` para `EXPLAIN`.
+        #[test]
+        fn prop_explain_display_parse_roundtrip(
+            table in "[a-z]{1,8}",
+            filter_column in "[a-z]{1,8}",
+            filter_value in 0i64..1000,
+        ) {
+            let select = Select {
+                projection: Projection::All,
+                from: table,
+                filter: Some(Expr::Compare {
+                    left: Box::new(Expr::Column(filter_column)),
+                    op: CompareOp::Eq,
+                    right: Box::new(Expr::Int(filter_value)),
+                }),
+                knn: None,
+                traverse: None,
+                limit: None,
+            };
+            let statement = Statement::Explain(Explain { inner: Box::new(select) });
+            let text = statement.to_string();
+            let reparsed = parse_statement(&text).expect("reparse");
+            prop_assert_eq!(reparsed, statement);
         }
     }
 }

@@ -767,6 +767,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruscadb-fts"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "ruscadb-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "ruscadb-graph"
 version = "0.1.0"
 dependencies = [

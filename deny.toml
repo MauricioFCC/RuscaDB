@@ -1,6 +1,8 @@
-# cargo-deny — política de supply chain de RuscaDB.
-# Triple herramienta: cargo-audit (advisories) + cargo-deny (licencias/bans) +
-# cargo-vet (auditoría de terceros). Ver docs/RuscaDB-roadmap.md §6.5.
+# cargo-deny — política de supply chain de RuscaDB (§6.5, SPEC-0016).
+# Cuatro checks declarados: advisories + licenses + bans + sources.
+# Complementado por cargo-audit (RustSec) y gitleaks pre-commit.
+# Validado en T1 por `.github/workflows/ci.yml` (EmbarkStudios/cargo-deny-action)
+# y por `scripts/check_ci_config.py`. Ver docs/verification.md.
 
 [advisories]
 vulnerability = "deny"
@@ -10,6 +12,8 @@ notice = "warn"
 ignore = []
 
 [licenses]
+# Mantener la allow-list ajustada: avisa si se permite una licencia no usada.
+unused-allowed-license = "warn"
 confidence-threshold = 0.9
 allow = [
     "MIT",

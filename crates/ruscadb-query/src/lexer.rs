@@ -15,6 +15,14 @@ pub enum Keyword {
     And,
     /// `LIMIT`
     Limit,
+    /// `KNN`
+    Knn,
+    /// `TRAVERSE`
+    Traverse,
+    /// `DEPTH`
+    Depth,
+    /// `EXPLAIN`
+    Explain,
 }
 
 impl Keyword {
@@ -26,6 +34,10 @@ impl Keyword {
             Self::Where => "WHERE",
             Self::And => "AND",
             Self::Limit => "LIMIT",
+            Self::Knn => "KNN",
+            Self::Traverse => "TRAVERSE",
+            Self::Depth => "DEPTH",
+            Self::Explain => "EXPLAIN",
         }
     }
 
@@ -43,6 +55,10 @@ impl Keyword {
             "where" => Some(Self::Where),
             "and" => Some(Self::And),
             "limit" => Some(Self::Limit),
+            "knn" => Some(Self::Knn),
+            "traverse" => Some(Self::Traverse),
+            "depth" => Some(Self::Depth),
+            "explain" => Some(Self::Explain),
             _ => None,
         }
     }
@@ -77,6 +93,14 @@ pub enum Token {
     Gt,
     /// `>=`
     GtEq,
+    /// `<|` (apertura de la vecindad KNN).
+    KnnOpen,
+    /// `|>` (cierre de la vecindad KNN).
+    KnnClose,
+    /// `[`
+    LBracket,
+    /// `]`
+    RBracket,
 }
 
 /// Token con su posición (byte) en el texto original.
@@ -156,8 +180,15 @@ impl<'a> Lexer<'a> {
                 Token::NotEq
             }
             b'!' => return Err(parse_error("se esperaba '!='", position)),
-            b'<' => self.consume_optional_eq(Token::LtEq, Token::Lt),
+            b'<' => self.consume_lt(),
             b'>' => self.consume_optional_eq(Token::GtEq, Token::Gt),
+            b'|' if self.peek_next() == Some(b'>') => {
+                self.index += 2;
+                Token::KnnClose
+            }
+            b'|' => return Err(parse_error("se esperaba '|>'", position)),
+            b'[' => self.single(Token::LBracket),
+            b']' => self.single(Token::RBracket),
             b'\'' => Token::Text(self.read_string(position)?),
             b'0'..=b'9' => self.read_number(position)?,
             byte if byte.is_ascii_alphabetic() || byte == b'_' => self.read_word(),
@@ -180,6 +211,24 @@ impl<'a> Lexer<'a> {
     fn single(&mut self, token: Token) -> Token {
         self.index += 1;
         token
+    }
+
+    /// Consume `<|` (KNN), `<=` o `<` según el byte siguiente.
+    fn consume_lt(&mut self) -> Token {
+        match self.peek_next() {
+            Some(b'|') => {
+                self.index += 2;
+                Token::KnnOpen
+            }
+            Some(b'=') => {
+                self.index += 2;
+                Token::LtEq
+            }
+            _ => {
+                self.index += 1;
+                Token::Lt
+            }
+        }
     }
 
     /// Consume `<=`/`>=` si el siguiente byte es `=`, o `<`/`>` si no.

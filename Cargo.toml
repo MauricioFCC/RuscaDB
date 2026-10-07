@@ -14,6 +14,7 @@ members = [
     "crates/ruscadb-graph",
     "crates/ruscadb-multimodal",
     "crates/ruscadb-ai",
+    "crates/ruscadb-fts",
     "crates/ruscadb-wal",
     "crates/ruscadb-ffi",
     "crates/ruscadb-py",
@@ -42,6 +43,7 @@ ruscadb-vector = { path = "crates/ruscadb-vector" }
 ruscadb-graph = { path = "crates/ruscadb-graph" }
 ruscadb-multimodal = { path = "crates/ruscadb-multimodal" }
 ruscadb-ai = { path = "crates/ruscadb-ai" }
+ruscadb-fts = { path = "crates/ruscadb-fts" }
 ruscadb-wal = { path = "crates/ruscadb-wal" }
 ruscadb-ffi = { path = "crates/ruscadb-ffi" }
 ruscadb-testkit = { path = "crates/ruscadb-testkit" }
