@@ -31,7 +31,7 @@ ALLOWED: dict[str, set[str]] = {
     "ruscadb-graph": {"ruscadb-core"},
     "ruscadb-multimodal": {"ruscadb-core", "ruscadb-storage"},
     "ruscadb-ai": {"ruscadb-core"},
-    "ruscadb-ffi": {"ruscadb-core"},
+    "ruscadb-ffi": {"ruscadb-core", "ruscadb"},
     "ruscadb-py": {"ruscadb-ffi"},
     "ruscadb-node": {"ruscadb-ffi"},
     "ruscadb": {
@@ -43,9 +43,9 @@ ALLOWED: dict[str, set[str]] = {
         "ruscadb-multimodal",
         "ruscadb-ai",
         "ruscadb-wal",
-        "ruscadb-ffi",
     },
     "ruscadb-testkit": {"ruscadb-core"},
+    "ruscadb-crypto": {"ruscadb-core"},
     "xtask": set(),
 }
 

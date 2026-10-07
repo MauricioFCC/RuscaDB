@@ -1,0 +1,43 @@
+# Workspace cargo-fuzz INDEPENDIENTE del workspace padre.
+#
+# La tabla `[workspace]` vacía evita que Cargo lo considere parte del workspace
+# de RuscaDB (los targets usan libFuzzer y solo compilan en nightly). No añadir
+# `fuzz` a `members` del Cargo.toml raíz.
+[package]
+name = "ruscadb-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1.4", features = ["derive"] }
+tempfile = "3.27.0"
+
+[dependencies.ruscadb-query]
+path = "../crates/ruscadb-query"
+
+[dependencies.ruscadb-wal]
+path = "../crates/ruscadb-wal"
+
+# `query_parse`: RQL nunca debe entrar en pánico ante texto arbitrario.
+[[bin]]
+name = "query_parse"
+path = "fuzz_targets/query_parse.rs"
+test = false
+doc = false
+bench = false
+
+# `wal_recover`: recovery de WAL nunca debe entrar en pánico ante bytes
+# arbitrarios (torn write / tampering).
+[[bin]]
+name = "wal_recover"
+path = "fuzz_targets/wal_recover.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

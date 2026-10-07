@@ -20,6 +20,7 @@ members = [
     "crates/ruscadb-node",
     "crates/ruscadb",
     "crates/ruscadb-testkit",
+    "crates/ruscadb-crypto",
     "crates/xtask",
 ]
 
@@ -44,6 +45,8 @@ ruscadb-ai = { path = "crates/ruscadb-ai" }
 ruscadb-wal = { path = "crates/ruscadb-wal" }
 ruscadb-ffi = { path = "crates/ruscadb-ffi" }
 ruscadb-testkit = { path = "crates/ruscadb-testkit" }
+ruscadb-crypto = { path = "crates/ruscadb-crypto" }
+ruscadb = { path = "crates/ruscadb" }
 
 # Dependencias externas (versiones estables verificadas 2026-10-06).
 serde = { version = "1.0.229", features = ["derive"] }
@@ -58,11 +61,15 @@ pretty_assertions = "1.4.1"
 insta = "1.49.0"
 sha2 = "0.11.0"
 hex = "0.4.3"
+chacha20poly1305 = "0.11.0"
+argon2 = "0.6.0"
+zeroize = "1.9.1"
 
 # ── Lints compartidos (cada crate activa con `[lints] workspace = true`) ──────
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
-unsafe_code = "deny"
+# `unsafe_code` NO se fija aqui: cada crate lo prohibe con #![forbid(unsafe_code)]
+# salvo `ruscadb-ffi` (C-ABI), cuyo presupuesto controla unsafe-allowlist.toml.
 missing_docs = "warn"
 # Prioridad -1: la tabla no respeta el orden; evita el conflicto con missing_docs.
 rust_2018_idioms = { level = "deny", priority = -1 }

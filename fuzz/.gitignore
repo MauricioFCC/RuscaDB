@@ -1,0 +1,6 @@
+# Artefactos de cargo-fuzz (no versionar).
+/target/
+/corpus/
+/artifacts/
+/coverage/
+*.profraw

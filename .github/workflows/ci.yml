@@ -91,3 +91,25 @@ jobs:
         env:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --workspace --no-deps --all-features
+
+  # SBOM CycloneDX (supply chain, roadmap §6.5). No bloqueante: informa la
+  # composicion de dependencias y se adjunta a los releases.
+  sbom:
+    name: SBOM (CycloneDX)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
+      - name: Generate CycloneDX SBOM (JSON)
+        run: cargo cyclonedx --format json --all
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: "**/bom.json"
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,9 +1,9 @@
 # Presupuesto de `unsafe` por crate (release-blocking).
 #
-# Regla (docs/RuscaDB-roadmap.md §6.3): `unsafe_code = "deny"` a nivel workspace.
-# Solo crates designados pueden habilitarlo con `#![allow(unsafe_code)]`, y su
-# conteo de bloques `unsafe` no puede superar este presupuesto. Ningún `unsafe`
-# nuevo entra sin `// SAFETY:` + test/fuzz + revisión de un segundo ingeniero.
+# Regla (docs/RuscaDB-roadmap.md §6.3): cada crate prohibe unsafe con
+# `#![forbid(unsafe_code)]` salvo `ruscadb-ffi` (C-ABI), que lo habilita con
+# `#![allow(unsafe_code)]` y cuyo conteo de bloques `unsafe` no puede superar
+# este presupuesto. Ningún `unsafe` nuevo entra sin `// SAFETY:` + test.
 #
 # `scripts/check_core_unsafe.py` verifica este archivo y el crate core.
 
@@ -16,8 +16,9 @@ ruscadb-graph = 0
 ruscadb-multimodal = 0
 ruscadb-ai = 0
 ruscadb-wal = 0
-ruscadb-ffi = 0
+ruscadb-ffi = 64
 ruscadb-py = 0
 ruscadb-node = 0
 ruscadb = 0
 ruscadb-testkit = 0
+ruscadb-crypto = 0

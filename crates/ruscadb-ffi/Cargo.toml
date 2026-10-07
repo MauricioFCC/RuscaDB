@@ -13,3 +13,8 @@ workspace = true
 
 [dependencies]
 ruscadb-core = { workspace = true }
+ruscadb = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+pretty_assertions = { workspace = true }
