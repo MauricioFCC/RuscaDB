@@ -72,6 +72,11 @@ jobs:
   security:
     name: Security
     runs-on: ubuntu-latest
+    # rustsec/audit-check publica un check-run: requiere `checks: write` ademas
+    # de `contents: read` (si no, falla con "Resource not accessible by integration").
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
       - name: cargo-deny (advisories, licenses, bans, sources)
