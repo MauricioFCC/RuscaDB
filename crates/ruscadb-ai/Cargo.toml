@@ -18,3 +18,8 @@ onnx = []
 
 [dependencies]
 ruscadb-core = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }

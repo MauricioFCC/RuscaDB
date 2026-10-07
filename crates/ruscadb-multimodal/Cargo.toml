@@ -14,3 +14,11 @@ workspace = true
 [dependencies]
 ruscadb-core = { workspace = true }
 ruscadb-storage = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }
