@@ -777,6 +777,7 @@ dependencies = [
  "pretty_assertions",
  "ruscadb",
  "ruscadb-core",
+ "serde_json",
  "tempfile",
 ]
 

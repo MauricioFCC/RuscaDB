@@ -5,8 +5,8 @@
  *
  * Carga la biblioteca dinamica `ruscadb_ffi` compilada con
  * `cargo build -p ruscadb-ffi` y expone una API delgada: `open`, `read_page`,
- * `write_page`, `commit`, `close` y `lastError`. No reimplementa logica: todo
- * el trabajo lo hace el motor Rust a traves del ABI.
+ * `write_page`, `commit`, `close`, `execute` y `lastError`. No reimplementa
+ * logica: todo el trabajo lo hace el motor Rust a traves del ABI.
  *
  * Uso:
  *   const ruscadb = require('./ruscadb');
@@ -32,6 +32,7 @@ const RC_NULL_POINTER = 1;
 const RC_INVALID_HANDLE = 2;
 const RC_DOMAIN_ERROR = 3;
 const RC_PANIC = 4;
+const RC_BUFFER_TOO_SMALL = 5;
 
 /** Error devuelto por el C-ABI de RuscaDB. */
 class RuscadbError extends Error {
@@ -122,6 +123,16 @@ function loadSymbols(explicitPath) {
     ]),
     commit: library.func('ruscadb_commit', 'int', [koffi.pointer('void')]),
     close: library.func('ruscadb_close', 'int', [koffi.pointer('void')]),
+    executeLen: library.func('ruscadb_execute_len', 'size_t', [
+      koffi.pointer('void'),
+      'str',
+    ]),
+    execute: library.func('ruscadb_execute', 'int', [
+      koffi.pointer('void'),
+      'str',
+      'char *',
+      'size_t',
+    ]),
     lastError: library.func('ruscadb_last_error', 'size_t', ['char *', 'size_t']),
   };
 }
@@ -156,6 +167,7 @@ function buildApi(symbols) {
     RC_INVALID_HANDLE,
     RC_DOMAIN_ERROR,
     RC_PANIC,
+    RC_BUFFER_TOO_SMALL,
     RuscadbError,
     lastError,
 
@@ -219,6 +231,27 @@ function buildApi(symbols) {
     close(handle) {
       check(symbols.close(handle));
     },
+
+    /**
+     * Ejecuta una consulta RQL y devuelve el JSON de las filas.
+     *
+     * Esquema JSON: array de filas; cada fila es un objeto `columna -> valor`
+     * y cada valor usa la forma externa de `ScalarValue` (por ejemplo
+     * `{"Int": 1}` o `{"Text": "x"}`).
+     *
+     * @param {object} handle Handle devuelto por `open`.
+     * @param {string} sql Consulta RQL.
+     * @returns {string} JSON serializado de las filas.
+     */
+    execute(handle, sql) {
+      const required = Number(symbols.executeLen(handle, sql));
+      if (required <= 0) {
+        throw new RuscadbError(RC_DOMAIN_ERROR, lastError());
+      }
+      const buffer = Buffer.alloc(required + 1);
+      check(symbols.execute(handle, sql, buffer, buffer.length));
+      return buffer.toString('utf8', 0, required);
+    },
   };
 }
 
@@ -248,6 +281,7 @@ const api = {
   RC_INVALID_HANDLE,
   RC_DOMAIN_ERROR,
   RC_PANIC,
+  RC_BUFFER_TOO_SMALL,
   RuscadbError,
   load,
   lastError: () => load().lastError(),
@@ -256,6 +290,7 @@ const api = {
   writePage: (handle, pageId, data) => load().writePage(handle, pageId, data),
   commit: (handle) => load().commit(handle),
   close: (handle) => load().close(handle),
+  execute: (handle, sql) => load().execute(handle, sql),
 };
 
 module.exports = api;

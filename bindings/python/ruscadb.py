@@ -2,8 +2,9 @@
 
 Carga la biblioteca dinamica `ruscadb_ffi` compilada con
 ``cargo build -p ruscadb-ffi`` y expone una API delgada: ``open``,
-``read_page``, ``write_page``, ``commit``, ``close`` y ``last_error``. No
-reimplementa logica: todo el trabajo lo hace el motor Rust a traves del ABI.
+``read_page``, ``write_page``, ``commit``, ``close``, ``execute`` y
+``last_error``. No reimplementa logica: todo el trabajo lo hace el motor Rust
+a traves del ABI.
 
 Uso:
     import ruscadb
@@ -34,6 +35,7 @@ RC_NULL_POINTER = 1
 RC_INVALID_HANDLE = 2
 RC_DOMAIN_ERROR = 3
 RC_PANIC = 4
+RC_BUFFER_TOO_SMALL = 5
 
 _U8P = POINTER(ctypes.c_uint8)
 _HANDLE_P = POINTER(c_void_p)
@@ -135,6 +137,10 @@ def load_library(path: str | os.PathLike[str] | None = None) -> ctypes.CDLL:
     library.ruscadb_commit.restype = c_int
     library.ruscadb_close.argtypes = [c_void_p]
     library.ruscadb_close.restype = c_int
+    library.ruscadb_execute_len.argtypes = [c_void_p, c_char_p]
+    library.ruscadb_execute_len.restype = c_size_t
+    library.ruscadb_execute.argtypes = [c_void_p, c_char_p, c_char_p, c_size_t]
+    library.ruscadb_execute.restype = c_int
     library.ruscadb_last_error.argtypes = [c_char_p, c_size_t]
     library.ruscadb_last_error.restype = c_size_t
     return library
@@ -268,6 +274,33 @@ def close(handle: c_void_p) -> None:
     _check(_lib().ruscadb_close(handle))
 
 
+def execute(handle: c_void_p, sql: str) -> str:
+    """Ejecuta una consulta RQL y devuelve el JSON de las filas.
+
+    Esquema JSON: array de filas; cada fila es un objeto ``columna -> valor``
+    y cada valor usa la forma externa de ``ScalarValue`` (por ejemplo
+    ``{"Int": 1}`` o ``{"Text": "x"}``).
+
+    Args:
+        handle: Handle devuelto por :func:`open`.
+        sql: Consulta RQL en texto UTF-8.
+
+    Returns:
+        El JSON serializado de las filas.
+
+    Raises:
+        RuscadbError: si la consulta o el handle fallan.
+    """
+    library = _lib()
+    encoded = sql.encode("utf-8")
+    length = int(library.ruscadb_execute_len(handle, encoded))
+    if length <= 0:
+        raise RuscadbError(RC_DOMAIN_ERROR, last_error())
+    buffer = ctypes.create_string_buffer(length + 1)
+    _check(library.ruscadb_execute(handle, encoded, buffer, c_size_t(len(buffer))))
+    return buffer.value.decode("utf-8", errors="replace")
+
+
 __all__ = [
     "PAGE_SIZE",
     "RC_OK",
@@ -275,6 +308,7 @@ __all__ = [
     "RC_INVALID_HANDLE",
     "RC_DOMAIN_ERROR",
     "RC_PANIC",
+    "RC_BUFFER_TOO_SMALL",
     "RuscadbError",
     "load_library",
     "last_error",
@@ -283,4 +317,5 @@ __all__ = [
     "write_page",
     "commit",
     "close",
+    "execute",
 ]

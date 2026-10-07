@@ -172,4 +172,57 @@ impl TxnManager {
     pub fn is_committed(&self, tx: TxId) -> bool {
         self.committed.contains(&tx)
     }
+
+    /// Calcula el *low watermark* MVCC (menor transacción en vuelo).
+    ///
+    /// Es el menor [`TxId`] en vuelo; si no hay ninguna transacción en vuelo,
+    /// devuelve el siguiente `TxId` a asignar. Todo lo `< watermark` está
+    /// confirmado (nunca en vuelo) y es visible a cualquier snapshot nuevo, de
+    /// modo que su purga no puede afectar a ningún lector futuro.
+    ///
+    /// Returns:
+    ///     La cota inferior de transacciones potencialmente visibles.
+    pub fn low_watermark(&self) -> TxId {
+        self.in_flight.first().copied().unwrap_or(self.next_tx)
+    }
+}
+
+/// Indica si `version` es obsoleta respecto a `watermark`.
+///
+/// Una versión es obsoleta cuando fue borrada por una transacción
+/// `deleted_tx = Some(d)` con `d < watermark`: el borrador ya está confirmado y
+/// por debajo del watermark, de modo que ningún snapshot futuro (con
+/// `tx_id >= watermark`) puede volver a verla.
+///
+/// Invariante: una versión viva (`deleted_tx == None`) nunca es obsoleta, y una
+/// borrada con `deleted_tx >= watermark` se conserva (aún visible a algún
+/// snapshot).
+///
+/// Args:
+///     version: Versión MVCC a evaluar.
+///     watermark: Low watermark actual (`TxnManager::low_watermark`).
+///
+/// Returns:
+///     `true` si la versión puede purgarse sin afectar a lectores futuros.
+pub fn is_obsolete(version: &Version, watermark: TxId) -> bool {
+    matches!(version.deleted_tx, Some(deleter) if deleter < watermark)
+}
+
+/// Purga *in-place* las versiones obsoletas y devuelve cuántas eliminó.
+///
+/// Conserva toda versión viva (`deleted_tx == None`) y toda versión borrada con
+/// `deleted_tx >= watermark` (aún visible a algún snapshot). Es un *no-op* sin
+/// pánicos para un vector vacío y es idempotente (una segunda pasada no elimina
+/// nada).
+///
+/// Args:
+///     versions: Versiones del registro; se filtran en el propio vector.
+///     watermark: Low watermark actual (`TxnManager::low_watermark`).
+///
+/// Returns:
+///     Número de versiones obsoletas eliminadas.
+pub fn gc(versions: &mut Vec<Version>, watermark: TxId) -> usize {
+    let before = versions.len();
+    versions.retain(|version| !is_obsolete(version, watermark));
+    before - versions.len()
 }

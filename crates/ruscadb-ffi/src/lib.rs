@@ -33,6 +33,9 @@ pub const RC_INVALID_HANDLE: c_int = 2;
 pub const RC_DOMAIN_ERROR: c_int = 3;
 /// Código de retorno: panic capturado en la frontera FFI.
 pub const RC_PANIC: c_int = 4;
+/// Código de retorno: buffer de salida insuficiente (no se escribió nada);
+/// el tamaño requerido está en `ruscadb_last_error`.
+pub const RC_BUFFER_TOO_SMALL: c_int = 5;
 
 /// Marca de handle vivo (`"RUSCADB1"` en ASCII). Detecta punteros corruptos.
 const HANDLE_MAGIC: u64 = 0x5255_5343_4144_4231;
@@ -387,15 +390,344 @@ pub extern "C" fn ruscadb_last_error(out_buf: *mut c_char, buf_len: usize) -> us
     })
 }
 
+/// Serializa filas a JSON y lo copia a `out_buf` respetando `buf_len`.
+///
+/// Esquema JSON (SPEC-0026, FR-0026-02): array de filas; cada fila es un
+/// objeto `columna -> valor`, y cada valor es la forma externa de
+/// `ScalarValue` (p. ej. `{"Int":1}`, `{"Text":"x"}`, `"Null"`).
+///
+/// Semántica del buffer: se escribe el JSON seguido de un byte NUL. Si
+/// `buf_len < json.len() + 1` no se escribe nada y se devuelve
+/// [`RC_BUFFER_TOO_SMALL`] dejando el tamaño requerido en `ruscadb_last_error`.
+fn write_json(out_buf: *mut c_char, buf_len: usize, json: &[u8]) -> c_int {
+    let required = json.len() + 1;
+    if buf_len < required {
+        set_last_error(&format!(
+            "ruscadb_execute: buffer insuficiente: se requieren {required} bytes"
+        ));
+        return RC_BUFFER_TOO_SMALL;
+    }
+    // SAFETY: `out_buf` es no nulo y `buf_len >= json.len() + 1`, luego los
+    // `json.len()` bytes de origen caben en el destino.
+    unsafe { core::ptr::copy_nonoverlapping(json.as_ptr(), out_buf.cast::<u8>(), json.len()) };
+    // SAFETY: tras copiar `json.len()` bytes queda al menos el byte del NUL
+    // (`json.len() < buf_len`), por lo que el offset está dentro del buffer.
+    let terminator = unsafe { out_buf.add(json.len()) };
+    // SAFETY: `terminator` apunta dentro de `out_buf` y es válido para escribir
+    // un byte.
+    unsafe { core::ptr::write(terminator, 0) };
+    RC_OK
+}
+
+/// Ejecuta `sql` sobre un handle validado y copia el JSON resultante.
+fn execute_into(
+    reference: &RuscadbHandle,
+    sql: *const c_char,
+    out_buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    // SAFETY: el contrato del ABI exige que `sql` sea una cadena C válida y no
+    // nula (el llamador ya validó que no es nula).
+    let query = unsafe { CStr::from_ptr(sql) }.to_string_lossy();
+    let mut guard = lock_handle(reference);
+    let rows = match guard.execute(query.as_ref()) {
+        Ok(rows) => rows,
+        Err(error) => {
+            set_last_error(&format!("ruscadb_execute: {error}"));
+            return RC_DOMAIN_ERROR;
+        }
+    };
+    match serde_json::to_vec(&rows) {
+        Ok(json) => write_json(out_buf, buf_len, &json),
+        Err(error) => {
+            set_last_error(&format!("ruscadb_execute: {error}"));
+            RC_DOMAIN_ERROR
+        }
+    }
+}
+
+/// Longitud en bytes (sin NUL) del JSON de `sql`, o `0` si falla.
+fn execute_len_into(reference: &RuscadbHandle, sql: *const c_char) -> usize {
+    // SAFETY: el contrato del ABI exige que `sql` sea una cadena C válida y no
+    // nula (el llamador ya validó que no es nula).
+    let query = unsafe { CStr::from_ptr(sql) }.to_string_lossy();
+    let mut guard = lock_handle(reference);
+    match guard.execute(query.as_ref()) {
+        Ok(rows) => match serde_json::to_vec(&rows) {
+            Ok(json) => json.len(),
+            Err(error) => {
+                set_last_error(&format!("ruscadb_execute_len: {error}"));
+                0
+            }
+        },
+        Err(error) => {
+            set_last_error(&format!("ruscadb_execute_len: {error}"));
+            0
+        }
+    }
+}
+
+/// Devuelve la longitud en bytes del JSON que produciría `sql` (sin el NUL
+/// terminador), o `0` si la consulta o el handle fallan (el detalle queda en
+/// `ruscadb_last_error`). Permite dimensionar `out_buf` antes de llamar a
+/// [`ruscadb_execute`].
+///
+/// Args:
+///     handle: Handle vivo devuelto por [`ruscadb_open`].
+///     sql: Consulta RQL en UTF-8 terminada en NUL.
+///
+/// Returns:
+///     Bytes requeridos para el JSON (sin NUL), o `0` si hay error.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_execute_len(handle: *mut RuscadbHandle, sql: *const c_char) -> usize {
+    guard_ffi_usize(|| {
+        if sql.is_null() {
+            set_last_error("ruscadb_execute_len: sql nulo");
+            return 0;
+        }
+        with_handle(handle, |reference| execute_len_into(reference, sql)).unwrap_or_default()
+    })
+}
+
+/// Ejecuta una consulta RQL y copia su JSON a `out_buf`.
+///
+/// Esquema JSON (FR-0026-02): array de filas; cada fila es un objeto
+/// `columna -> valor`, y cada valor es la forma externa de `ScalarValue`
+/// (p. ej. `{"Int":1}`, `{"Text":"x"}`, `"Null"`). El buffer recibe el JSON
+/// seguido de un byte NUL.
+///
+/// Semántica del buffer: si `buf_len < json.len() + 1` no se escribe nada y
+/// se devuelve [`RC_BUFFER_TOO_SMALL`] dejando en `ruscadb_last_error`
+/// cuántos bytes se requieren.
+///
+/// Args:
+///     handle: Handle vivo devuelto por [`ruscadb_open`].
+///     sql: Consulta RQL en UTF-8 terminada en NUL.
+///     out_buf: Buffer destino del JSON.
+///     buf_len: Capacidad de `out_buf` en bytes.
+///
+/// Returns:
+///     [`RC_OK`] si copió el JSON, o un código de error.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_execute(
+    handle: *mut RuscadbHandle,
+    sql: *const c_char,
+    out_buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if sql.is_null() {
+            set_last_error("ruscadb_execute: sql nulo");
+            return RC_NULL_POINTER;
+        }
+        if out_buf.is_null() {
+            set_last_error("ruscadb_execute: out_buf nulo");
+            return RC_NULL_POINTER;
+        }
+        resolve(with_handle(handle, |reference| {
+            execute_into(reference, sql, out_buf, buf_len)
+        }))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+    use ruscadb::{ColumnDef, ColumnType, ScalarMap, ScalarValue};
     use std::path::Path;
 
     /// Construye una ruta C terminada en NUL a partir de una ruta UTF-8.
     fn c_path(path: &Path) -> CString {
         CString::new(path.to_str().expect("ruta utf8")).expect("sin NUL en la ruta")
+    }
+
+    /// Rellena `t(a INT, b TEXT)` con tres filas usando el motor del handle.
+    fn seed_table(handle: *mut RuscadbHandle) {
+        // SAFETY: `handle` proviene de `open_handle` y sigue registrado/vivo
+        // durante el test, por lo que apunta a un `RuscadbHandle` válido.
+        let reference = unsafe { &*handle };
+        let mut guard = lock_handle(reference);
+        guard
+            .create_table(
+                "t",
+                vec![
+                    ColumnDef {
+                        name: "a".to_string(),
+                        col_type: ColumnType::Int,
+                    },
+                    ColumnDef {
+                        name: "b".to_string(),
+                        col_type: ColumnType::Text,
+                    },
+                ],
+            )
+            .expect("create_table");
+        for (value, label) in [(1_i64, "x"), (2, "x"), (3, "y")] {
+            let mut scalars = ScalarMap::new();
+            scalars.insert("a".to_string(), ScalarValue::Int(value));
+            scalars.insert("b".to_string(), ScalarValue::Text(label.to_string()));
+            guard.insert("t", scalars).expect("insert");
+        }
+    }
+
+    /// AC-0026-01 — una consulta válida devuelve `RC_OK` y un JSON con las filas.
+    #[test]
+    fn test_ac_0026_01_execute_returns_json() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("db.data");
+        let handle = open_handle(&path, 8);
+        seed_table(handle);
+
+        let sql = CString::new("SELECT * FROM t").expect("sql");
+        let mut buffer = [0 as c_char; 4096];
+        let code = ruscadb_execute(handle, sql.as_ptr(), buffer.as_mut_ptr(), buffer.len());
+        assert_eq!(code, RC_OK);
+
+        let raw: Vec<u8> = buffer.iter().map(|byte| *byte as u8).collect();
+        let text = CStr::from_bytes_until_nul(&raw).expect("NUL");
+        let parsed: serde_json::Value = serde_json::from_slice(text.to_bytes()).expect("json");
+        let rows = parsed.as_array().expect("array de filas");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].get("a"), Some(&serde_json::json!({"Int": 1})));
+        assert_eq!(rows[0].get("b"), Some(&serde_json::json!({"Text": "x"})));
+        assert_eq!(rows[2].get("a"), Some(&serde_json::json!({"Int": 3})));
+        assert_eq!(ruscadb_close(handle), RC_OK);
+    }
+
+    /// AC-0026-02 — una query inválida es `RC_DOMAIN_ERROR` con `last_error`.
+    #[test]
+    fn test_ac_0026_02_invalid_query_is_error() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("db.data");
+        let handle = open_handle(&path, 8);
+        seed_table(handle);
+        let mut buffer = [0 as c_char; 512];
+
+        let missing = CString::new("SELECT * FROM ausente").expect("sql");
+        assert_eq!(
+            ruscadb_execute(handle, missing.as_ptr(), buffer.as_mut_ptr(), buffer.len()),
+            RC_DOMAIN_ERROR
+        );
+        assert!(last_error().to_string_lossy().contains("ausente"));
+
+        let malformed = CString::new("no es rql").expect("sql");
+        assert_eq!(
+            ruscadb_execute(
+                handle,
+                malformed.as_ptr(),
+                buffer.as_mut_ptr(),
+                buffer.len()
+            ),
+            RC_DOMAIN_ERROR
+        );
+        assert!(!last_error().to_string_lossy().is_empty());
+        assert_eq!(ruscadb_close(handle), RC_OK);
+    }
+
+    /// AC-0026-03 — un buffer pequeño no desborda y reporta el tamaño requerido.
+    #[test]
+    fn test_ac_0026_03_small_buffer_reports_size() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("db.data");
+        let handle = open_handle(&path, 8);
+        seed_table(handle);
+
+        let sql = CString::new("SELECT * FROM t").expect("sql");
+        let required = ruscadb_execute_len(handle, sql.as_ptr());
+        assert!(required > 0, "el tamaño requerido debe ser positivo");
+
+        // BVA: `buf_len` = 0, 1, required-1 y required (falta el byte NUL).
+        for len in [0usize, 1, required.saturating_sub(1), required] {
+            let mut buffer = vec![0x7Fu8; len + 4];
+            let code = ruscadb_execute(handle, sql.as_ptr(), buffer.as_mut_ptr().cast(), len);
+            assert_eq!(code, RC_BUFFER_TOO_SMALL, "buf_len={len}");
+            assert!(
+                buffer[len..].iter().all(|byte| *byte == 0x7F),
+                "buf_len={len}: se escribió fuera del buffer"
+            );
+        }
+        let message = last_error().to_string_lossy().into_owned();
+        assert!(
+            message.contains(&(required + 1).to_string()),
+            "el error debe comunicar el tamaño requerido: {message}"
+        );
+
+        // Capacidad exacta (JSON + NUL) sí cabe y termina en NUL.
+        let mut exact = vec![0u8; required + 1];
+        let code = ruscadb_execute(handle, sql.as_ptr(), exact.as_mut_ptr().cast(), exact.len());
+        assert_eq!(code, RC_OK);
+        assert_eq!(exact[required], 0);
+        assert_eq!(ruscadb_close(handle), RC_OK);
+    }
+
+    /// AC-0026-04 — handle nulo/inválido/liberado y punteros nulos dan error.
+    #[test]
+    fn test_ac_0026_04_invalid_handle_is_error() {
+        let sql = CString::new("SELECT * FROM t").expect("sql");
+        let mut buffer = [0 as c_char; 64];
+
+        assert_eq!(
+            ruscadb_execute(
+                std::ptr::null_mut(),
+                sql.as_ptr(),
+                buffer.as_mut_ptr(),
+                buffer.len()
+            ),
+            RC_NULL_POINTER
+        );
+
+        let bogus = std::ptr::dangling_mut::<RuscadbHandle>();
+        assert_eq!(
+            ruscadb_execute(bogus, sql.as_ptr(), buffer.as_mut_ptr(), buffer.len()),
+            RC_INVALID_HANDLE
+        );
+        assert_eq!(ruscadb_execute_len(bogus, sql.as_ptr()), 0);
+
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("db.data");
+        let handle = open_handle(&path, 8);
+        assert_eq!(
+            ruscadb_execute(handle, std::ptr::null(), buffer.as_mut_ptr(), buffer.len()),
+            RC_NULL_POINTER
+        );
+        assert_eq!(
+            ruscadb_execute(handle, sql.as_ptr(), std::ptr::null_mut(), 0),
+            RC_NULL_POINTER
+        );
+        assert_eq!(ruscadb_execute_len(handle, std::ptr::null()), 0);
+
+        assert_eq!(ruscadb_close(handle), RC_OK);
+        assert_eq!(
+            ruscadb_execute(handle, sql.as_ptr(), buffer.as_mut_ptr(), buffer.len()),
+            RC_INVALID_HANDLE
+        );
+        assert_eq!(ruscadb_execute_len(handle, sql.as_ptr()), 0);
+    }
+
+    /// AC-0026-05 — los wrappers Python y Node exponen `execute`.
+    #[test]
+    fn test_ac_0026_05_wrappers_expose_execute() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+        let python = std::fs::read_to_string(root.join("bindings/python/ruscadb.py"))
+            .expect("wrapper Python");
+        assert!(python.contains("def execute("), "Python no expone execute");
+        assert!(
+            python.contains("ruscadb_execute"),
+            "Python no enlaza ruscadb_execute"
+        );
+
+        let node =
+            std::fs::read_to_string(root.join("bindings/node/ruscadb.js")).expect("wrapper Node");
+        assert!(
+            node.contains("execute(handle, sql)"),
+            "Node no expone execute"
+        );
+        assert!(
+            node.contains("ruscadb_execute"),
+            "Node no enlaza ruscadb_execute"
+        );
     }
 
     /// Abre un handle válido sobre `path` y falla el test si no lo consigue.

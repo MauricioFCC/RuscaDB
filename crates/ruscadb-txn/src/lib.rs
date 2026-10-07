@@ -25,7 +25,7 @@ pub mod manifest;
 pub mod mvcc;
 
 pub use manifest::{CURRENT_SCHEMA_VERSION, Manifest};
-pub use mvcc::{NO_TX, Snapshot, TxId, TxnManager, Version};
+pub use mvcc::{NO_TX, Snapshot, TxId, TxnManager, Version, gc, is_obsolete};
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -440,5 +440,211 @@ mod tests {
 
         let err = Manifest::load(&path).expect_err("fichero ausente debe fallar");
         assert!(matches!(err, RuscaError::Io(_)));
+    }
+
+    // ── SPEC-0025 — reaper MVCC (low watermark + GC de versiones) ────────────
+
+    /// AC-0025-01 — sin transacciones en vuelo, el watermark es el próximo `TxId`.
+    #[test] // @spec AC-0025-01
+    fn test_ac_0025_01_watermark_without_in_flight() {
+        let mut manager = TxnManager::new();
+        // Gestor recién creado: no hay nada en vuelo ⇒ primer TxId asignable.
+        assert_eq!(manager.low_watermark(), NO_TX + 1);
+
+        let first = manager.begin();
+        let second = manager.begin();
+        manager.commit(first).expect("commit 1");
+        manager.commit(second).expect("commit 2");
+
+        // Todas confirmadas ⇒ watermark = siguiente TxId a asignar.
+        assert_eq!(manager.low_watermark(), second + 1);
+        assert_eq!(manager.low_watermark(), manager.snapshot().tx_id + 1);
+    }
+
+    /// AC-0025-02 — con transacciones en vuelo, devuelve la menor de ellas.
+    #[test] // @spec AC-0025-02
+    fn test_ac_0025_02_watermark_with_in_flight() {
+        let mut manager = TxnManager::new();
+        let first = manager.begin();
+        let second = manager.begin();
+        let third = manager.begin();
+
+        assert_eq!(manager.low_watermark(), first);
+
+        manager.commit(first).expect("commit first");
+        assert_eq!(manager.low_watermark(), second);
+
+        manager.commit(second).expect("commit second");
+        assert_eq!(manager.low_watermark(), third);
+    }
+
+    /// AC-0025-03 — `gc` purga las versiones borradas por debajo del watermark.
+    #[test] // @spec AC-0025-03
+    fn test_ac_0025_03_gc_purges_obsolete() {
+        let mut manager = TxnManager::new();
+        let creator = manager.begin();
+        manager.commit(creator).expect("commit creator");
+        let deleter = manager.begin();
+        manager.commit(deleter).expect("commit deleter");
+        let live_tx = manager.begin(); // queda en vuelo
+        let watermark = manager.low_watermark();
+        assert_eq!(watermark, live_tx);
+
+        // Ambas borradas por txs confirmadas por debajo del watermark.
+        let obsolete_a = Version {
+            created_tx: creator,
+            deleted_tx: Some(deleter),
+        };
+        let obsolete_b = Version {
+            created_tx: NO_TX,
+            deleted_tx: Some(creator),
+        };
+        let mut versions = vec![obsolete_a, obsolete_b];
+
+        let removed = gc(&mut versions, watermark);
+
+        assert_eq!(removed, 2);
+        assert!(versions.is_empty());
+    }
+
+    /// AC-0025-04 — `gc` conserva las vivas y las borradas a/por encima.
+    #[test] // @spec AC-0025-04
+    fn test_ac_0025_04_gc_keeps_live_and_recent() {
+        let watermark = 5;
+        let live = Version::new(3);
+        let deleted_at = Version {
+            created_tx: 2,
+            deleted_tx: Some(watermark), // frontera: aún visible
+        };
+        let deleted_above = Version {
+            created_tx: 2,
+            deleted_tx: Some(watermark + 1),
+        };
+        let mut versions = vec![live, deleted_at, deleted_above];
+        let original = versions.clone();
+
+        let removed = gc(&mut versions, watermark);
+
+        assert_eq!(removed, 0);
+        assert_eq!(versions, original);
+    }
+
+    /// AC-0025-05 — `gc` es no-op con vacío e idempotente (sin pánicos).
+    #[test] // @spec AC-0025-05
+    fn test_ac_0025_05_gc_is_idempotent() {
+        // Conjunto vacío: siempre 0, sin pánicos en los extremos del watermark.
+        let mut empty: Vec<Version> = Vec::new();
+        assert_eq!(gc(&mut empty, NO_TX), 0);
+        assert_eq!(gc(&mut empty, u64::MAX), 0);
+
+        // Segunda pasada sobre un conjunto ya purgado no elimina nada.
+        let mut manager = TxnManager::new();
+        let creator = manager.begin();
+        manager.commit(creator).expect("commit creator");
+        let deleter = manager.begin();
+        manager.commit(deleter).expect("commit deleter");
+        let live_tx = manager.begin();
+        let watermark = manager.low_watermark();
+
+        let mut versions = vec![
+            Version {
+                created_tx: creator,
+                deleted_tx: Some(deleter),
+            },
+            Version::new(live_tx),
+        ];
+
+        assert_eq!(gc(&mut versions, watermark), 1);
+        assert_eq!(gc(&mut versions, watermark), 0);
+    }
+
+    // ── BVA `is_obsolete` (fronteras del watermark) ──────────────────────────
+
+    /// BVA: `watermark = 0` nunca hace obsoleta ninguna versión (unsigned).
+    #[test]
+    fn test_bva_is_obsolete_watermark_zero_never_obsolete() {
+        let version = Version {
+            created_tx: NO_TX,
+            deleted_tx: Some(NO_TX),
+        };
+        assert!(!is_obsolete(&version, NO_TX));
+    }
+
+    /// BVA: `deleted_tx == watermark` se conserva; por debajo sí es obsoleta.
+    #[test]
+    fn test_bva_is_obsolete_at_watermark_is_kept() {
+        let version = Version {
+            created_tx: 1,
+            deleted_tx: Some(7),
+        };
+        assert!(!is_obsolete(&version, 7)); // igual: aún visible
+        assert!(is_obsolete(&version, 8)); // por debajo: obsoleta
+    }
+
+    /// BVA: una versión viva (`deleted_tx == None`) nunca es obsoleta.
+    #[test]
+    fn test_bva_is_obsolete_live_is_never_obsolete() {
+        assert!(!is_obsolete(&Version::new(3), u64::MAX));
+    }
+
+    // PBT — NF-0025-01: `gc` nunca purga una versión visible a un snapshot
+    // cuyo `tx_id >= watermark`.
+    proptest! {
+        #[test]
+        fn proptest_ac_0025_gc_never_purges_visible(
+            committed in 0usize..=6,
+            in_flight in 1usize..=4,
+            deletions in proptest::collection::vec(any::<Option<usize>>(), 0..=8),
+        ) {
+            let mut manager = TxnManager::new();
+            let mut committed_txs: Vec<TxId> = Vec::new();
+            for _ in 0..committed {
+                let tx = manager.begin();
+                manager.commit(tx).expect("commit");
+                committed_txs.push(tx);
+            }
+            let mut flight_txs: Vec<TxId> = Vec::new();
+            for _ in 0..in_flight {
+                flight_txs.push(manager.begin());
+            }
+
+            let watermark = manager.low_watermark();
+            let snapshot = manager.snapshot();
+            // Con transacciones en vuelo, el snapshot es >= watermark por construcción.
+            prop_assert!(snapshot.tx_id >= watermark);
+
+            let candidates: Vec<TxId> = committed_txs
+                .iter()
+                .chain(flight_txs.iter())
+                .copied()
+                .collect();
+
+            let mut versions: Vec<Version> = committed_txs
+                .iter()
+                .copied()
+                .map(Version::new)
+                .collect();
+            for (index, deletion) in deletions.iter().enumerate() {
+                let creator = candidates[index % candidates.len()];
+                let deleter = candidates[deletion.unwrap_or(0) % candidates.len()];
+                versions.push(Version {
+                    created_tx: creator,
+                    deleted_tx: Some(deleter),
+                });
+            }
+
+            let before = versions.clone();
+            let removed = gc(&mut versions, watermark);
+            prop_assert_eq!(removed, before.len() - versions.len());
+
+            for version in &before {
+                if snapshot.is_visible(version) {
+                    prop_assert!(
+                        versions.contains(version),
+                        "gc purgó una versión visible a un snapshot >= watermark"
+                    );
+                }
+            }
+        }
     }
 }
