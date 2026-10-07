@@ -85,10 +85,15 @@ Desktop.ini
 # ── Swarmind mirror (.opencode/) ─────────────────────────────────────────────
 # El cerebro (agents/skills/core/plugin) se regenera con deploy_all; solo se
 # versiona la config propia del proyecto.
+#
+# LOCAL-ONLY, pero PRESERVADO en el respaldo del Drive: export_all_projects.py
+# incluye .opencode/ y docs/adr/ (gitignoreados) via su clave `extra_include`.
+# No hay conflicto: git no los sube; el respaldo del Drive si los guarda.
 .opencode/*
 !.opencode/config/
 !.opencode/plugin/
 
 # ── ADRs y decisiones de diseno (LOCAL-ONLY) ─────────────────────────────────
-# Politica ADR_POLICY en .opencode/config/project_config.yaml: no se comitean.
+# Politica ADR_POLICY en .opencode/config/project_config.yaml: no se comitean
+# al remoto, pero se preservan en el respaldo del Drive (extra_include).
 docs/adr/
