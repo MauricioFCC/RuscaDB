@@ -64,6 +64,13 @@ pub enum Expr {
     },
     /// Conjunción lógica.
     And(Box<Expr>, Box<Expr>),
+    /// Búsqueda full-text `MATCH(columna, 'texto')` dentro del `WHERE`.
+    Match {
+        /// Columna de texto indexada.
+        column: String,
+        /// Texto de la consulta (se tokeniza al buscar).
+        query: String,
+    },
 }
 
 /// Cláusula `KNN <columna> <|k|> [v1, v2, ...]` de búsqueda de vecinos.
@@ -158,6 +165,7 @@ impl fmt::Display for Expr {
                 write!(formatter, "{left} {} {right}", op.as_str())
             }
             Self::And(left, right) => write!(formatter, "{left} AND {right}"),
+            Self::Match { column, query } => write!(formatter, "MATCH({column}, '{query}')"),
         }
     }
 }

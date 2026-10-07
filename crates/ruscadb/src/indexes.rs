@@ -1,0 +1,304 @@
+//! Índices por tabla mantenidos en memoria por la fachada (SPEC-0017).
+//!
+//! Para cada tabla se conservan tres estructuras derivadas de los `Record`:
+//!
+//! - un [`HnswIndex`] con los embeddings (`record.vector`), mapeado a
+//!   [`RecordId`] por orden de inserción;
+//! - un [`CsrGraph`] con las aristas salientes (`record.edges.out`), con una
+//!   numeración densa de nodos (`NodeId`) ↔ [`RecordId`];
+//! - un [`InvertedIndex`] por cada columna `TEXT` del esquema, indexando el
+//!   escalar de texto de esa columna.
+//!
+//! Los índices son **derivados del heap**: no se serializan; al abrir la base
+//! se reconstruyen escaneando las tablas ([`Database::rebuild_indexes`]), lo que
+//! garantiza durabilidad sin un formato de índice persistente (fuera de
+//! alcance de SPEC-0017).
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use ruscadb_core::{Record, RecordId, RuscaError, ScalarValue};
+use ruscadb_fts::InvertedIndex;
+use ruscadb_graph::{CsrGraph, Direction, NodeId};
+use ruscadb_vector::{HnswIndex, HnswParams};
+
+use crate::catalog::{Catalog, ColumnType, TableDef};
+use crate::database::Database;
+use crate::heap::heap_scan;
+
+/// Índices derivados de una tabla (vector, grafo y full-text por columna).
+#[derive(Default)]
+pub(crate) struct TableIndexes {
+    vector: VectorIndex,
+    graph: GraphIndex,
+    fts: BTreeMap<String, InvertedIndex>,
+}
+
+/// Índice vectorial + mapeo de ids de nodo HNSW a `RecordId`.
+#[derive(Default)]
+struct VectorIndex {
+    index: Option<HnswIndex>,
+    ids: Vec<RecordId>,
+}
+
+/// Grafo CSR + mapeo bidireccional `RecordId` ↔ `NodeId`.
+#[derive(Default)]
+struct GraphIndex {
+    graph: CsrGraph,
+    to_node: BTreeMap<RecordId, NodeId>,
+    from_node: Vec<RecordId>,
+}
+
+impl TableIndexes {
+    /// Indica si la tabla tiene al menos un vector indexado.
+    ///
+    /// Returns:
+    ///     `true` si hay embeddings en el índice HNSW.
+    pub(crate) fn has_vector(&self) -> bool {
+        self.vector
+            .index
+            .as_ref()
+            .is_some_and(|index| !index.is_empty())
+    }
+
+    /// Indica si la tabla tiene al menos un nodo en el grafo (alguna arista).
+    ///
+    /// Returns:
+    ///     `true` si el CSR tiene nodos.
+    pub(crate) fn has_graph(&self) -> bool {
+        self.graph.graph.node_count() > 0
+    }
+
+    /// Busca todos los vectores indexados por cercanía a `query`.
+    ///
+    /// Args:
+    ///     query: Vector de consulta (misma dimensión que el índice).
+    ///
+    /// Returns:
+    ///     `RecordId` en orden de distancia ascendente (el más cercano primero).
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si la dimensión no coincide.
+    pub(crate) fn vector_search(&self, query: &[f32]) -> Result<Vec<RecordId>, RuscaError> {
+        let Some(index) = self.vector.index.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let total = index.len();
+        if total == 0 {
+            return Ok(Vec::new());
+        }
+        let hits = index.search(query, total, total)?;
+        Ok(hits
+            .into_iter()
+            .filter_map(|(node, _)| self.vector.ids.get(node).copied())
+            .collect())
+    }
+
+    /// Busca en el índice invertido de la columna `column`.
+    ///
+    /// Args:
+    ///     column: Columna `TEXT` indexada.
+    ///     query: Texto de la consulta (se tokeniza).
+    ///     k: Número máximo de documentos.
+    ///
+    /// Returns:
+    ///     `RecordId` ordenados por BM25 descendente; vacío si no hay índice.
+    pub(crate) fn text_search(&self, column: &str, query: &str, k: usize) -> Vec<RecordId> {
+        self.fts
+            .get(column)
+            .map(|index| {
+                index
+                    .search(query, k)
+                    .into_iter()
+                    .map(|(id, _)| id)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Calcula las semillas de un `TRAVERSE` a partir de los candidatos.
+    ///
+    /// Las semillas son los candidatos **raíz** (sin aristas entrantes); si
+    /// ninguno es raíz (p. ej. un ciclo) se usan todos los candidatos que
+    /// pertenecen al grafo. Los candidatos sin aristas quedan fuera.
+    ///
+    /// Args:
+    ///     candidates: `RecordId` que sobreviven al `WHERE`, en orden.
+    ///
+    /// Returns:
+    ///     Semillas en el orden recibido.
+    pub(crate) fn traversal_seeds(&self, candidates: &[RecordId]) -> Vec<RecordId> {
+        let roots: Vec<RecordId> = candidates
+            .iter()
+            .copied()
+            .filter(|id| self.is_root(id))
+            .collect();
+        if !roots.is_empty() {
+            return roots;
+        }
+        candidates
+            .iter()
+            .copied()
+            .filter(|id| self.graph.to_node.contains_key(id))
+            .collect()
+    }
+
+    /// Recorre el grafo desde `seeds` hasta `depth` y devuelve los registros.
+    ///
+    /// Args:
+    ///     seeds: Nodos de origen (raíces del grafo).
+    ///     depth: Profundidad máxima del recorrido (`DEPTH`).
+    ///
+    /// Returns:
+    ///     `RecordId` alcanzables en orden BFS, sin duplicados.
+    pub(crate) fn traverse(&self, seeds: &[RecordId], depth: u16) -> Vec<RecordId> {
+        let mut ordered = Vec::new();
+        let mut seen = BTreeSet::new();
+        for seed in seeds {
+            let Some(&node) = self.graph.to_node.get(seed) else {
+                continue;
+            };
+            for reached in self
+                .graph
+                .graph
+                .traverse(node, Direction::Out, depth, usize::MAX)
+            {
+                if let Some(record) = self.graph.from_node.get(reached as usize).copied() {
+                    if seen.insert(record) {
+                        ordered.push(record);
+                    }
+                }
+            }
+        }
+        ordered
+    }
+
+    /// Indexa un registro recién insertado en los tres modelos.
+    ///
+    /// Args:
+    ///     record: Registro completo (escalares, vector y aristas).
+    ///     table: Definición de la tabla (para localizar columnas `TEXT`).
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si un vector no coincide con la
+    ///     dimensión del índice de la tabla.
+    pub(crate) fn index_record(
+        &mut self,
+        record: &Record,
+        table: &TableDef,
+    ) -> Result<(), RuscaError> {
+        self.index_vector(record)?;
+        self.index_graph(record);
+        self.index_text(record, table);
+        Ok(())
+    }
+
+    /// Compila el CSR acumulado (idempotente; llamar tras indexar).
+    pub(crate) fn finalize(&mut self) {
+        self.graph.graph.build();
+    }
+
+    /// Inserta el embedding del registro en el índice HNSW.
+    fn index_vector(&mut self, record: &Record) -> Result<(), RuscaError> {
+        let Some(embedding) = record.vector.as_ref() else {
+            return Ok(());
+        };
+        if self.vector.index.is_none() {
+            let params = HnswParams::new(embedding.meta.metric);
+            self.vector.index = Some(HnswIndex::new(params, embedding.values.len())?);
+        }
+        if let Some(index) = self.vector.index.as_mut() {
+            index.insert(&embedding.values)?;
+            self.vector.ids.push(record.id);
+        }
+        Ok(())
+    }
+
+    /// Añade las aristas salientes del registro al grafo (sin compilar).
+    fn index_graph(&mut self, record: &Record) {
+        for edge in &record.edges.out {
+            let from = self.graph.node_id(record.id);
+            let to = self.graph.node_id(edge.node);
+            self.graph.graph.add_edge(from, to);
+        }
+    }
+
+    /// Indexa el escalar de texto de cada columna `TEXT` del esquema.
+    fn index_text(&mut self, record: &Record, table: &TableDef) {
+        for column in &table.columns {
+            if column.col_type != ColumnType::Text {
+                continue;
+            }
+            let Some(ScalarValue::Text(text)) = record.scalars.get(&column.name) else {
+                continue;
+            };
+            self.fts
+                .entry(column.name.clone())
+                .or_default()
+                .insert(record.id, text);
+        }
+    }
+
+    /// Indica si el registro es raíz (sin aristas entrantes en el grafo).
+    fn is_root(&self, id: &RecordId) -> bool {
+        self.graph
+            .to_node
+            .get(id)
+            .is_some_and(|node| self.graph.graph.neighbors(*node, Direction::In).is_empty())
+    }
+}
+
+impl GraphIndex {
+    /// Devuelve el `NodeId` de `id`, asignándolo si aún no existe.
+    ///
+    /// Args:
+    ///     id: Identificador de registro referenciado por una arista.
+    ///
+    /// Returns:
+    ///     La numeración densa asignada al registro.
+    fn node_id(&mut self, id: RecordId) -> NodeId {
+        if let Some(&node) = self.to_node.get(&id) {
+            return node;
+        }
+        let node = self.from_node.len() as NodeId;
+        self.from_node.push(id);
+        self.to_node.insert(id, node);
+        node
+    }
+}
+
+impl Database {
+    /// Reconstruye los índices en memoria escaneando todas las tablas.
+    ///
+    /// Se invoca al abrir la base (durabilidad): los índices son derivados del
+    /// heap y no se persisten (fuera de alcance de SPEC-0017).
+    ///
+    /// Errors:
+    ///     [`RuscaError::TableNotFound`] / [`RuscaError::DimensionMismatch`]
+    ///     si el heap contiene datos incoherentes con el catálogo.
+    pub(crate) fn rebuild_indexes(&mut self) -> Result<(), RuscaError> {
+        let catalog = Catalog::load(self)?;
+        let mut indexes = BTreeMap::new();
+        for name in catalog.table_names() {
+            let table = catalog.get(&name)?.clone();
+            let mut table_indexes = TableIndexes::default();
+            for (_, record) in heap_scan(self, &table)? {
+                table_indexes.index_record(&record, &table)?;
+            }
+            table_indexes.finalize();
+            indexes.insert(name, table_indexes);
+        }
+        self.indexes = indexes;
+        Ok(())
+    }
+
+    /// Acceso de solo lectura a los índices de una tabla.
+    ///
+    /// Args:
+    ///     table: Nombre de la tabla.
+    ///
+    /// Returns:
+    ///     Los índices, o `None` si la tabla no tiene entrada en memoria.
+    pub(crate) fn table_indexes(&self, table: &str) -> Option<&TableIndexes> {
+        self.indexes.get(table)
+    }
+}

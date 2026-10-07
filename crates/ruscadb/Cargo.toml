@@ -26,6 +26,7 @@ ruscadb-vector = { workspace = true }
 ruscadb-graph = { workspace = true }
 ruscadb-multimodal = { workspace = true }
 ruscadb-ai = { workspace = true }
+ruscadb-fts = { workspace = true }
 ruscadb-wal = { workspace = true }
 ruscadb-crypto = { workspace = true }
 postcard = { workspace = true }

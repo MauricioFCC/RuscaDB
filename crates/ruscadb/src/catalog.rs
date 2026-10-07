@@ -167,11 +167,10 @@ impl Catalog {
     /// Args:
     ///     database: Base abierta.
     pub(crate) fn load(database: &mut Database) -> Result<Self, RuscaError> {
-        let first = match database.read_page(PageId(0)) {
-            Ok(page) => page,
-            Err(RuscaError::PageOutOfRange { .. }) => return Ok(Self::new()),
-            Err(other) => return Err(other),
-        };
+        if !database.page_exists(PageId(0)) {
+            return Ok(Self::new());
+        }
+        let first = database.read_page(PageId(0))?;
         if read_magic(first.data()) != CATALOG_MAGIC {
             return Ok(Self::new());
         }

@@ -714,6 +714,7 @@ dependencies = [
  "ruscadb-ai",
  "ruscadb-core",
  "ruscadb-crypto",
+ "ruscadb-fts",
  "ruscadb-graph",
  "ruscadb-multimodal",
  "ruscadb-query",
@@ -842,6 +843,19 @@ name = "ruscadb-testkit"
 version = "0.1.0"
 dependencies = [
  "ruscadb-core",
+]
+
+[[package]]
+name = "ruscadb-txn"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "ruscadb-core",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

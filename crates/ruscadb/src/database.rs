@@ -6,6 +6,7 @@
 //!
 //! Ver `specs/durable_engine.md` (SPEC-0004).
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use ruscadb_core::RuscaError;
@@ -13,6 +14,7 @@ use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
 use ruscadb_wal::{Lsn, RecordKind, Wal};
 
 use crate::encryption::EncryptionConfig;
+use crate::indexes::TableIndexes;
 
 const COUNT_SIZE: usize = 4;
 const ID_SIZE: usize = 8;
@@ -50,6 +52,8 @@ pub struct Database {
     wal: Wal,
     wal_path: PathBuf,
     encryption: Option<EncryptionConfig>,
+    /// Índices derivados por tabla (HNSW/CSR/invertido), SPEC-0017.
+    pub(crate) indexes: BTreeMap<String, TableIndexes>,
 }
 
 impl Database {
@@ -81,9 +85,25 @@ impl Database {
             wal,
             wal_path,
             encryption: config.encryption,
+            indexes: BTreeMap::new(),
         };
         database.replay()?;
+        database.rebuild_indexes()?;
         Ok(database)
+    }
+
+    /// Indica si una página existe en el pool o en el archivo de datos.
+    ///
+    /// Evita intentar leer una página inexistente: el buffer pool reserva un
+    /// marco antes de fallar, lo que con pools pequeños agotaría la capacidad.
+    ///
+    /// Args:
+    ///     id: Página consultada.
+    ///
+    /// Returns:
+    ///     `true` si la página está en memoria o dentro del archivo.
+    pub(crate) fn page_exists(&self, id: PageId) -> bool {
+        self.pool.contains(id) || id.0 < self.file.page_count()
     }
 
     /// Lee una página (caché del pool; fallo de caché → `PagedFile`).

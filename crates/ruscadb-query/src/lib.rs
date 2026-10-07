@@ -24,6 +24,21 @@ mod tests {
     use rstest::rstest;
     use ruscadb_core::RuscaError;
 
+    /// Palabras reservadas de RQL: no pueden usarse como identificadores.
+    const RESERVED_IDENTIFIERS: [&str; 10] = [
+        "select", "from", "where", "and", "limit", "knn", "traverse", "depth", "explain", "match",
+    ];
+
+    /// Estrategia de identificadores que evita las palabras reservadas.
+    ///
+    /// Returns:
+    ///     Generador de nombres `[a-z]{1,8}` que no son palabras clave.
+    fn ident_strategy() -> impl Strategy<Value = String> {
+        "[a-z]{1,8}".prop_filter("identificador reservado", |name| {
+            !RESERVED_IDENTIFIERS.contains(&name.as_str())
+        })
+    }
+
     /// AC-0005-01 — `SELECT` con proyección de columnas.
     #[test]
     fn test_ac_0005_01_parse_simple_select() {
@@ -195,8 +210,8 @@ mod tests {
         /// Metamórfica: `Display` seguido de `parse` reconstruye el IR.
         #[test]
         fn prop_display_parse_roundtrip(
-            columns in prop::collection::vec("[a-z]{1,8}", 1..4),
-            table in "[a-z]{1,8}",
+            columns in prop::collection::vec(ident_strategy(), 1..4),
+            table in ident_strategy(),
             limit in prop::option::of(0u64..1000),
         ) {
             let select = Select {
@@ -338,18 +353,80 @@ mod tests {
         assert_eq!(Keyword::Traverse.as_str(), "TRAVERSE");
         assert_eq!(Keyword::Depth.as_str(), "DEPTH");
         assert_eq!(Keyword::Explain.as_str(), "EXPLAIN");
+        assert_eq!(Keyword::Match.as_str(), "MATCH");
+    }
+
+    /// `MATCH(col, 'texto')` se parsea como predicado de `WHERE`.
+    #[test]
+    fn test_parse_match_predicate() {
+        let query = parse("SELECT * FROM t WHERE MATCH(titulo, 'gato negro')").expect("parse");
+        assert_eq!(
+            query.filter,
+            Some(Expr::Match {
+                column: "titulo".to_string(),
+                query: "gato negro".to_string(),
+            })
+        );
+    }
+
+    /// `MATCH` es componible con comparaciones mediante `AND`.
+    #[test]
+    fn test_parse_match_composes_with_and() {
+        let query = parse("SELECT * FROM t WHERE a > 1 AND MATCH(titulo, 'gato')").expect("parse");
+        let expected = Expr::And(
+            Box::new(Expr::Compare {
+                left: Box::new(Expr::Column("a".to_string())),
+                op: CompareOp::Gt,
+                right: Box::new(Expr::Int(1)),
+            }),
+            Box::new(Expr::Match {
+                column: "titulo".to_string(),
+                query: "gato".to_string(),
+            }),
+        );
+        assert_eq!(query.filter, Some(expected));
+    }
+
+    /// `MATCH` sobrevive al roundtrip `Display → parse`.
+    #[test]
+    fn test_match_display_parse_roundtrip() {
+        let query =
+            parse("SELECT titulo FROM t WHERE MATCH(titulo, 'gato') LIMIT 3").expect("parse");
+        assert_eq!(
+            query.to_string(),
+            "SELECT titulo FROM t WHERE MATCH(titulo, 'gato') LIMIT 3"
+        );
+        assert_eq!(parse(&query.to_string()).expect("reparse"), query);
+    }
+
+    /// Formas mal formadas de `MATCH` devuelven `ParseError` con posición.
+    #[test]
+    fn test_malformed_match_is_error() {
+        let cases = [
+            "SELECT * FROM t WHERE MATCH titulo, 'gato')",
+            "SELECT * FROM t WHERE MATCH(titulo 'gato')",
+            "SELECT * FROM t WHERE MATCH(titulo, gato)",
+            "SELECT * FROM t WHERE MATCH(titulo, 'gato'",
+        ];
+        for input in cases {
+            let error = parse(input).unwrap_err();
+            assert!(
+                matches!(error, RuscaError::ParseError { .. }),
+                "input: {input} -> {error:?}"
+            );
+        }
     }
 
     proptest! {
         /// Metamórfica: roundtrip `Display → parse` con cláusulas aleatorias.
         #[test]
         fn prop_display_parse_roundtrip_with_extensions(
-            columns in prop::collection::vec("[a-z]{1,8}", 1..4),
-            table in "[a-z]{1,8}",
-            knn_column in "[a-z]{1,8}",
+            columns in prop::collection::vec(ident_strategy(), 1..4),
+            table in ident_strategy(),
+            knn_column in ident_strategy(),
             k in 0u64..1000,
             query in prop::collection::vec(0.0f64..1000.0, 0..4),
-            traverse_column in "[a-z]{1,8}",
+            traverse_column in ident_strategy(),
             depth in 0u16..1000,
             limit in prop::option::of(0u64..1000),
         ) {
@@ -369,8 +446,8 @@ mod tests {
         /// Metamórfica: roundtrip `Display → parse_statement` para `EXPLAIN`.
         #[test]
         fn prop_explain_display_parse_roundtrip(
-            table in "[a-z]{1,8}",
-            filter_column in "[a-z]{1,8}",
+            table in ident_strategy(),
+            filter_column in ident_strategy(),
             filter_value in 0i64..1000,
         ) {
             let select = Select {
@@ -389,6 +466,26 @@ mod tests {
             let text = statement.to_string();
             let reparsed = parse_statement(&text).expect("reparse");
             prop_assert_eq!(reparsed, statement);
+        }
+
+        /// Metamórfica: roundtrip `Display → parse` de `MATCH` con texto arbitrario.
+        #[test]
+        fn prop_match_display_parse_roundtrip(
+            table in ident_strategy(),
+            column in ident_strategy(),
+            query in "[a-zA-Z0-9 ]{0,24}",
+        ) {
+            let select = Select {
+                projection: Projection::All,
+                from: table,
+                filter: Some(Expr::Match { column, query }),
+                knn: None,
+                traverse: None,
+                limit: None,
+            };
+            let text = select.to_string();
+            let reparsed = parse(&text).expect("reparse");
+            prop_assert_eq!(reparsed, select);
         }
     }
 }

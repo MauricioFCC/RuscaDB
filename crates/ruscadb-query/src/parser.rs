@@ -199,14 +199,50 @@ impl Parser {
         Ok(Projection::Columns(columns))
     }
 
-    /// Parsea el filtro `WHERE` (comparaciones unidas por `AND`, asociativo izq.).
+    /// Parsea el filtro `WHERE` (predicados unidos por `AND`, asociativo izq.).
     fn parse_filter(&mut self) -> Result<Expr, RuscaError> {
-        let mut expr = self.parse_comparison()?;
+        let mut expr = self.parse_predicate()?;
         while self.match_keyword(Keyword::And) {
-            let right = self.parse_comparison()?;
+            let right = self.parse_predicate()?;
             expr = Expr::And(Box::new(expr), Box::new(right));
         }
         Ok(expr)
+    }
+
+    /// Parsea un predicado: `MATCH(...)` o una comparación escalar.
+    fn parse_predicate(&mut self) -> Result<Expr, RuscaError> {
+        if self.match_keyword(Keyword::Match) {
+            self.parse_match()
+        } else {
+            self.parse_comparison()
+        }
+    }
+
+    /// Parsea la búsqueda full-text `MATCH(columna, 'texto')`.
+    fn parse_match(&mut self) -> Result<Expr, RuscaError> {
+        self.expect_token(&Token::LParen, &format!("{EXPECTED_PREFIX}'(' tras MATCH"))?;
+        let column = self.expect_ident()?;
+        self.expect_token(
+            &Token::Comma,
+            &format!("{EXPECTED_PREFIX}',' entre la columna y el texto de MATCH"),
+        )?;
+        let query = self.expect_text()?;
+        self.expect_token(
+            &Token::RParen,
+            &format!("{EXPECTED_PREFIX}')' para cerrar MATCH"),
+        )?;
+        Ok(Expr::Match { column, query })
+    }
+
+    /// Exige un literal de texto entre comillas simples y lo devuelve.
+    fn expect_text(&mut self) -> Result<String, RuscaError> {
+        match self.peek().cloned() {
+            Some(Token::Text(value)) => {
+                self.advance();
+                Ok(value)
+            }
+            _ => Err(self.error(format!("{EXPECTED_PREFIX}un texto entre comillas simples"))),
+        }
     }
 
     /// Parsea una comparación `expr op expr`.

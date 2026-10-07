@@ -95,4 +95,37 @@ pub enum RuscaError {
         /// Descripción accionable del desajuste (qué valor, dónde, qué se esperaba).
         message: String,
     },
+
+    /// `MATCH` se aplicó sobre una columna que no es de texto indexable.
+    #[error(
+        "la columna '{column}' de la tabla '{table}' no es TEXT (MATCH solo indexa columnas de texto)"
+    )]
+    MissingTextColumn {
+        /// Tabla consultada.
+        table: String,
+        /// Columna sobre la que se pidió `MATCH`.
+        column: String,
+    },
+
+    /// `KNN` se aplicó sobre una tabla sin vectores indexados.
+    #[error(
+        "la tabla '{table}' no tiene vectores para la columna '{column}' (inserta registros con embedding vía insert_record)"
+    )]
+    MissingVector {
+        /// Tabla consultada.
+        table: String,
+        /// Columna de embedding pedida por `KNN`.
+        column: String,
+    },
+
+    /// `TRAVERSE` se aplicó sobre una tabla sin aristas de grafo.
+    #[error(
+        "la tabla '{table}' no tiene aristas para la columna '{column}' (inserta registros con edges.out vía insert_record)"
+    )]
+    MissingGraph {
+        /// Tabla consultada.
+        table: String,
+        /// Columna de aristas pedida por `TRAVERSE`.
+        column: String,
+    },
 }

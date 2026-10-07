@@ -15,6 +15,7 @@ use crate::database::Database;
 use crate::executor::{Row, execute_select};
 use crate::heap::{blank_slotted_page, heap_insert};
 use crate::index::index_insert;
+use crate::indexes::TableIndexes;
 
 impl Database {
     /// Crea una tabla con su esquema y reserva su primera página de heap.
@@ -34,14 +35,17 @@ impl Database {
         catalog.register_table(name, columns)?;
         let heap_start = catalog.get(name)?.heap_start;
         self.write_page(&blank_slotted_page(heap_start))?;
-        catalog.save(self)
+        catalog.save(self)?;
+        self.indexes
+            .insert(name.to_string(), TableIndexes::default());
+        Ok(())
     }
 
-    /// Inserta una fila validada contra el esquema (con auto-commit).
+    /// Inserta una fila con solo escalares (azúcar sobre [`Database::insert_record`]).
     ///
-    /// Valida presencia y tipo de cada columna (con coerción `Int→Float`
-    /// documentada), añade la fila al heap, mantiene el índice si existe,
-    /// persiste el catálogo y confirma (WAL-first).
+    /// Crea un [`Record`] nuevo (id ULID, sin vector/aristas) y delega: valida
+    /// el esquema (con coerción `Int→Float`), persiste en el heap, mantiene el
+    /// índice secundario y los índices derivados, y confirma (WAL-first).
     ///
     /// Args:
     ///     table: Tabla destino.
@@ -55,22 +59,53 @@ impl Database {
     ///     [`RuscaError::ColumnNotFound`] si falta/sobra una columna;
     ///     [`RuscaError::TypeMismatch`] si un valor no pertenece a su columna.
     pub fn insert(&mut self, table: &str, scalars: ScalarMap) -> Result<RecordId, RuscaError> {
-        let mut catalog = Catalog::load(self)?;
-        let validated = {
-            let definition = catalog.get(table)?;
-            validate_scalars(definition, table, scalars)?
-        };
         let record = Record {
             id: RecordId::new(),
-            scalars: validated,
+            scalars,
             doc: None,
             edges: EdgeSet::default(),
             vector: None,
             blob: None,
             meta: RecordMeta::default(),
         };
+        self.insert_record(table, record)
+    }
+
+    /// Inserta un [`Record`] completo y alimenta los índices derivados.
+    ///
+    /// Persiste en el heap los escalares, el embedding (`vector`) y las aristas
+    /// (`edges`) **tal como vienen**, conservando el `record.id` (necesario
+    /// para que `edges.out` referencie a otros registros). Además de mantener
+    /// el índice secundario de escalares (SPEC-0012), actualiza los índices en
+    /// memoria de la tabla: HNSW (vectores), CSR (aristas salientes) e inverso
+    /// (columnas `TEXT`). Confirma con auto-commit WAL-first.
+    ///
+    /// Args:
+    ///     table: Tabla destino.
+    ///     record: Registro completo (scalars + vector + edges).
+    ///
+    /// Returns:
+    ///     El [`RecordId`] del registro insertado (el mismo de `record`).
+    ///
+    /// Errors:
+    ///     [`RuscaError::TableNotFound`] si la tabla no existe;
+    ///     [`RuscaError::ColumnNotFound`] si falta/sobra una columna escalar;
+    ///     [`RuscaError::TypeMismatch`] si un escalar no pertenece a su columna;
+    ///     [`RuscaError::DimensionMismatch`] si un vector rompe la dimensión
+    ///     del índice de la tabla.
+    pub fn insert_record(
+        &mut self,
+        table: &str,
+        mut record: Record,
+    ) -> Result<RecordId, RuscaError> {
+        let mut catalog = Catalog::load(self)?;
+        let definition = catalog.get(table)?.clone();
+        record.scalars = validate_scalars(&definition, table, record.scalars)?;
         let locator = heap_insert(self, &mut catalog, table, &record)?;
         maintain_index(self, &mut catalog, table, &record, locator)?;
+        let entry = self.indexes.entry(table.to_string()).or_default();
+        entry.index_record(&record, &definition)?;
+        entry.finalize();
         catalog.save(self)?;
         Ok(record.id)
     }

@@ -9,10 +9,10 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use ruscadb_core::{Record, RuscaError, ScalarMap, ScalarValue};
-use ruscadb_query::{CompareOp, Expr, Projection, Select};
+use ruscadb_core::{Record, RecordId, RuscaError, ScalarMap, ScalarValue};
+use ruscadb_query::{CompareOp, Expr, KnnClause, Projection, Select, TraverseClause};
 
-use crate::catalog::{Catalog, TableDef};
+use crate::catalog::{Catalog, ColumnType, TableDef};
 use crate::database::Database;
 use crate::heap::{heap_read, heap_scan};
 use crate::index::index_lookup_eq;
@@ -21,6 +21,10 @@ use crate::index::index_lookup_eq;
 pub type Row = BTreeMap<String, ScalarValue>;
 
 /// Plan de acceso a una tabla.
+///
+/// `KnnScan`/`TraverseScan` señalan que la consulta incluye las cláusulas
+/// `KNN`/`TRAVERSE`: la base se obtiene por recorrido del heap (o por índice de
+/// igualdad) y la cláusula se resuelve después contra los índices en memoria.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Plan {
     /// Recorrido completo del heap.
@@ -30,22 +34,44 @@ pub enum Plan {
         /// Columna indexada usada.
         column: String,
     },
+    /// La consulta pide vecinos `KNN` (resueltos por el índice HNSW).
+    KnnScan {
+        /// Columna de embedding pedida.
+        column: String,
+    },
+    /// La consulta pide un recorrido `TRAVERSE` (resuelto por el CSR).
+    TraverseScan {
+        /// Columna de aristas pedida.
+        column: String,
+    },
 }
 
 /// Elige el plan de acceso para un `SELECT`.
+///
+/// Prioridad: `KNN` > `TRAVERSE` > `IndexScan` (filtro `columna = literal`
+/// sobre la columna indexada) > `FullScan`.
 ///
 /// Args:
 ///     select: Consulta analizada.
 ///     catalog: Catálogo con las tablas e índices.
 ///
 /// Returns:
-///     `IndexScan` si el filtro contiene `columna = literal` sobre la
-///     columna indexada; `FullScan` en otro caso.
+///     El [`Plan`] de acceso elegido.
 ///
 /// Errors:
 ///     [`RuscaError::TableNotFound`] si la tabla no existe.
 pub fn plan_for(select: &Select, catalog: &Catalog) -> Result<Plan, RuscaError> {
     let table = catalog.get(&select.from)?;
+    if let Some(knn) = &select.knn {
+        return Ok(Plan::KnnScan {
+            column: knn.column.clone(),
+        });
+    }
+    if let Some(traverse) = &select.traverse {
+        return Ok(Plan::TraverseScan {
+            column: traverse.column.clone(),
+        });
+    }
     let indexed = table.index.as_ref().map(|index| index.column.clone());
     let Some(column) = indexed else {
         return Ok(Plan::FullScan);
@@ -74,15 +100,32 @@ pub fn execute_select(database: &mut Database, select: &Select) -> Result<Vec<Ro
     execute_with_plan(database, select, plan)
 }
 
-/// Ejecuta un `SELECT` con un plan fijado (equivalencia Full/IndexScan).
+/// Ejecuta un `SELECT` con un plan fijado resolviendo cláusulas en orden.
+///
+/// Orden de resolución documentado (SPEC-0017 §Diseño):
+///
+/// 1. `WHERE` escalar (comparaciones, incluidas dentro de `AND`).
+/// 2. `MATCH` full-text (rank BM25) sobre el índice invertido de la columna.
+/// 3. `KNN` vectorial (índice HNSW, distancia ascendente, respeta `k`).
+/// 4. `TRAVERSE` de grafo (CSR, BFS acotado por `DEPTH`).
+/// 5. proyección.
+/// 6. `LIMIT`.
 ///
 /// Args:
 ///     database: Base abierta.
 ///     select: Consulta analizada.
-///     plan: Plan de acceso a usar.
+///     plan: Plan de acceso a usar para la lectura base.
 ///
 /// Returns:
-///     Filas proyectadas (hasta `LIMIT`, en orden de inserción).
+///     Filas proyectadas (hasta `LIMIT`), en el orden que fijen `MATCH`/`KNN`/
+///     `TRAVERSE` o, si no hay cláusulas de ranking, en orden de inserción.
+///
+/// Errors:
+///     [`RuscaError::TableNotFound`] / [`RuscaError::ColumnNotFound`] /
+///     [`RuscaError::TypeMismatch`] ante errores de esquema;
+///     [`RuscaError::MissingTextColumn`] / [`RuscaError::MissingVector`] /
+///     [`RuscaError::MissingGraph`] / [`RuscaError::DimensionMismatch`] ante
+///     cláusulas que no encajan con los datos de la tabla.
 pub fn execute_with_plan(
     database: &mut Database,
     select: &Select,
@@ -90,11 +133,25 @@ pub fn execute_with_plan(
 ) -> Result<Vec<Row>, RuscaError> {
     let table = Catalog::load(database)?.get(&select.from)?.clone();
     let candidates = fetch_candidates(database, &table, &plan, select.filter.as_ref())?;
-    let mut rows = Vec::new();
-    for (_, record) in &candidates {
-        if keeps_row(&table, select.filter.as_ref(), &record.scalars)? {
-            rows.push(project_row(&table, &select.projection, &record.scalars)?);
+    let (matches, scalar_filter) = split_matches(select.filter.as_ref());
+    let mut records = Vec::new();
+    for (_, record) in candidates {
+        if keeps_row(&table, scalar_filter.as_ref(), &record.scalars)? {
+            records.push(record);
         }
+    }
+    if !matches.is_empty() {
+        records = apply_matches(database, &table, &matches, records)?;
+    }
+    if let Some(knn) = &select.knn {
+        records = apply_knn(database, &table, knn, records)?;
+    }
+    if let Some(traverse) = &select.traverse {
+        records = apply_traverse(database, &table, traverse, records)?;
+    }
+    let mut rows = Vec::new();
+    for record in &records {
+        rows.push(project_row(&table, &select.projection, &record.scalars)?);
         if let Some(limit) = select.limit {
             if rows.len() >= limit as usize {
                 break;
@@ -105,6 +162,9 @@ pub fn execute_with_plan(
 }
 
 /// Obtiene los registros candidatos según el plan.
+///
+/// `KnnScan`/`TraverseScan` se resuelven con un recorrido del heap: las
+/// cláusulas de búsqueda se aplican después sobre los índices en memoria.
 fn fetch_candidates(
     database: &mut Database,
     table: &TableDef,
@@ -112,12 +172,174 @@ fn fetch_candidates(
     filter: Option<&Expr>,
 ) -> Result<Vec<(crate::heap::RowLocator, Record)>, RuscaError> {
     match plan {
-        Plan::FullScan => heap_scan(database, table),
+        Plan::FullScan | Plan::KnnScan { .. } | Plan::TraverseScan { .. } => {
+            heap_scan(database, table)
+        }
         Plan::IndexScan { column } => match find_eq_literal(filter, column) {
             Some(literal) => fetch_by_index(database, table, &literal),
             None => heap_scan(database, table),
         },
     }
+}
+
+/// Separa los predicados `MATCH` del resto del `WHERE`.
+///
+/// Returns:
+///     `(matches, filtro_escalar)`: la lista `(columna, texto)` de los `MATCH`
+///     hallados y el `WHERE` sin ellos (`None` si no queda nada).
+fn split_matches(filter: Option<&Expr>) -> (Vec<(String, String)>, Option<Expr>) {
+    let mut matches = Vec::new();
+    let scalar = collect_matches(filter, &mut matches);
+    (matches, scalar)
+}
+
+/// Recursivamente extrae los `MATCH` y reconstruye el filtro escalar.
+fn collect_matches(expression: Option<&Expr>, matches: &mut Vec<(String, String)>) -> Option<Expr> {
+    match expression? {
+        Expr::And(left, right) => {
+            let left = collect_matches(Some(left), matches);
+            let right = collect_matches(Some(right), matches);
+            combine_and(left, right)
+        }
+        Expr::Match { column, query } => {
+            matches.push((column.clone(), query.clone()));
+            None
+        }
+        other => Some(other.clone()),
+    }
+}
+
+/// Reconstruye un `AND` con los lados no vacíos.
+fn combine_and(left: Option<Expr>, right: Option<Expr>) -> Option<Expr> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(Expr::And(Box::new(left), Box::new(right))),
+        (Some(single), None) | (None, Some(single)) => Some(single),
+        (None, None) => None,
+    }
+}
+
+/// Aplica los `MATCH` (conjunción) y ordena por relevancia BM25.
+fn apply_matches(
+    database: &Database,
+    table: &TableDef,
+    matches: &[(String, String)],
+    records: Vec<Record>,
+) -> Result<Vec<Record>, RuscaError> {
+    let mut by_id: BTreeMap<RecordId, Record> = records
+        .into_iter()
+        .map(|record| (record.id, record))
+        .collect();
+    let mut ordered: Vec<RecordId> = by_id.keys().copied().collect();
+    for (column, query) in matches {
+        if table.column_type(column)? != ColumnType::Text {
+            return Err(RuscaError::MissingTextColumn {
+                table: table.name.clone(),
+                column: column.clone(),
+            });
+        }
+        let Some(index) = database.table_indexes(&table.name) else {
+            ordered.clear();
+            break;
+        };
+        let ranked = index.text_search(column, query, usize::MAX);
+        let position: BTreeMap<RecordId, usize> = ranked
+            .iter()
+            .enumerate()
+            .map(|(rank, id)| (*id, rank))
+            .collect();
+        let mut next: Vec<RecordId> = ordered
+            .iter()
+            .copied()
+            .filter(|id| position.contains_key(id))
+            .collect();
+        next.sort_by_key(|id| position.get(id).copied().unwrap_or(usize::MAX));
+        ordered = next;
+        if ordered.is_empty() {
+            break;
+        }
+    }
+    Ok(ordered
+        .into_iter()
+        .filter_map(|id| by_id.remove(&id))
+        .collect())
+}
+
+/// Aplica `KNN`: ordena por distancia HNSW y respeta `k`.
+fn apply_knn(
+    database: &Database,
+    table: &TableDef,
+    knn: &KnnClause,
+    records: Vec<Record>,
+) -> Result<Vec<Record>, RuscaError> {
+    let index = database
+        .table_indexes(&table.name)
+        .ok_or(RuscaError::MissingVector {
+            table: table.name.clone(),
+            column: knn.column.clone(),
+        })?;
+    if !index.has_vector() {
+        return Err(RuscaError::MissingVector {
+            table: table.name.clone(),
+            column: knn.column.clone(),
+        });
+    }
+    if knn.k == 0 {
+        return Ok(Vec::new());
+    }
+    let query: Vec<f32> = knn.query.iter().map(|value| *value as f32).collect();
+    let ranked = index.vector_search(&query)?;
+    let position: BTreeMap<RecordId, usize> = ranked
+        .iter()
+        .enumerate()
+        .map(|(rank, id)| (*id, rank))
+        .collect();
+    let mut by_id: BTreeMap<RecordId, Record> = records
+        .into_iter()
+        .map(|record| (record.id, record))
+        .collect();
+    let mut ordered: Vec<RecordId> = by_id
+        .keys()
+        .copied()
+        .filter(|id| position.contains_key(id))
+        .collect();
+    ordered.sort_by_key(|id| position.get(id).copied().unwrap_or(usize::MAX));
+    ordered.truncate(knn.k as usize);
+    Ok(ordered
+        .into_iter()
+        .filter_map(|id| by_id.remove(&id))
+        .collect())
+}
+
+/// Aplica `TRAVERSE`: recorre el grafo desde las raíces de los candidatos.
+fn apply_traverse(
+    database: &Database,
+    table: &TableDef,
+    traverse: &TraverseClause,
+    records: Vec<Record>,
+) -> Result<Vec<Record>, RuscaError> {
+    let index = database
+        .table_indexes(&table.name)
+        .ok_or(RuscaError::MissingGraph {
+            table: table.name.clone(),
+            column: traverse.column.clone(),
+        })?;
+    if !index.has_graph() {
+        return Err(RuscaError::MissingGraph {
+            table: table.name.clone(),
+            column: traverse.column.clone(),
+        });
+    }
+    let mut by_id: BTreeMap<RecordId, Record> = records
+        .into_iter()
+        .map(|record| (record.id, record))
+        .collect();
+    let candidates: Vec<RecordId> = by_id.keys().copied().collect();
+    let seeds = index.traversal_seeds(&candidates);
+    let reachable = index.traverse(&seeds, traverse.depth);
+    Ok(reachable
+        .into_iter()
+        .filter_map(|id| by_id.remove(&id))
+        .collect())
 }
 
 /// Lee por índice los registros que igualan el literal.
@@ -168,7 +390,7 @@ fn expr_literal(expression: &Expr) -> Option<ScalarValue> {
         Expr::Int(number) => Some(ScalarValue::Int(*number)),
         Expr::Float(number) => Some(ScalarValue::Float(*number)),
         Expr::Text(text) => Some(ScalarValue::Text(text.clone())),
-        Expr::Column(_) | Expr::Compare { .. } | Expr::And(_, _) => None,
+        Expr::Column(_) | Expr::Compare { .. } | Expr::And(_, _) | Expr::Match { .. } => None,
     }
 }
 
@@ -198,6 +420,9 @@ fn validate_filter_columns(table: &TableDef, expression: &Expr) -> Result<(), Ru
             validate_filter_columns(table, left)?;
             validate_filter_columns(table, right)
         }
+        // `MATCH` se extrae antes de evaluar el filtro escalar (lo resuelve el
+        // índice full-text), así que aquí no valida columnas.
+        Expr::Match { .. } => Ok(()),
     }
 }
 
@@ -218,6 +443,10 @@ fn eval_predicate(expression: &Expr, scalars: &ScalarMap) -> Result<bool, RuscaE
                     .to_string(),
             })
         }
+        Expr::Match { .. } => Err(RuscaError::TypeMismatch {
+            message: "MATCH se resuelve en el índice full-text, no como comparación escalar"
+                .to_string(),
+        }),
     }
 }
 
@@ -228,9 +457,11 @@ fn eval_operand(expression: &Expr, scalars: &ScalarMap) -> Result<ScalarValue, R
         Expr::Int(number) => Ok(ScalarValue::Int(*number)),
         Expr::Float(number) => Ok(ScalarValue::Float(*number)),
         Expr::Text(text) => Ok(ScalarValue::Text(text.clone())),
-        Expr::Compare { .. } | Expr::And(_, _) => Err(RuscaError::TypeMismatch {
-            message: "una comparación no puede anidarse como operando".to_string(),
-        }),
+        Expr::Compare { .. } | Expr::And(_, _) | Expr::Match { .. } => {
+            Err(RuscaError::TypeMismatch {
+                message: "una comparación no puede anidarse como operando".to_string(),
+            })
+        }
     }
 }
 

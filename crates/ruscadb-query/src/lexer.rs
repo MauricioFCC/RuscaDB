@@ -23,6 +23,8 @@ pub enum Keyword {
     Depth,
     /// `EXPLAIN`
     Explain,
+    /// `MATCH` (búsqueda full-text dentro del `WHERE`).
+    Match,
 }
 
 impl Keyword {
@@ -38,6 +40,7 @@ impl Keyword {
             Self::Traverse => "TRAVERSE",
             Self::Depth => "DEPTH",
             Self::Explain => "EXPLAIN",
+            Self::Match => "MATCH",
         }
     }
 
@@ -59,6 +62,7 @@ impl Keyword {
             "traverse" => Some(Self::Traverse),
             "depth" => Some(Self::Depth),
             "explain" => Some(Self::Explain),
+            "match" => Some(Self::Match),
             _ => None,
         }
     }
@@ -101,6 +105,10 @@ pub enum Token {
     LBracket,
     /// `]`
     RBracket,
+    /// `(`
+    LParen,
+    /// `)`
+    RParen,
 }
 
 /// Token con su posición (byte) en el texto original.
@@ -189,6 +197,8 @@ impl<'a> Lexer<'a> {
             b'|' => return Err(parse_error("se esperaba '|>'", position)),
             b'[' => self.single(Token::LBracket),
             b']' => self.single(Token::RBracket),
+            b'(' => self.single(Token::LParen),
+            b')' => self.single(Token::RParen),
             b'\'' => Token::Text(self.read_string(position)?),
             b'0'..=b'9' => self.read_number(position)?,
             byte if byte.is_ascii_alphabetic() || byte == b'_' => self.read_word(),
