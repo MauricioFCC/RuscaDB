@@ -77,15 +77,12 @@ fn main() -> Result<(), ruscadb::RuscaError> {
 Vectors, graphs and full-text are queried through the same language:
 
 ```rust
-# use ruscadb::{Database, DbConfig};
-# fn demo(db: &mut Database) -> Result<(), ruscadb::RuscaError> {
 // k-nearest neighbours over a record's `embedding` field
-let _ = db.execute("SELECT * FROM items KNN embedding <|5|> [0.1, 0.2, 0.3]")?;
+db.execute("SELECT * FROM items KNN embedding <|5|> [0.1, 0.2, 0.3]")?;
 // graph traversal from a seed node
-let _ = db.execute("SELECT * FROM nodes TRAVERSE edges DEPTH 2")?;
+db.execute("SELECT * FROM nodes TRAVERSE edges DEPTH 2")?;
 // inspect the query plan
-let _ = db.execute("EXPLAIN SELECT * FROM docs WHERE score > 0.5")?;
-# Ok(()) }
+db.execute("EXPLAIN SELECT * FROM docs WHERE score > 0.5")?;
 ```
 
 ## Query language (RQL)
