@@ -48,15 +48,7 @@ pub fn heap_insert(
     table_name: &str,
     record: &Record,
 ) -> Result<RowLocator, RuscaError> {
-    let bytes = postcard::to_allocvec(record).map_err(|error| {
-        RuscaError::InvalidConfig(format!("la fila no se pudo serializar: {error}"))
-    })?;
-    if bytes.len() > MAX_ROW_BYTES {
-        return Err(RuscaError::InvalidConfig(format!(
-            "la fila serializada ocupa {} bytes y supera el límite de {MAX_ROW_BYTES} por página de 4 KiB (reduce columnas o el documento)",
-            bytes.len()
-        )));
-    }
+    let bytes = serialize_row(record)?;
     let existing: Vec<u64> = catalog.get(table_name)?.pages.clone();
     for raw in existing.iter().rev() {
         let page = database.read_page(PageId(*raw))?;
@@ -91,6 +83,139 @@ pub fn heap_read(database: &mut Database, locator: RowLocator) -> Result<Record,
         ))
     })?;
     decode_row(page.data(), *offset, *length)
+}
+
+/// Reescribe una fila en su localizador, recalculando los offsets de la página.
+///
+/// Conserva el localizador `(PageId, slot)` (el número y el orden de los slots
+/// no cambian): reempaqueta todas las filas desde el final de la página, de modo
+/// que la fila actualizada puede cambiar de longitud sin solapar a las demás.
+///
+/// Args:
+///     database: Base abierta.
+///     locator: Localizador `(PageId, slot)` de la fila a reescribir.
+///     record: Versión actualizada del registro.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si el slot no existe o el heap es inválido;
+///     [`RuscaError::InvalidConfig`] si la fila serializada no cabe en 4 KiB.
+pub fn heap_update(
+    database: &mut Database,
+    locator: RowLocator,
+    record: &Record,
+) -> Result<(), RuscaError> {
+    let bytes = serialize_row(record)?;
+    let page = database.read_page(locator.0)?;
+    let slots = parse_slots(page.data())?;
+    let target = locator.1 as usize;
+    if target >= slots.len() {
+        return Err(corrupt_heap(&format!(
+            "slot {} inexistente en la página {}",
+            locator.1, locator.0.0
+        )));
+    }
+    let repacked = repack_page(locator.0, page.data(), &slots, target, &bytes)?;
+    database.write_page(&repacked)
+}
+
+/// Serializa una fila validando la cabida en una página de 4 KiB.
+///
+/// Args:
+///     record: Registro a serializar.
+///
+/// Returns:
+///     Los bytes `postcard(Record)`.
+///
+/// Errors:
+///     [`RuscaError::InvalidConfig`] si la serialización falla o no cabe.
+fn serialize_row(record: &Record) -> Result<Vec<u8>, RuscaError> {
+    let bytes = postcard::to_allocvec(record).map_err(|error| {
+        RuscaError::InvalidConfig(format!("la fila no se pudo serializar: {error}"))
+    })?;
+    if bytes.len() > MAX_ROW_BYTES {
+        return Err(RuscaError::InvalidConfig(format!(
+            "la fila serializada ocupa {} bytes y supera el límite de {MAX_ROW_BYTES} por página de 4 KiB (reduce columnas o el documento)",
+            bytes.len()
+        )));
+    }
+    Ok(bytes)
+}
+
+/// Reempaqueta la página sustituyendo el slot `target` por `replacement`.
+///
+/// Args:
+///     id: Página reescrita.
+///     data: Bytes actuales de la página.
+///     slots: Directorio de slots validado.
+///     target: Índice del slot a sustituir.
+///     replacement: Bytes nuevos de la fila.
+///
+/// Returns:
+///     La página reempaquetada con los mismos slots en el mismo orden.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si el resultado no cabe en la página.
+fn repack_page(
+    id: PageId,
+    data: &[u8],
+    slots: &[(u16, u16)],
+    target: usize,
+    replacement: &[u8],
+) -> Result<Page, RuscaError> {
+    repack_page_fits(slots, target, replacement)?;
+    let mut page = Page::new(id);
+    let mut cursor = PAGE_SIZE;
+    let out = page.data_mut();
+    for (index, (offset, length)) in slots.iter().enumerate() {
+        let row: &[u8] = if index == target {
+            replacement
+        } else {
+            let (start, end) = (*offset as usize, *offset as usize + *length as usize);
+            data.get(start..end)
+                .ok_or_else(|| corrupt_heap("un slot apunta fuera de la página"))?
+        };
+        cursor -= row.len();
+        out[cursor..cursor + row.len()].copy_from_slice(row);
+        let at = COUNT_SIZE + index * SLOT_SIZE;
+        out[at..at + COUNT_SIZE].copy_from_slice(&(cursor as u16).to_le_bytes());
+        out[at + COUNT_SIZE..at + SLOT_SIZE].copy_from_slice(&(row.len() as u16).to_le_bytes());
+    }
+    set_slot_count(out, slots.len() as u16);
+    Ok(page)
+}
+
+/// Comprueba que el reempaquetado (directorio + filas) cabe en la página.
+///
+/// Args:
+///     slots: Directorio de slots validado.
+///     target: Índice del slot sustituido.
+///     replacement: Bytes nuevos de la fila.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si el resultado excede los 4 KiB.
+fn repack_page_fits(
+    slots: &[(u16, u16)],
+    target: usize,
+    replacement: &[u8],
+) -> Result<(), RuscaError> {
+    let directory_end = COUNT_SIZE + slots.len() * SLOT_SIZE;
+    let rows_total: usize = slots
+        .iter()
+        .enumerate()
+        .map(|(index, (_, length))| {
+            if index == target {
+                replacement.len()
+            } else {
+                *length as usize
+            }
+        })
+        .sum();
+    if directory_end + rows_total > PAGE_SIZE {
+        return Err(corrupt_heap(
+            "la fila actualizada no cabe en la página de 4 KiB",
+        ));
+    }
+    Ok(())
 }
 
 /// Recorre todas las filas del heap en orden de inserción.
@@ -267,4 +392,116 @@ fn decode_row(data: &[u8], offset: u16, length: u16) -> Result<Record, RuscaErro
 /// Construye un error de heap corrupto.
 fn corrupt_heap(message: &str) -> RuscaError {
     RuscaError::CorruptManifest(format!("heap corrupto: {message}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ruscadb_core::{EdgeSet, RecordId, RecordMeta, ScalarMap, ScalarValue};
+
+    /// Construye un registro cuyo payload `Bytes` tiene `size` bytes.
+    fn record_with_payload(size: usize) -> Record {
+        let mut scalars = ScalarMap::new();
+        scalars.insert("data".to_string(), ScalarValue::Bytes(vec![0u8; size]));
+        Record {
+            id: RecordId::new(),
+            scalars,
+            doc: None,
+            edges: EdgeSet::default(),
+            vector: None,
+            blob: None,
+            meta: RecordMeta::default(),
+        }
+    }
+
+    /// Encuentra un registro que serializa exactamente a `target` bytes.
+    fn record_of_serialized_len(target: usize) -> Record {
+        for size in 0..=target + 32 {
+            let record = record_with_payload(size);
+            if postcard::to_allocvec(&record).map(|bytes| bytes.len()) == Ok(target) {
+                return record;
+            }
+        }
+        panic!("no se encontró un registro de {target} bytes");
+    }
+
+    /// SPEC-0022 — `serialize_row` acepta exactamente `MAX_ROW_BYTES` y rechaza
+    /// un byte más (BVA del límite de página).
+    #[test]
+    fn test_ac_0022_serialize_row_size_boundary() {
+        let exact = record_of_serialized_len(MAX_ROW_BYTES);
+        assert!(
+            serialize_row(&exact).is_ok(),
+            "una fila de exactamente {MAX_ROW_BYTES} bytes cabe"
+        );
+        let over = record_of_serialized_len(MAX_ROW_BYTES + 1);
+        assert!(
+            serialize_row(&over).is_err(),
+            "una fila de {} bytes debe rechazarse",
+            MAX_ROW_BYTES + 1
+        );
+    }
+
+    /// Página ranurada sintética con dos filas en `(offset, bytes)`.
+    fn page_with(rows: &[(u16, &[u8])]) -> (Vec<u8>, Vec<(u16, u16)>) {
+        let mut data = vec![0u8; PAGE_SIZE];
+        let mut slots = Vec::new();
+        for (offset, bytes) in rows {
+            data[*offset as usize..*offset as usize + bytes.len()].copy_from_slice(bytes);
+            slots.push((*offset, bytes.len() as u16));
+        }
+        (data, slots)
+    }
+
+    /// SPEC-0022 — `repack_page` conserva el orden de slots y reescribe solo el
+    /// slot objetivo, recalculando offsets desde el final de la página.
+    #[test]
+    fn test_ac_0022_repack_page_preserves_order_and_content() {
+        let (data, slots) = page_with(&[(100, &[10, 11, 12, 13]), (200, &[20, 21, 22, 23])]);
+        let replacement = [1u8, 2, 3, 4, 5];
+        let page = repack_page(PageId(7), &data, &slots, 0, &replacement).expect("repack");
+
+        assert_eq!(page.id(), PageId(7));
+        let parsed = parse_slots(page.data()).expect("slots válidos");
+        assert_eq!(parsed.len(), 2, "el número de slots no cambia");
+        assert!(
+            parsed[0].0 > parsed[1].0,
+            "las filas crecen desde el final de la página"
+        );
+        let read = |slot: (u16, u16)| -> Vec<u8> {
+            page.data()[slot.0 as usize..slot.0 as usize + slot.1 as usize].to_vec()
+        };
+        assert_eq!(
+            read(parsed[0]),
+            replacement.to_vec(),
+            "slot objetivo sustituido"
+        );
+        assert_eq!(
+            read(parsed[1]),
+            vec![20, 21, 22, 23],
+            "el otro slot se conserva"
+        );
+    }
+
+    /// SPEC-0022 — `repack_page` acepta un reempaquetado que llena la página
+    /// exactamente y rechaza uno que la desborda por un byte (BVA del límite).
+    #[test]
+    fn test_ac_0022_repack_page_size_boundary() {
+        let other_offset = 2000u16;
+        let other = vec![7u8; (PAGE_SIZE - COUNT_SIZE - 2 * SLOT_SIZE) - 2000];
+        let (data, mut slots) = page_with(&[(other_offset, &other)]);
+        slots.insert(0, (0, 0)); // slot objetivo (reemplazado por `replacement`)
+
+        let fits = vec![9u8; 2000];
+        assert!(
+            repack_page(PageId(3), &data, &slots, 0, &fits).is_ok(),
+            "un reempaquetado que llena la página cabe"
+        );
+
+        let overflows = vec![9u8; 2001];
+        assert!(
+            repack_page(PageId(3), &data, &slots, 0, &overflows).is_err(),
+            "un reempaquetado que desborda la página falla"
+        );
+    }
 }

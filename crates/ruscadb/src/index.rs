@@ -88,6 +88,37 @@ pub fn index_insert(
     store_entries(database, catalog, table_name, entries)
 }
 
+/// Retira del índice la entrada de una fila borrada y reempaqueta las páginas.
+///
+/// No es un error que la tabla no tenga índice ni que el valor sea `NULL`: en
+/// ambos casos no hay entrada que retirar (mismo criterio que [`index_insert`]).
+///
+/// Args:
+///     database: Base abierta.
+///     catalog: Catálogo (asignador *bump* + definición de la tabla).
+///     table_name: Tabla dueña del índice.
+///     value: Valor indexado de la fila borrada.
+///     locator: Localizador de la fila borrada.
+///
+/// Errors:
+///     [`RuscaError::TypeMismatch`] si el valor no pertenece a la columna.
+pub fn index_remove(
+    database: &mut Database,
+    catalog: &mut Catalog,
+    table_name: &str,
+    value: &ScalarValue,
+    locator: RowLocator,
+) -> Result<(), RuscaError> {
+    if *value == ScalarValue::Null || catalog.get(table_name)?.index.is_none() {
+        return Ok(());
+    }
+    let column_type = indexed_column_type(catalog.get(table_name)?)?;
+    let key = canonical_key(column_type, value)?;
+    let mut entries = load_entries(database, catalog.get(table_name)?)?;
+    entries.retain(|(candidate, at)| !(candidate == &key && *at == locator));
+    store_entries(database, catalog, table_name, entries)
+}
+
 /// Busca los localizadores con clave igual (`Eq` por búsqueda binaria).
 ///
 /// Args:

@@ -792,6 +792,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruscadb-fvs"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "ruscadb-core",
+ "ruscadb-vector",
+]
+
+[[package]]
 name = "ruscadb-graph"
 version = "0.1.0"
 dependencies = [

@@ -31,6 +31,8 @@ pub(crate) struct TableIndexes {
     vector: VectorIndex,
     graph: GraphIndex,
     fts: BTreeMap<String, InvertedIndex>,
+    /// `RecordId` borrados lógicamente (tombstone): quedan fuera de los índices.
+    deleted: BTreeSet<RecordId>,
 }
 
 /// Índice vectorial + mapeo de ids de nodo HNSW a `RecordId`.
@@ -90,6 +92,7 @@ impl TableIndexes {
         Ok(hits
             .into_iter()
             .filter_map(|(node, _)| self.vector.ids.get(node).copied())
+            .filter(|id| !self.deleted.contains(id))
             .collect())
     }
 
@@ -110,6 +113,7 @@ impl TableIndexes {
                     .search(query, k)
                     .into_iter()
                     .map(|(id, _)| id)
+                    .filter(|id| !self.deleted.contains(id))
                     .collect()
             })
             .unwrap_or_default()
@@ -130,7 +134,7 @@ impl TableIndexes {
         let roots: Vec<RecordId> = candidates
             .iter()
             .copied()
-            .filter(|id| self.is_root(id))
+            .filter(|id| !self.deleted.contains(id) && self.is_root(id))
             .collect();
         if !roots.is_empty() {
             return roots;
@@ -138,7 +142,7 @@ impl TableIndexes {
         candidates
             .iter()
             .copied()
-            .filter(|id| self.graph.to_node.contains_key(id))
+            .filter(|id| !self.deleted.contains(id) && self.graph.to_node.contains_key(id))
             .collect()
     }
 
@@ -163,7 +167,7 @@ impl TableIndexes {
                 .traverse(node, Direction::Out, depth, usize::MAX)
             {
                 if let Some(record) = self.graph.from_node.get(reached as usize).copied() {
-                    if seen.insert(record) {
+                    if !self.deleted.contains(&record) && seen.insert(record) {
                         ordered.push(record);
                     }
                 }
@@ -195,6 +199,21 @@ impl TableIndexes {
     /// Compila el CSR acumulado (idempotente; llamar tras indexar).
     pub(crate) fn finalize(&mut self) {
         self.graph.graph.build();
+    }
+
+    /// Retira un registro de los índices derivados (borrado lógico).
+    ///
+    /// Marca su `RecordId` como tombstone y lo elimina del índice invertido; las
+    /// búsquedas vectorial y de grafo lo filtran por el tombstone para no
+    /// devolverlo (SPEC-0022, FR-0022-02).
+    ///
+    /// Args:
+    ///     record: Registro borrado (se usa su `id`).
+    pub(crate) fn remove_record(&mut self, record: &Record) {
+        self.deleted.insert(record.id);
+        for index in self.fts.values_mut() {
+            index.remove(&record.id);
+        }
     }
 
     /// Inserta el embedding del registro en el índice HNSW.
@@ -282,6 +301,11 @@ impl Database {
             let table = catalog.get(&name)?.clone();
             let mut table_indexes = TableIndexes::default();
             for (_, record) in heap_scan(self, &table)? {
+                // Las versiones borradas no entran en los índices derivados
+                // (SPEC-0022): solo se indexa la versión viva.
+                if record.meta.deleted_tx.is_some() {
+                    continue;
+                }
                 table_indexes.index_record(&record, &table)?;
             }
             table_indexes.finalize();
@@ -330,5 +354,87 @@ impl Database {
     ///     Los índices, o `None` si la tabla no tiene entrada en memoria.
     pub(crate) fn table_indexes(&self, table: &str) -> Option<&TableIndexes> {
         self.indexes.get(table)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::ColumnDef;
+    use ruscadb_core::{Embedding, EmbeddingMeta, Metric, RecordMeta, ScalarMap};
+    use ruscadb_storage::PageId;
+
+    /// Tabla mínima con una columna `TEXT` (para el índice invertido).
+    fn table_def() -> TableDef {
+        TableDef {
+            name: "t".to_string(),
+            columns: vec![ColumnDef {
+                name: "name".to_string(),
+                col_type: ColumnType::Text,
+            }],
+            heap_start: PageId(16),
+            pages: vec![16],
+            row_count: 0,
+            index: None,
+        }
+    }
+
+    /// Registro con vector (HNSW) y texto (invertido), sin aristas.
+    fn sample_record(id: RecordId) -> Record {
+        Record {
+            id,
+            scalars: ScalarMap::from([("name".to_string(), ScalarValue::Text("gato".to_string()))]),
+            doc: None,
+            edges: ruscadb_core::EdgeSet::default(),
+            vector: Some(
+                Embedding::new(
+                    vec![0.0, 0.0, 0.0],
+                    EmbeddingMeta {
+                        model_id: "test".to_string(),
+                        dim: 3,
+                        metric: Metric::L2,
+                    },
+                )
+                .expect("embedding válido"),
+            ),
+            blob: None,
+            meta: RecordMeta::default(),
+        }
+    }
+
+    /// SPEC-0022 — `remove_record` excluye el id de los índices vectorial y de
+    /// texto (tombstone) sin afectar a las filas vivas.
+    #[test]
+    fn test_ac_0022_remove_record_clears_derived_indexes() {
+        let table = table_def();
+        let victim = RecordId::new();
+        let survivor = RecordId::new();
+        let mut indexes = TableIndexes::default();
+        indexes
+            .index_record(&sample_record(victim), &table)
+            .expect("index victim");
+        indexes
+            .index_record(&sample_record(survivor), &table)
+            .expect("index survivor");
+        indexes.finalize();
+
+        assert_eq!(
+            indexes.vector_search(&[0.0, 0.0, 0.0]).expect("knn").len(),
+            2
+        );
+        assert_eq!(indexes.text_search("name", "gato", 10).len(), 2);
+
+        indexes.remove_record(&sample_record(victim));
+
+        let nearest = indexes.vector_search(&[0.0, 0.0, 0.0]).expect("knn");
+        assert!(
+            !nearest.contains(&victim) && nearest.contains(&survivor),
+            "HNSW excluye al borrado y conserva al vivo"
+        );
+        let hits = indexes.text_search("name", "gato", 10);
+        assert!(
+            !hits.contains(&victim) && hits.contains(&survivor),
+            "el índice invertido excluye al borrado y conserva al vivo"
+        );
     }
 }

@@ -10,6 +10,7 @@
 
 mod catalog;
 mod database;
+mod delete;
 mod encryption;
 mod executor;
 mod heap;
@@ -25,8 +26,8 @@ pub use encryption::EncryptionConfig;
 pub use executor::{
     Plan, Row, execute_select, execute_select_at, execute_with_plan, execute_with_plan_at, plan_for,
 };
-pub use heap::{RowLocator, heap_insert, heap_read, heap_scan};
-pub use index::{canonical_key, index_build, index_insert, index_lookup_eq};
+pub use heap::{RowLocator, heap_insert, heap_read, heap_scan, heap_update};
+pub use index::{canonical_key, index_build, index_insert, index_lookup_eq, index_remove};
 pub use ruscadb_core::{
     Edge, EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError,
     ScalarMap, ScalarValue,
