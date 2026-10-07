@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-wasm"
 description = "Bindings WebAssembly de RuscaDB (query, vector y full-text en el navegador)."
 version.workspace = true
@@ -30,7 +31,9 @@ ruscadb-fvs = { workspace = true }
 ruscadb-crypto = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-wasm-bindgen = { workspace = true, optional = true }
+# Nota: version directa (no `workspace = true`) porque cargo-deny 0.20 no
+# resuelve `optional = true` combinado con `workspace = true` (bug upstream).
+wasm-bindgen = { version = "0.2", optional = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

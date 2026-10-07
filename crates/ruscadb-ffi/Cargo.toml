@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-ffi"
 description = "C ABI estable de RuscaDB (handle table con generación)."
 version.workspace = true

@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-node"
 description = "Bindings Node.js de RuscaDB (napi-rs)."
 version.workspace = true

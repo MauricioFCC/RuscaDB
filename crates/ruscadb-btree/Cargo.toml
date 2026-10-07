@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-btree"
 description = "B+tree ordenado genérico de RuscaDB (índice primario/secundario)."
 version.workspace = true

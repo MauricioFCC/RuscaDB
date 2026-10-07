@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-crypto"
 description = "Cifrado en reposo de RuscaDB (XChaCha20-Poly1305 + Argon2id)."
 version.workspace = true

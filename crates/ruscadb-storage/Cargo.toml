@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-storage"
 description = "Adapter de almacenamiento de RuscaDB (buffer pool LRU-K + paged file)."
 version.workspace = true

@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-multimodal"
 description = "Ingesta y almacenamiento de blobs multimodales de RuscaDB."
 version.workspace = true

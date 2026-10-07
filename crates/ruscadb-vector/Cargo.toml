@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-vector"
 description = "Índice vectorial ANN de RuscaDB (HNSW)."
 version.workspace = true

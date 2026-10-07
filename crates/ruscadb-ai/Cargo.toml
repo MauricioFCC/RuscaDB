@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-ai"
 description = "Inferencia local de embeddings de RuscaDB (Candle/ONNX)."
 version.workspace = true

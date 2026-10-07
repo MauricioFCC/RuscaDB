@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-fvs"
 description = "Filtrado vectorial híbrido (pre/post/iFVS) de RuscaDB."
 version.workspace = true

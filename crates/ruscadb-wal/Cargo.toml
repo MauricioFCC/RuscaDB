@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-wal"
 description = "Write-Ahead Log global y MVCC de RuscaDB."
 version.workspace = true

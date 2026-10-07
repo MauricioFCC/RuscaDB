@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-query"
 description = "Motor de consultas de RuscaDB (RQL: lexer + parser + IR)."
 version.workspace = true

@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-graph"
 description = "Almacén de grafo de RuscaDB (adyacencia CSR + traversal)."
 version.workspace = true

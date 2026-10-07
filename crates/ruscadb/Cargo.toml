@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb"
 description = "Fachada y composition root de RuscaDB."
 version.workspace = true

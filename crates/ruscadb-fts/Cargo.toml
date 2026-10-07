@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-fts"
 description = "Índice invertido y ranking BM25 (full-text search) de RuscaDB."
 version.workspace = true

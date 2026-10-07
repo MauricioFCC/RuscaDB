@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-txn"
 description = "Gestor transaccional MVCC y manifiesto versionado de RuscaDB."
 version.workspace = true

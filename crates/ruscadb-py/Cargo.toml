@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-py"
 description = "Bindings Python de RuscaDB (PyO3)."
 version.workspace = true

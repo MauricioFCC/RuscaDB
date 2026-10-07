@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-core"
 description = "Dominio de RuscaDB: modelo unificado Record, catálogo y puertos (traits)."
 version.workspace = true

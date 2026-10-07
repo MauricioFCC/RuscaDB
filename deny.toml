@@ -5,10 +5,13 @@
 # y por `scripts/check_ci_config.py`. Ver docs/verification.md.
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+# Esquema actual de cargo-deny (>=0.16): `vulnerability`, `notice` y
+# `severity-threshold` fueron REMOVIDOS (toda vulnerabilidad/aviso es error).
+# `unmaintained`/`unsound` son ahora *scope*: all|workspace|transitive|none.
 yanked = "deny"
-notice = "warn"
+unmaintained = "workspace"
+unsound = "workspace"
+unused-ignored-advisory = "warn"
 ignore = []
 
 [licenses]
@@ -29,6 +32,10 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Las dependencias internas usan `workspace = true` (path sin versión): son
+# path-deps, no wildcards de registro. `allow-wildcard-paths` evita el falso
+# positivo; los crates externos siguen sin poder usar wildcards.
+allow-wildcard-paths = true
 # Preferir rustls/ring sobre OpenSSL nativo.
 deny = [{ name = "openssl-sys" }]
 # Crates inseguras/obsoletas conocidas (se amplía por fase).
