@@ -424,3 +424,190 @@ mod unit_tests {
         assert_eq!(index.max_connections(1), 8);
     }
 }
+
+#[cfg(test)]
+mod recall_tests {
+    use std::cmp::Ordering;
+
+    use super::*;
+
+    /// Semilla fija del corpus determinista (SPEC-0034).
+    const CORPUS_SEED: u64 = 0x0034_2026_1234_5678;
+    /// Número de vectores indexados.
+    const N_VECTORS: usize = 1000;
+    /// Dimensión de los vectores.
+    const DIM: usize = 16;
+    /// Número de consultas de evaluación.
+    const N_QUERIES: usize = 50;
+    /// Vecinos recuperados (recall@10).
+    const K: usize = 10;
+    /// Amplitud de búsqueda en consulta, elegida para superar el objetivo.
+    const EF_SEARCH: usize = 256;
+    /// Umbral mínimo de aceptación del recall.
+    const RECALL_TARGET: f64 = 0.95;
+
+    /// Generador congruencial lineal (LCG) propio y determinista.
+    struct Lcg {
+        state: u64,
+    }
+
+    impl Lcg {
+        /// Crea el LCG con una semilla no nula.
+        fn new(seed: u64) -> Self {
+            Self { state: seed | 1 }
+        }
+
+        /// Siguiente entero de 64 bits (constantes de Knuth).
+        fn next_u64(&mut self) -> u64 {
+            self.state = self
+                .state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            self.state
+        }
+
+        /// Siguiente flotante uniforme en `[0, 1)`.
+        fn next_unit(&mut self) -> f32 {
+            ((self.next_u64() >> 40) as f32) / ((1u32 << 24) as f32)
+        }
+    }
+
+    /// Vectores deterministas en `[-1, 1]` generados con el LCG propio.
+    ///
+    /// Args:
+    ///     count: Número de vectores.
+    ///     dim: Dimensión de cada vector.
+    ///     seed: Semilla fija del generador.
+    ///
+    /// Returns:
+    ///     La lista de vectores.
+    fn lcg_vectors(count: usize, dim: usize, seed: u64) -> Vec<Vec<f32>> {
+        let mut rng = Lcg::new(seed);
+        (0..count)
+            .map(|_| (0..dim).map(|_| rng.next_unit() * 2.0 - 1.0).collect())
+            .collect()
+    }
+
+    /// Construye un índice insertando los vectores en orden.
+    ///
+    /// Args:
+    ///     vectors: Vectores no vacíos de igual dimensión.
+    ///     metric: Métrica de distancia.
+    ///
+    /// Returns:
+    ///     El índice HNSW poblado.
+    fn build_index(vectors: &[Vec<f32>], metric: Metric) -> HnswIndex {
+        let mut index = HnswIndex::new(HnswParams::new(metric), vectors[0].len()).expect("new");
+        for vector in vectors {
+            index.insert(vector).expect("insert");
+        }
+        index
+    }
+
+    /// Oráculo de fuerza bruta: ids de los `k` más cercanos.
+    ///
+    /// Ordena por distancia ascendente y desempata por índice.
+    ///
+    /// Args:
+    ///     vectors: Corpus indexado.
+    ///     query: Vector de consulta.
+    ///     k: Número de vecinos exactos.
+    ///     metric: Métrica de distancia.
+    ///
+    /// Returns:
+    ///     Los ids del top-k exacto.
+    fn brute_force(vectors: &[Vec<f32>], query: &[f32], k: usize, metric: Metric) -> Vec<usize> {
+        let mut scored: Vec<(usize, f32)> = vectors
+            .iter()
+            .enumerate()
+            .map(|(id, vector)| {
+                let distance = crate::distance::distance(metric, query, vector).expect("dist");
+                (id, distance)
+            })
+            .collect();
+        scored.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        scored.into_iter().take(k).map(|(id, _)| id).collect()
+    }
+
+    /// Recall@k promedio de HNSW frente al oráculo de fuerza bruta.
+    ///
+    /// Args:
+    ///     index: Índice HNSW a evaluar.
+    ///     vectors: Corpus indexado (mismo orden de inserción).
+    ///     queries: Consultas de evaluación.
+    ///     k: Número de vecinos recuperados y exactos.
+    ///     metric: Métrica de distancia.
+    ///
+    /// Returns:
+    ///     El promedio de `|intersec| / k` sobre las consultas.
+    fn recall_at_k(
+        index: &HnswIndex,
+        vectors: &[Vec<f32>],
+        queries: &[Vec<f32>],
+        k: usize,
+        metric: Metric,
+    ) -> f64 {
+        if queries.is_empty() || k == 0 {
+            return 1.0;
+        }
+        let total: f64 = queries
+            .iter()
+            .map(|query| {
+                let expected = brute_force(vectors, query, k, metric);
+                let got: Vec<usize> = index
+                    .search(query, k, EF_SEARCH)
+                    .expect("search")
+                    .into_iter()
+                    .map(|(id, _)| id)
+                    .collect();
+                let hits = expected.iter().filter(|id| got.contains(id)).count();
+                hits as f64 / k as f64
+            })
+            .sum();
+        total / queries.len() as f64
+    }
+
+    /// AC-0034-01 — recall@10 de HNSW frente a fuerza bruta >= 0.95.
+    #[test]
+    fn test_ac_0034_01_recall_at_10_meets_target() {
+        let vectors = lcg_vectors(N_VECTORS, DIM, CORPUS_SEED);
+        let queries = lcg_vectors(N_QUERIES, DIM, CORPUS_SEED ^ 0xDEAD_BEEF);
+        let index = build_index(&vectors, Metric::L2);
+        let average = recall_at_k(&index, &vectors, &queries, K, Metric::L2);
+        println!(
+            "SPEC-0034 recall@{K} = {average:.4} (N={N_VECTORS}, M={N_QUERIES}, ef_search={EF_SEARCH})"
+        );
+        assert!(
+            average >= RECALL_TARGET,
+            "recall@{K} = {average:.4} (objetivo >= {RECALL_TARGET}, ef_search = {EF_SEARCH})"
+        );
+    }
+
+    /// AC-0034-02 — dos búsquedas idénticas devuelven el mismo resultado.
+    #[test]
+    fn test_ac_0034_02_search_is_deterministic() {
+        let vectors = lcg_vectors(200, DIM, CORPUS_SEED);
+        let index = build_index(&vectors, Metric::L2);
+        let query = lcg_vectors(1, DIM, 7).remove(0);
+        let first = index.search(&query, K, EF_SEARCH).expect("first");
+        let second = index.search(&query, K, EF_SEARCH).expect("second");
+        assert_eq!(first.len(), second.len());
+        for (a, b) in first.iter().zip(&second) {
+            assert_eq!(a.0, b.0, "ids distintos entre búsquedas");
+            assert_eq!(a.1.total_cmp(&b.1), Ordering::Equal, "distancias distintas");
+        }
+    }
+
+    /// AC-0034-03 — índice vacío o `k == 0` devuelven vacío sin panics.
+    #[test]
+    fn test_ac_0034_03_empty_and_zero_k_are_safe() {
+        let empty = HnswIndex::new(HnswParams::new(Metric::L2), DIM).expect("new");
+        let empty_results = empty.search(&[0.0; DIM], K, EF_SEARCH).expect("empty");
+        assert!(empty_results.is_empty());
+
+        let vectors = lcg_vectors(32, DIM, CORPUS_SEED);
+        let index = build_index(&vectors, Metric::L2);
+        let zero_k = index.search(&vectors[0], 0, EF_SEARCH).expect("zero k");
+        assert!(zero_k.is_empty());
+    }
+}

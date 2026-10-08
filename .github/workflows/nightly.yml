@@ -3,9 +3,10 @@
 # Alineado con docs/RuscaDB-roadmap.md §7.1 y SPEC-0016. Este pipeline NO
 # bloquea PRs: corre en `schedule`/`workflow_dispatch`, todos los jobs son
 # `continue-on-error: true` (alert-only) y suben artifacts para inspección.
-#   mutation -> cargo-mutants full sharded, umbral documentado MS >= 85 %
-#   fuzz     -> cargo-fuzz sobre query_parse y wal_recover (libFuzzer, nightly)
-#   miri     -> UB/unsafe en crates sin unsafe (query, fts, core)
+#   mutation   -> cargo-mutants full sharded, umbral documentado MS >= 85 %
+#   fuzz       -> cargo-fuzz sobre query_parse y wal_recover (libFuzzer, nightly)
+#   miri       -> UB/unsafe en crates sin unsafe (query, fts, core)
+#   sanitizers -> AddressSanitizer sobre ruscadb-ffi (nightly, linux-gnu)
 #
 # El gate T1 (determinista, bloquea merge) vive en `.github/workflows/ci.yml`.
 
@@ -126,3 +127,38 @@ jobs:
 
       - name: cargo miri test (crates sin unsafe)
         run: cargo +nightly miri test -p ruscadb-query -p ruscadb-fts -p ruscadb-core
+
+  # ── T3.4 — Sanitizers (AddressSanitizer, nightly, SPEC-0033) ────────────────
+  # Detección de memoria insegura (use-after-free, buffer overflow) en el
+  # adapter FFI, el único crate con `unsafe` permitido (unsafe-allowlist.toml).
+  # Requiere nightly + rust-src. Alert-only: no bloquea merge.
+  sanitizers:
+    name: Sanitizers (ASan)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo test -p ruscadb-ffi (AddressSanitizer)
+        # `ASAN_OPTIONS=detect_leaks=0`: el runtime del sanitizer y el allocator
+        # de Rust no son leak-clean por diseño; interesan los errores de memoria.
+        env:
+          RUSTFLAGS: "-Zsanitizer=address"
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: |
+          set -o pipefail
+          cargo +nightly test -p ruscadb-ffi \
+            --target x86_64-unknown-linux-gnu 2>&1 | tee asan-test.log
+
+      - name: Upload ASan log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sanitizers-asan-log
+          path: asan-test.log
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Valida la configuración de CI T3 y supply chain de RuscaDB (SPEC-0016).
+"""Valida la configuración de CI T1/T3 y supply chain de RuscaDB.
 
 Comprueba, sin dependencias externas obligatorias (solo stdlib):
 
-1. ``.github/workflows/nightly.yml`` es YAML parseable y declara los jobs
-   ``mutation``/``fuzz``/``miri`` (alert-only). Si PyYAML no está instalado se
-   aplica un parser textual robusto por indentación (documentado abajo).
-2. ``.cargo/mutants.toml`` es TOML válido y declara ``exclude_globs``/
+1. ``.github/workflows/ci.yml`` (T1) declara la matriz cross-platform del job
+   ``test`` (``ubuntu-latest``/``windows-latest``/``macos-latest``) — SPEC-0033.
+2. ``.github/workflows/nightly.yml`` (T3) es YAML parseable y declara los jobs
+   ``mutation``/``fuzz``/``miri``/``sanitizers`` (alert-only). Si PyYAML no está
+   instalado se aplica un parser textual robusto por indentación.
+3. ``.cargo/mutants.toml`` es TOML válido y declara ``exclude_globs``/
    ``test_tool``/``additional_cargo_test_args`` sin claves desconocidas que
    romperían cargo-mutants (``deny_unknown_fields``).
-3. ``deny.toml`` es TOML válido y declara las 4 secciones requeridas:
+4. ``deny.toml`` es TOML válido y declara las 4 secciones requeridas:
    ``[advisories]``, ``[licenses]``, ``[bans]``, ``[sources]``.
 
 Salida: exit 0 si todo cumple; exit 1 con diagnóstico legible si no.
@@ -28,11 +30,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
+CI = ROOT / ".github" / "workflows" / "ci.yml"
 NIGHTLY = ROOT / ".github" / "workflows" / "nightly.yml"
 MUTANTS = ROOT / ".cargo" / "mutants.toml"
 DENY = ROOT / "deny.toml"
 
-REQUIRED_JOBS: tuple[str, ...] = ("mutation", "fuzz", "miri")
+# Runners que debe declarar la matriz cross-platform de ci.yml (SPEC-0033/AC-01).
+MATRIX_OS: tuple[str, ...] = ("ubuntu-latest", "windows-latest", "macos-latest")
+REQUIRED_JOBS: tuple[str, ...] = ("mutation", "fuzz", "miri", "sanitizers")
 REQUIRED_DENY_SECTIONS: tuple[str, ...] = (
     "advisories",
     "licenses",
@@ -85,6 +90,46 @@ def _jobs_from_text(text: str) -> set[str]:
             if key.endswith(":"):
                 jobs.add(key[:-1].strip())
     return jobs
+
+
+def check_ci_matrix(errors: list[str]) -> None:
+    """Valida la matriz cross-platform del job ``test`` de ``ci.yml``.
+
+    SPEC-0033/AC-01: el job ``test`` (T1) debe declarar ``strategy.matrix.os``
+    con los tres runners. Con PyYAML se comprueba la estructura; sin él, un
+    chequeo textual verifica que los runners aparezcan en el workflow.
+    """
+    if not CI.exists():
+        errors.append(f"no existe {CI.relative_to(ROOT)}")
+        return
+    text = CI.read_text(encoding="utf-8")
+    data = _load_yaml(text)
+    if data is not None:
+        jobs = data.get("jobs")
+        if not isinstance(jobs, dict) or "test" not in jobs:
+            errors.append("ci.yml: falta el job 'test'")
+            return
+        spec = jobs["test"]
+        strategy = spec.get("strategy") if isinstance(spec, dict) else None
+        matrix = strategy.get("matrix") if isinstance(strategy, dict) else None
+        os_values = matrix.get("os") if isinstance(matrix, dict) else None
+        if not isinstance(os_values, list):
+            errors.append("ci.yml: el job 'test' no declara strategy.matrix.os")
+            return
+        for target in MATRIX_OS:
+            if target not in os_values:
+                errors.append(
+                    f"ci.yml: la matriz del job 'test' no incluye '{target}'"
+                )
+        return
+    # Fallback textual (sin PyYAML): la matriz y los runners deben aparecer.
+    if "matrix:" not in text:
+        errors.append("ci.yml: no declara una matriz (chequeo textual)")
+    for target in MATRIX_OS:
+        if target not in text:
+            errors.append(
+                f"ci.yml: no declara el runner '{target}' (chequeo textual)"
+            )
 
 
 def check_nightly(errors: list[str]) -> None:
@@ -173,6 +218,7 @@ def check_deny(errors: list[str]) -> None:
 def main() -> int:
     """Ejecuta todas las validaciones y devuelve el exit code."""
     errors: list[str] = []
+    check_ci_matrix(errors)
     check_nightly(errors)
     check_mutants(errors)
     check_deny(errors)
@@ -184,7 +230,8 @@ def main() -> int:
         return 1
 
     print(
-        "[OK] check_ci_config: nightly.yml (mutation/fuzz/miri, alert-only), "
+        "[OK] check_ci_config: ci.yml (matriz ubuntu/windows/macos), "
+        "nightly.yml (mutation/fuzz/miri/sanitizers, alert-only), "
         "mutants.toml y deny.toml (4 secciones) válidos."
     )
     return 0

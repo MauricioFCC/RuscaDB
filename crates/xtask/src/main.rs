@@ -140,9 +140,9 @@ fn walk(dir: &Path, visit: &mut impl FnMut(&Path)) {
 #[cfg(test)]
 mod tests {
     //! Tests de aceptación de SPEC-0016 (endurecimiento de CI T3 y supply
-    //! chain). Solo `std`: leen los artefactos de configuración como texto y
-    //! verifican estructura/secciones (el gate canónico es
-    //! `scripts/check_ci_config.py`).
+    //! chain) y SPEC-0033 (CI cross-platform + sanitizers). Solo `std`: leen
+    //! los artefactos de configuración como texto y verifican
+    //! estructura/secciones (el gate canónico es `scripts/check_ci_config.py`).
 
     use super::workspace_root;
     use std::fs;
@@ -214,6 +214,74 @@ mod tests {
         let toml = read_root_file("deny.toml");
         for section in ["[advisories]", "[licenses]", "[bans]", "[sources]"] {
             assert!(toml.contains(section), "deny.toml sin sección '{section}'");
+        }
+    }
+
+    /// AC-0033-01: el job `test` de `ci.yml` declara la matriz OS
+    /// (ubuntu/windows/macos) y corre en paralelo sin fail-fast.
+    #[test]
+    fn test_ac_0033_01_ci_has_os_matrix() {
+        let yaml = read_root_file(".github/workflows/ci.yml");
+        assert!(
+            yaml.contains("matrix:"),
+            "ci.yml no declara strategy.matrix"
+        );
+        assert!(
+            yaml.contains("${{ matrix.os }}"),
+            "ci.yml no usa runs-on: ${{ matrix.os }}"
+        );
+        assert!(
+            yaml.contains("fail-fast: false"),
+            "ci.yml debe usar fail-fast: false para no cancelar evidencia"
+        );
+        for runner in ["ubuntu-latest", "windows-latest", "macos-latest"] {
+            assert!(
+                yaml.contains(runner),
+                "ci.yml no incluye el runner '{runner}' en la matriz OS"
+            );
+        }
+    }
+
+    /// AC-0033-02: `nightly.yml` declara el job `sanitizers` (ASan sobre FFI,
+    /// alert-only).
+    #[test]
+    fn test_ac_0033_02_nightly_has_sanitizers() {
+        let yaml = read_root_file(".github/workflows/nightly.yml");
+        assert!(
+            yaml.contains("sanitizers:"),
+            "nightly.yml no declara el job 'sanitizers'"
+        );
+        assert!(
+            yaml.contains("-Zsanitizer=address"),
+            "nightly.yml no habilita AddressSanitizer (RUSTFLAGS)"
+        );
+        assert!(
+            yaml.contains("ruscadb-ffi"),
+            "nightly.yml no ejecuta ASan sobre ruscadb-ffi"
+        );
+        assert!(
+            yaml.contains("components: rust-src"),
+            "nightly.yml no instala rust-src para sanitizers"
+        );
+    }
+
+    /// AC-0033-03: `check_ci_config.py` valida la matriz OS y el job
+    /// `sanitizers` además de las validaciones previas.
+    #[test]
+    fn test_ac_0033_03_check_ci_config_validates_matrix() {
+        let script = read_root_file("scripts/check_ci_config.py");
+        for needle in [
+            "ci.yml",
+            "matrix",
+            "sanitizers",
+            "ubuntu-latest",
+            "windows-latest",
+            "macos-latest",
+        ] {
+            assert!(
+                script.contains(needle),
+                "check_ci_config.py no valida '{needle}'"
+            );
         }
     }
 }

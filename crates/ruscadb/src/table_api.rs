@@ -7,7 +7,9 @@
 //! desde la página 0 en cada operación: reabrir la base recupera tablas,
 //! filas e índices sin estado en memoria.
 
-use ruscadb_core::{EdgeSet, Record, RecordId, RecordMeta, RuscaError, ScalarMap, ScalarValue};
+use ruscadb_core::{
+    EdgeSet, Metric, Record, RecordId, RecordMeta, RuscaError, ScalarMap, ScalarValue,
+};
 use ruscadb_query::parse;
 use ruscadb_txn::Snapshot;
 
@@ -40,6 +42,33 @@ impl Database {
         self.indexes
             .insert(name.to_string(), TableIndexes::default());
         Ok(())
+    }
+
+    /// Registra (o actualiza) un modelo de embedding permitido (SPEC-0032).
+    ///
+    /// Activa la allowlist de la base: desde este punto `insert_record` valida
+    /// el `vector` de cada [`Record`] contra el modelo (`model_id`, `dim`,
+    /// `metric`; invariante SI-2) y fija `meta.embedding_version` con `version`.
+    /// Con el registro vacío no hay validación (compatibilidad, NF-0032-01).
+    ///
+    /// El registro es **en memoria**: no se persiste y se pierde al reabrir.
+    ///
+    /// Args:
+    ///     model_id: Identificador del modelo (no vacío).
+    ///     dim: Dimensión esperada del vector (`>= 1`).
+    ///     metric: Métrica de distancia esperada.
+    ///     version: Versión del modelo (ADR-009).
+    ///
+    /// Errors:
+    ///     [`RuscaError::InvalidConfig`] si `model_id` está vacío o `dim == 0`.
+    pub fn register_model(
+        &mut self,
+        model_id: &str,
+        dim: usize,
+        metric: Metric,
+        version: u32,
+    ) -> Result<(), RuscaError> {
+        self.registry.register(model_id, dim, metric, version)
     }
 
     /// Inserta una fila con solo escalares (azúcar sobre [`Database::insert_record`]).
@@ -85,6 +114,12 @@ impl Database {
     /// ([`Database::begin`]) o con una transacción de auto-commit que se publica
     /// tras el commit; además estampa `meta.lsn` con el próximo LSN del WAL.
     ///
+    /// Allowlist de modelos (SPEC-0032, invariante SI-2): si el registro
+    /// (`vector`) trae metadata de modelo y la allowlist está activa
+    /// ([`Database::register_model`]), se valida `model_id`/`dim`/`metric` y se
+    /// fija `meta.embedding_version` con la versión registrada. Sin modelos
+    /// registrados el comportamiento previo se conserva (NF-0032-01).
+    ///
     /// Args:
     ///     table: Tabla destino.
     ///     record: Registro completo (scalars + vector + edges).
@@ -96,6 +131,8 @@ impl Database {
     ///     [`RuscaError::TableNotFound`] si la tabla no existe;
     ///     [`RuscaError::ColumnNotFound`] si falta/sobra una columna escalar;
     ///     [`RuscaError::TypeMismatch`] si un escalar no pertenece a su columna;
+    ///     [`RuscaError::InvalidConfig`] si el vector no cumple la allowlist
+    ///     (modelo no registrado o `dim`/`metric` incompatibles);
     ///     [`RuscaError::DimensionMismatch`] si un vector rompe la dimensión
     ///     del índice de la tabla.
     pub fn insert_record(
@@ -109,6 +146,7 @@ impl Database {
         };
         record.meta.created_tx = tx;
         record.meta.lsn = self.wal.next_lsn();
+        apply_registry(self, &mut record)?;
         let mut catalog = Catalog::load(self)?;
         let definition = catalog.get(table)?.clone();
         record.scalars = validate_scalars(&definition, table, record.scalars)?;
@@ -199,6 +237,27 @@ impl Database {
     pub fn catalog(&mut self) -> Result<Catalog, RuscaError> {
         Catalog::load(self)
     }
+}
+
+/// Aplica la allowlist de modelos: valida el vector y fija su versión (SI-2).
+///
+/// No-op si el registro no trae `vector` o si la allowlist está vacía.
+///
+/// Args:
+///     database: Base cuyo registro de modelos se consulta.
+///     record: Registro a validar y enriquecer in situ.
+///
+/// Errors:
+///     [`RuscaError::InvalidConfig`] si el vector no cumple la allowlist.
+fn apply_registry(database: &Database, record: &mut Record) -> Result<(), RuscaError> {
+    let Some(vector) = record.vector.as_ref() else {
+        return Ok(());
+    };
+    database.registry.validate(vector)?;
+    if let Some(version) = database.registry.version_of(&vector.meta.model_id) {
+        record.meta.embedding_version = Some(version);
+    }
+    Ok(())
 }
 
 /// Valida el nombre y las columnas de una tabla nueva.
@@ -305,7 +364,7 @@ pub(crate) fn maintain_index(
 mod tests {
     use super::*;
     use crate::executor::{Plan, execute_with_plan, plan_for};
-    use crate::{ColumnType, ScalarValue};
+    use crate::{ColumnType, Embedding, EmbeddingMeta, ScalarValue};
     use pretty_assertions::assert_eq;
     use proptest::prelude::*;
     use ruscadb_query::Projection;
@@ -461,9 +520,106 @@ mod tests {
         );
     }
 
+    /// Construye un registro con el escalar `a="x"` y un vector de modelo dado.
+    ///
+    /// Args:
+    ///     model_id: Identificador del modelo del vector.
+    ///     values: Valores del vector.
+    ///     metric: Métrica declarada.
+    ///
+    /// Returns:
+    ///     Un [`Record`] listo para `insert_record`.
+    fn record_with_vector(model_id: &str, values: Vec<f32>, metric: Metric) -> Record {
+        let mut scalars = ScalarMap::new();
+        scalars.insert("a".to_string(), ScalarValue::Text("x".to_string()));
+        let meta = EmbeddingMeta {
+            model_id: model_id.to_string(),
+            dim: values.len(),
+            metric,
+        };
+        Record {
+            id: RecordId::new(),
+            scalars,
+            doc: None,
+            edges: EdgeSet::default(),
+            vector: Some(Embedding::new(values, meta).expect("embedding válido")),
+            blob: None,
+            meta: RecordMeta::default(),
+        }
+    }
+
+    /// AC-0032-05 — la fachada aplica la allowlist en `insert_record`.
+    #[test] // @spec AC-0032-05
+    fn test_ac_0032_05_database_enforces_registry() {
+        let (_dir, mut database) = open_test_db("ac0032_05");
+        database
+            .create_table(
+                "t",
+                vec![ColumnDef {
+                    name: "a".to_string(),
+                    col_type: ColumnType::Text,
+                }],
+            )
+            .expect("create_table");
+        database
+            .register_model("m1", 3, Metric::Cosine, 7)
+            .expect("register_model");
+
+        let unknown = record_with_vector("m2", vec![0.1, 0.2, 0.3], Metric::Cosine);
+        let error = database
+            .insert_record("t", unknown)
+            .expect_err("modelo ajeno debe rechazarse");
+        assert!(matches!(error, RuscaError::InvalidConfig(_)));
+        assert!(error.to_string().contains("m2"));
+        assert_eq!(
+            database.primary_index_len("t"),
+            0,
+            "un rechazo no debe escribir"
+        );
+
+        let bad_dim = record_with_vector("m1", vec![0.1, 0.2], Metric::Cosine);
+        let dim_error = database
+            .insert_record("t", bad_dim)
+            .expect_err("dimensión incompatible debe rechazarse");
+        assert!(matches!(dim_error, RuscaError::InvalidConfig(_)));
+        assert_eq!(database.primary_index_len("t"), 0);
+
+        let good = record_with_vector("m1", vec![0.1, 0.2, 0.3], Metric::Cosine);
+        let id = database.insert_record("t", good).expect("modelo válido");
+        let stored = database
+            .get_record("t", &id)
+            .expect("get_record")
+            .expect("el registro existe");
+        assert_eq!(stored.meta.embedding_version, Some(7));
+    }
+
     proptest! {
-        /// Roundtrip: insertar N filas y `SELECT *` devuelve el mismo
-        /// número de filas con el mismo contenido en orden.
+        /// PBT de compatibilidad (NF-0032-01): con registro vacío, `insert_record`
+        /// acepta cualquier vector y deja `embedding_version` sin fijar.
+        #[test]
+        fn prop_empty_registry_insert_accepts_any_vector(
+            model_id in "[a-zA-Z0-9_-]{0,12}",
+            values in prop::collection::vec(-100.0f32..100.0f32, 1..12),
+            metric in prop::sample::select(vec![
+                Metric::L2,
+                Metric::Cosine,
+                Metric::InnerProduct,
+            ]),
+        ) {
+            let (_dir, mut database) = open_test_db("prop_registry");
+            database
+                .create_table(
+                    "t",
+                    vec![ColumnDef { name: "a".to_string(), col_type: ColumnType::Text }],
+                )
+                .expect("create_table");
+            let record = record_with_vector(&model_id, values, metric);
+            let id = database
+                .insert_record("t", record)
+                .expect("registro vacío debe aceptar");
+            let stored = database.get_record("t", &id).expect("get_record").expect("existe");
+            prop_assert_eq!(stored.meta.embedding_version, None);
+        }
         #[test]
         fn prop_insert_select_roundtrip(
             inputs in prop::collection::vec((prop::num::i64::ANY, "[a-z]{1,6}"), 1..30),

@@ -2,13 +2,17 @@
 #
 # Pipeline alineado con docs/RuscaDB-roadmap.md §7.1:
 #   Lint        -> fmt + clippy -D warnings
-#   Test        -> cargo test --workspace --locked
+#   Test        -> cargo test --workspace --locked (matriz cross-platform)
 #   Architecture-> guards de hexagonal + unsafe (scripts/check_*.py)
 #   Security    -> cargo-deny + cargo-audit
 #
+# Cross-platform (SPEC-0033): el job `test` corre sobre linux/windows/macos en
+# paralelo (strategy.matrix.os) para validar que el workspace es portable.
+#
 # T2 (LLM-judge) corre sobre el diff del PR. T3 (regresión nightly: mutation
-# full sharded, fuzz, miri, crash-recovery) es alert-only y vive en
-# `.github/workflows/nightly.yml` (SPEC-0016). Ver docs/verification.md.
+# full sharded, fuzz, miri, sanitizers ASan, crash-recovery) es alert-only y
+# vive en `.github/workflows/nightly.yml` (SPEC-0016/SPEC-0033). Ver
+# docs/verification.md.
 
 name: CI
 
@@ -44,8 +48,14 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    # Cross-platform (SPEC-0033): el mismo slice corre en los 3 SO. `fail-fast:
+    # false` garantiza que un runner rojo no cancele la evidencia de los demás.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

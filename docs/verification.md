@@ -51,6 +51,23 @@ pre-commit run --all-files   # gitleaks + cargo fmt + cargo clippy
 **Fitness functions** relevantes (roadmap §4.7): FF-01/FF-02 (grafo hexagonal),
 FF-04 (`unsafe`), FF-08 (mutation score), FF-10 (dependencias), FF-11 (specs).
 
+### Cross-platform (SPEC-0033) — T1
+
+El job `test` de `ci.yml` corre sobre una **matriz OS** en paralelo:
+
+```yaml
+strategy:
+  fail-fast: false
+  matrix:
+    os: [ubuntu-latest, windows-latest, macos-latest]
+runs-on: ${{ matrix.os }}
+```
+
+Mismos comandos por runner (`cargo test --workspace --all-features --locked`);
+el workspace debe ser portable (sin rutas de SO ni separadores hardcodeados).
+`fail-fast: false` evita que un SO rojo cancele la evidencia de los demás.
+`scripts/check_ci_config.py` valida que la matriz declare los tres runners.
+
 ---
 
 ## T2 — LLM-judge (bloquea merge, < 10 min)
@@ -109,6 +126,21 @@ cargo +nightly miri setup
 cargo +nightly miri test -p ruscadb-query -p ruscadb-fts -p ruscadb-core
 ```
 
+### Sanitizers — AddressSanitizer (SPEC-0033)
+
+Detecta errores de memoria (use-after-free, buffer overflow) en `ruscadb-ffi`,
+el único crate con `unsafe` permitido. Corre en nightly con `rust-src`:
+
+```bash
+rustup toolchain install nightly --component rust-src
+RUSTFLAGS="-Zsanitizer=address" ASAN_OPTIONS=detect_leaks=0 \
+  cargo +nightly test -p ruscadb-ffi --target x86_64-unknown-linux-gnu
+```
+
+`ASAN_OPTIONS=detect_leaks=0` porque el allocator de Rust no es leak-clean por
+diseño; interesan los errores de memoria. El job `sanitizers` es **alert-only**
+(`continue-on-error: true`) y sube `asan-test.log` como artifact.
+
 ### SBOM (CycloneDX, supply chain §6.5)
 
 Job `sbom` de T1 (informativo): `cargo cyclonedx --format json --all`.
@@ -130,7 +162,10 @@ el parseo de T1/T2/T3.
 
 | Artefacto | Gate | Comando |
 |---|---|---|
-| `nightly.yml` | SPEC-0016/AC-01 | `python scripts/check_ci_config.py`, `cargo test -p xtask` |
+| `ci.yml` (matriz OS) | SPEC-0033/AC-01 | `python scripts/check_ci_config.py`, `cargo test -p xtask` |
+| `nightly.yml` (sanitizers) | SPEC-0033/AC-02 | idem |
+| `check_ci_config.py` | SPEC-0033/AC-03 | idem |
+| `nightly.yml` | SPEC-0016/AC-01 | idem |
 | `.cargo/mutants.toml` | SPEC-0016/AC-02 | idem |
 | `deny.toml` | SPEC-0016/AC-03 | idem |
 | `.pre-commit-config.yaml` | §6.5 | `pre-commit run --all-files` |

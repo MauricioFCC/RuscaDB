@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use ruscadb_ai::ModelRegistry;
 use ruscadb_btree::BPlusTree;
 use ruscadb_core::{RecordId, RuscaError};
 use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
@@ -72,6 +73,12 @@ pub struct Database {
     pub(crate) txn: TxnManager,
     /// Transacción explícita en vuelo (`Database::begin`), si la hay.
     pub(crate) active_tx: Option<TxId>,
+    /// Allowlist en memoria de modelos de embedding (SPEC-0032).
+    ///
+    /// Vacío por defecto ⇒ compatibilidad total con el comportamiento previo
+    /// (NF-0032-01). No se persiste: se reconstruye vacío al reabrir la base
+    /// (la persistencia queda fuera de alcance).
+    pub(crate) registry: ModelRegistry,
     /// Último LSN confirmado (checkpoint en memoria).
     last_lsn: Lsn,
 }
@@ -117,6 +124,7 @@ impl Database {
             manifest_path,
             txn: TxnManager::new(),
             active_tx: None,
+            registry: ModelRegistry::new(),
             last_lsn: 0,
         };
         let applied = database.replay()?;
