@@ -36,6 +36,7 @@ CI = ROOT / ".github" / "workflows" / "ci.yml"
 NIGHTLY = ROOT / ".github" / "workflows" / "nightly.yml"
 MUTANTS = ROOT / ".cargo" / "mutants.toml"
 DENY = ROOT / "deny.toml"
+CRATES_DIR = ROOT / "crates"
 
 # Runners que debe declarar la matriz cross-platform de ci.yml (SPEC-0033/AC-01).
 MATRIX_OS: tuple[str, ...] = ("ubuntu-latest", "windows-latest", "macos-latest")
@@ -263,6 +264,31 @@ def check_deny(errors: list[str]) -> None:
             errors.append("deny.toml: sources.unknown-git debe ser 'deny'")
 
 
+def check_publish_flags(errors: list[str]) -> None:
+    """Verifica que todo crate del workspace declare ``publish = false``.
+
+    Motivo (deny.toml / job Security): las dependencias internas usan
+    ``workspace = true`` (path sin versión). En crates *públicos* cargo-deny las
+    marca como ``wildcard`` y falla el check. Marcar los crates internos como no
+    publicables (aún no se publican) evita ese falso positivo. Este guard evita
+    la recurrencia al añadir crates nuevos.
+    """
+    if not CRATES_DIR.is_dir():
+        errors.append("no existe el directorio 'crates'")
+        return
+    for manifest in sorted(CRATES_DIR.glob("*/Cargo.toml")):
+        text = manifest.read_text(encoding="utf-8")
+        if "[package]" not in text:
+            continue
+        package = text.partition("[package]")[2].split("\n[", 1)[0]
+        if "publish" not in package:
+            errors.append(
+                f"{manifest.relative_to(ROOT).as_posix()}: falta "
+                f"'publish = false' (crate interno no publicable; evita "
+                f"wildcard en cargo-deny)"
+            )
+
+
 def main() -> int:
     """Ejecuta todas las validaciones y devuelve el exit code."""
     errors: list[str] = []
@@ -270,6 +296,7 @@ def main() -> int:
     check_nightly(errors)
     check_mutants(errors)
     check_deny(errors)
+    check_publish_flags(errors)
 
     if errors:
         print("[FAIL] check_ci_config: configuración de CI/supply chain inválida:")
