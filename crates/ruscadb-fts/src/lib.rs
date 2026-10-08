@@ -297,6 +297,94 @@ mod tests {
         assert_eq!(index.term_count(), 2);
     }
 
+    /// AC-0037-01 — recupera todos los documentos con términos del prefijo.
+    #[test]
+    fn test_ac_0037_01_prefix_matches_all() {
+        let mut index = InvertedIndex::new();
+        let dense = RecordId::new();
+        let ghost = RecordId::new();
+        let other = RecordId::new();
+        index.insert(dense, "gato gato gato");
+        index.insert(ghost, "gata");
+        index.insert(other, "perro");
+
+        let hits = index.search_prefix("ga", 10);
+        let ids: Vec<RecordId> = hits.iter().map(|(id, _)| *id).collect();
+        assert_eq!(hits.len(), 2);
+        assert_eq!(ids[0], dense, "el documento con mayor tf debe ir primero");
+        assert!(ids.contains(&ghost));
+        assert!(!ids.contains(&other));
+
+        // BVA de `k`: exacto, 1 y mayor que el número de documentos.
+        assert_eq!(index.search_prefix("ga", 2).len(), 2);
+        assert_eq!(index.search_prefix("ga", 1).len(), 1);
+        assert_eq!(index.search_prefix("ga", usize::MAX).len(), 2);
+
+        // BVA de prefijo: 1 carácter y normalización a minúsculas.
+        assert_eq!(index.search_prefix("g", 10).len(), 2);
+        assert_eq!(index.search_prefix("GATA", 10)[0].0, ghost);
+    }
+
+    /// AC-0037-02 — un prefijo sin coincidencias devuelve vacío.
+    #[test]
+    fn test_ac_0037_02_prefix_no_match() {
+        let mut index = InvertedIndex::new();
+        index.insert(RecordId::new(), "gato");
+        assert!(index.search_prefix("zzz", 10).is_empty());
+        assert!(index.search_prefix("gatos", 10).is_empty());
+        assert!(index.search_prefix("perro", 10).is_empty());
+    }
+
+    /// AC-0037-03 — prefijo vacío (y `k == 0`) devuelve vacío sin panics.
+    #[test]
+    fn test_ac_0037_03_empty_prefix() {
+        let mut index = InvertedIndex::new();
+        let id = RecordId::new();
+        index.insert(id, "gato");
+        assert!(index.search_prefix("", 10).is_empty());
+        assert!(index.search_prefix("   ,,,   ", 10).is_empty());
+        assert!(index.search_prefix("ga", 0).is_empty());
+        assert!(InvertedIndex::new().search_prefix("ga", 10).is_empty());
+    }
+
+    /// AC-0037-04 — un prefijo igual a un término completo es consistente con
+    /// `search` (mismos documentos y mismas puntuaciones).
+    #[test]
+    fn test_ac_0037_04_prefix_of_full_term_consistent() {
+        let mut index = InvertedIndex::new();
+        let dense = RecordId::new();
+        let sparse = RecordId::new();
+        index.insert(dense, "gato gato");
+        index.insert(sparse, "gato");
+        index.insert(RecordId::new(), "perro");
+
+        let exact = index.search("gato", 10);
+        assert_eq!(index.search_prefix("gato", 10), exact);
+        assert_eq!(index.search_prefix("GATO", 10), exact);
+        assert_eq!(index.search_prefix("gato", 1), index.search("gato", 1));
+        assert_eq!(index.search_prefix("gato", 10).len(), 2);
+    }
+
+    /// AC-0037-05 — los tombstones no aparecen en los resultados del prefijo.
+    #[test]
+    fn test_ac_0037_05_prefix_excludes_deleted() {
+        let mut index = InvertedIndex::new();
+        let kept = RecordId::new();
+        let removed = RecordId::new();
+        index.insert(kept, "gato");
+        index.insert(removed, "gato gato gato");
+        index.remove(&removed);
+
+        let hits = index.search_prefix("ga", 10);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].0, kept);
+        assert!(!hits.iter().any(|(id, _)| *id == removed));
+
+        index.remove(&kept);
+        assert!(index.search_prefix("ga", 10).is_empty());
+        assert!(index.search_prefix("gato", 10).is_empty());
+    }
+
     proptest! {
         /// La tokenización nunca entra en panic y es determinista.
         #[test]
@@ -337,6 +425,40 @@ mod tests {
                     hits.iter().any(|(doc, _)| *doc == id),
                     "el término {:?} no recupera el documento", term
                 );
+            }
+        }
+    }
+
+    proptest! {
+        /// Soundness de `search_prefix` (SPEC-0037): todo documento devuelto
+        /// está vivo, tiene algún término que comienza por el prefijo y el
+        /// número de resultados respeta `k`.
+        #[test]
+        fn prop_search_prefix_is_sound(
+            docs in prop::collection::vec(any::<String>(), 0..8),
+            prefix in "[a-z]{1,4}",
+            k in 0usize..12,
+        ) {
+            let mut index = InvertedIndex::new();
+            let mut inserted: Vec<(RecordId, String)> = Vec::new();
+            for text in &docs {
+                let id = RecordId::new();
+                index.insert(id, text);
+                inserted.push((id, text.clone()));
+            }
+
+            let hits = index.search_prefix(&prefix, k);
+            prop_assert!(hits.len() <= k, "resultados {} > k {}", hits.len(), k);
+            for (id, _) in &hits {
+                let document = inserted.iter().find(|(doc, _)| doc == id);
+                prop_assert!(document.is_some(), "documento {id:?} no insertado");
+                if let Some((_, text)) = document {
+                    let matched = tokenize(text).iter().any(|term| term.starts_with(&prefix));
+                    prop_assert!(
+                        matched,
+                        "el documento {id:?} no tiene término con prefijo {prefix:?}"
+                    );
+                }
             }
         }
     }

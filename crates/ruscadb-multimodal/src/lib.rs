@@ -47,6 +47,9 @@ const SHARD_WIDTH: usize = 2;
 /// Ancho total del prefijo de sharding (`ab/cd`), igual a `SHARD_WIDTH * 2`.
 const SHARD_PREFIX_WIDTH: usize = 4;
 
+/// Longitud en caracteres hexadecimales de un digest SHA-256.
+const SHA256_HEX_WIDTH: usize = 64;
+
 /// Magic del envelope cifrado `[RCE1 | 0x01 | nonce 24 B | seal(bytes)]`.
 ///
 /// Solo el magic completo acredita el formato: un byte de versión colisiona
@@ -495,6 +498,80 @@ impl BlobStore {
         self.blob_path(hash).is_file()
     }
 
+    /// Recolecta los blobs sin referencias vivas (refcount 0) del almacén.
+    ///
+    /// Recorre los ficheros de `root/blobs/` (cuyo nombre es el propio hash) y
+    /// elimina cada blob sin referencia viva en el índice en memoria: fichero
+    /// en disco **y** entrada de índice. Un blob cuya entrada de índice tenga
+    /// `refcount == 0` también se purga aunque el fichero ya no exista. Es
+    /// idempotente: una segunda ejecución devuelve 0.
+    ///
+    /// La eliminación es por fichero, así que es independiente del modo:
+    /// funciona igual en claro y en cifrado (SPEC-0013).
+    ///
+    /// # Barrier de seguridad (responsabilidad del llamador)
+    ///
+    /// Este método **no** sincroniza con transacciones en vuelo. El llamador
+    /// debe garantizar que no hay ningún commit en vuelo ni referencia pendiente
+    /// que pueda re-referenciar un blob recolectado (R7 del roadmap, FR-0035-04).
+    /// La fachada lo cableará con el `low_watermark` MVCC en una iteración
+    /// posterior; hasta entonces, no invocar `gc` en presencia de escritores
+    /// concurrentes.
+    ///
+    /// Args:
+    ///     (sin argumentos; opera sobre el store abierto).
+    ///
+    /// Returns:
+    ///     El número de blobs eliminados (`0` si no había ninguno huérfano).
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla el recorrido del directorio o el borrado.
+    pub fn gc(&mut self) -> Result<usize, RuscaError> {
+        let mut removed = 0;
+        for hash in self.gc_candidates()? {
+            let path = self.blob_path(&hash);
+            if path.is_file() {
+                fs::remove_file(&path)?;
+            }
+            self.refcounts.remove(&hash);
+            removed += 1;
+        }
+        Ok(removed)
+    }
+
+    /// Reúne los blobs recolectables: huérfanos en disco y entradas con
+    /// `refcount == 0` en el índice.
+    ///
+    /// Returns:
+    ///     Los hashes sin referencias vivas (sin duplicados).
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla el recorrido del directorio de blobs.
+    fn gc_candidates(&self) -> Result<Vec<BlobHash>, RuscaError> {
+        let mut hashes = Vec::new();
+        collect_blob_hashes(&self.root.join(BLOBS_DIR), &mut hashes)?;
+        for hash in self.refcounts.keys() {
+            if !hashes.contains(hash) {
+                hashes.push(hash.clone());
+            }
+        }
+        Ok(hashes
+            .into_iter()
+            .filter(|hash| !self.is_referenced(hash))
+            .collect())
+    }
+
+    /// Indica si un blob tiene al menos una referencia viva en el índice.
+    ///
+    /// Args:
+    ///     hash: Hash del blob.
+    ///
+    /// Returns:
+    ///     `true` si `refcount > 0`; `false` si es 0 o no está registrado.
+    fn is_referenced(&self, hash: &BlobHash) -> bool {
+        self.refcounts.get(hash).is_some_and(|count| *count > 0)
+    }
+
     /// Calcula la ruta en disco del blob, con sharding `ab/cd/<hash>.bin`.
     ///
     /// Args:
@@ -511,6 +588,52 @@ impl BlobStore {
             .join(second)
             .join(format!("{}.{}", hash.0, BLOB_EXTENSION))
     }
+}
+
+/// Recorre recursivamente `dir` y acumula los hashes de los ficheros de blob.
+///
+/// Un fichero es un blob si su extensión es [`BLOB_EXTENSION`] y su nombre
+/// (sin extensión) tiene la longitud de un digest SHA-256. El hash se deriva
+/// del nombre, así que el recorrido no depende del cifrado (SPEC-0035).
+///
+/// Args:
+///     dir: Directorio a recorrer (se ignora si no existe o no es directorio).
+///     out: Acumulador de hashes encontrados.
+///
+/// Returns:
+///     `Ok(())` al completar el recorrido.
+///
+/// Errors:
+///     [`RuscaError::Io`] si falla la lectura del directorio.
+fn collect_blob_hashes(dir: &Path, out: &mut Vec<BlobHash>) -> Result<(), RuscaError> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_blob_hashes(&path, out)?;
+        } else if let Some(hash) = blob_hash_from_path(&path) {
+            out.push(hash);
+        }
+    }
+    Ok(())
+}
+
+/// Extrae el [`BlobHash`] del nombre de un fichero de blob (`<hash>.bin`).
+///
+/// Args:
+///     path: Ruta del fichero candidato.
+///
+/// Returns:
+///     `Some(hash)` si la extensión y la longitud del nombre son válidas;
+///     `None` en caso contrario.
+fn blob_hash_from_path(path: &Path) -> Option<BlobHash> {
+    if path.extension().and_then(|ext| ext.to_str()) != Some(BLOB_EXTENSION) {
+        return None;
+    }
+    let stem = path.file_stem().and_then(|stem| stem.to_str())?;
+    (stem.len() == SHA256_HEX_WIDTH).then(|| BlobHash(stem.to_string()))
 }
 
 /// Calcula el hash SHA-256 de `bytes` en hexadecimal minúscula.
@@ -907,6 +1030,148 @@ mod tests {
         assert!(store.contains(&hash));
     }
 
+    /// Simula un blob sin referencias vivas: fichero en disco con refcount 0.
+    ///
+    /// El camino normal (`unref`) borra el fichero al llegar a cero; aquí se
+    /// libera solo la entrada de índice para reproducir un huérfano (p. ej.
+    /// tras un cierre abrupto que pierde el índice en memoria) dejando el
+    /// fichero para que lo recoja `gc`.
+    fn orphan(store: &mut BlobStore, hash: &BlobHash) {
+        store.refcounts.remove(hash);
+    }
+
+    /// AC-0035-01 — `gc` elimina un blob sin referencias vivas.
+    #[test] // @spec AC-0035-01
+    fn test_ac_0035_01_gc_removes_unreferenced() {
+        let dir = tempfile::tempdir().expect("dir temporal");
+        let mut store = BlobStore::open(dir.path()).expect("abrir store");
+        let hash = store.put(b"blob basura").expect("put");
+        orphan(&mut store, &hash);
+        assert!(store.contains(&hash), "fichero huérfano antes de gc");
+
+        let removed = store.gc().expect("gc");
+
+        assert_eq!(removed, 1);
+        assert!(!store.contains(&hash), "fichero eliminado");
+        assert_eq!(store.ref_count(&hash), None, "entrada de índice eliminada");
+        assert_eq!(count_blobs(dir.path()), 0);
+    }
+
+    /// AC-0035-02 — `gc` conserva los blobs referenciados.
+    #[test] // @spec AC-0035-02
+    fn test_ac_0035_02_gc_keeps_referenced() {
+        let dir = tempfile::tempdir().expect("dir temporal");
+        let mut store = BlobStore::open(dir.path()).expect("abrir store");
+        let hash = store.put(b"blob vivo").expect("put");
+
+        let removed = store.gc().expect("gc");
+
+        assert_eq!(removed, 0);
+        assert!(store.contains(&hash));
+        assert_eq!(store.ref_count(&hash), Some(1));
+        assert_eq!(store.get(&hash).expect("get"), b"blob vivo");
+    }
+
+    /// AC-0035-03 — `gc` es idempotente y no toca a los vivos.
+    #[test] // @spec AC-0035-03
+    fn test_ac_0035_03_gc_is_idempotent() {
+        let dir = tempfile::tempdir().expect("dir temporal");
+        let mut store = BlobStore::open(dir.path()).expect("abrir store");
+        let live = store.put(b"vivo").expect("put vivo");
+        let dead_a = store.put(b"muerto a").expect("put muerto a");
+        let dead_b = store.put(b"muerto b").expect("put muerto b");
+        orphan(&mut store, &dead_a);
+        orphan(&mut store, &dead_b);
+
+        assert_eq!(store.gc().expect("primer gc"), 2);
+        assert_eq!(store.gc().expect("segundo gc"), 0, "idempotente");
+
+        assert!(store.contains(&live), "el vivo sigue accesible");
+        assert_eq!(store.get(&live).expect("get vivo"), b"vivo");
+        assert!(!store.contains(&dead_a));
+        assert!(!store.contains(&dead_b));
+        assert_eq!(count_blobs(dir.path()), 1);
+    }
+
+    /// AC-0035-04 — `gc` en un store vacío devuelve 0 sin panics.
+    #[test] // @spec AC-0035-04
+    fn test_ac_0035_04_gc_empty_store() {
+        let dir = tempfile::tempdir().expect("dir temporal");
+        let mut store = BlobStore::open(dir.path()).expect("abrir store");
+
+        assert_eq!(store.gc().expect("gc vacío"), 0);
+    }
+
+    /// AC-0035-05 — un blob eliminado por `gc` da NotFound, nunca basura.
+    #[test] // @spec AC-0035-05
+    fn test_ac_0035_05_deleted_blob_is_not_found() {
+        let dir = tempfile::tempdir().expect("dir temporal");
+        let mut store = BlobStore::open(dir.path()).expect("abrir store");
+        let hash = store.put(b"blob a borrar").expect("put");
+        orphan(&mut store, &hash);
+
+        assert_eq!(store.gc().expect("gc"), 1);
+
+        assert!(matches!(store.get(&hash), Err(RuscaError::Io(_))));
+        assert!(matches!(
+            store.get_range(&hash, 0..1),
+            Err(RuscaError::Io(_))
+        ));
+        assert!(!store.contains(&hash));
+    }
+
+    /// `gc` elimina huérfanos también en modo cifrado (borrado por fichero).
+    #[test]
+    fn test_ac_0035_gc_encrypted_orphan() {
+        let dir = tempfile::tempdir().expect("dir temporal");
+        let key = test_key();
+        let mut store = BlobStore::open_encrypted(dir.path(), &key).expect("abrir cifrado");
+        let live = store.put(b"vivo cifrado").expect("put vivo");
+        let dead = store.put(b"muerto cifrado").expect("put muerto");
+        orphan(&mut store, &dead);
+
+        assert_eq!(store.gc().expect("gc"), 1);
+
+        assert_eq!(store.get(&live).expect("get vivo"), b"vivo cifrado");
+        assert!(!store.contains(&dead));
+        assert!(matches!(store.get(&dead), Err(RuscaError::Io(_))));
+    }
+
+    /// Marca una entrada de índice con `refcount == 0` (índice obsoleto).
+    fn zero_ref(store: &mut BlobStore, hash: &BlobHash) {
+        store.refcounts.insert(hash.clone(), 0);
+    }
+
+    /// `gc` purga una entrada de índice con `refcount == 0` y su fichero.
+    #[test]
+    fn test_ac_0035_gc_sweeps_zero_refcount_entry() {
+        let dir = tempfile::tempdir().expect("dir temporal");
+        let mut store = BlobStore::open(dir.path()).expect("abrir store");
+        let hash = store.put(b"entrada obsoleta").expect("put");
+        zero_ref(&mut store, &hash);
+        assert_eq!(store.ref_count(&hash), Some(0));
+
+        assert_eq!(store.gc().expect("gc"), 1);
+
+        assert!(!store.contains(&hash));
+        assert_eq!(store.ref_count(&hash), None);
+        assert_eq!(store.gc().expect("gc repetido"), 0);
+    }
+
+    /// `gc` purga una entrada de índice fantasma (refcount 0, sin fichero).
+    #[test]
+    fn test_ac_0035_gc_sweeps_index_only_ghost() {
+        let dir = tempfile::tempdir().expect("dir temporal");
+        let mut store = BlobStore::open(dir.path()).expect("abrir store");
+        let ghost = digest(b"nunca escrito");
+        zero_ref(&mut store, &ghost);
+
+        assert_eq!(store.gc().expect("gc"), 1);
+
+        assert_eq!(store.ref_count(&ghost), None);
+        assert_eq!(store.gc().expect("gc repetido"), 0);
+    }
+
     proptest! {
         /// Invariante I6 — `get(put(b)) == b` para cualquier contenido.
         ///
@@ -990,6 +1255,47 @@ mod tests {
             prop_assert_eq!(&first, &second);
             prop_assert_eq!(raw_blob_bytes(dir.path(), &second), raw_first);
             prop_assert_eq!(store.ref_count(&first), Some(2));
+        }
+    }
+
+    proptest! {
+        /// PBT — tras `gc`, todo blob con refcount > 0 sigue accesible y todo
+        /// refcount 0 (huérfano) da NotFound (invariante del barrier, SPEC-0035).
+        #[test]
+        fn prop_gc_preserves_referenced_removes_orphans(
+            live in prop::collection::vec(prop::collection::vec(any::<u8>(), 0..256), 0..5),
+            dead in prop::collection::vec(prop::collection::vec(any::<u8>(), 0..256), 0..5),
+        ) {
+            let dir = tempfile::tempdir().expect("dir temporal");
+            let mut store = BlobStore::open(dir.path()).expect("abrir store");
+            let mut live_hashes = Vec::new();
+            for bytes in &live {
+                live_hashes.push(store.put(bytes).expect("put vivo"));
+            }
+            let mut dead_hashes = Vec::new();
+            for bytes in &dead {
+                // Deduplica por hash antes de escribir: re-`put` de un huérfano
+                // volvería a referenciarlo (refcount CAS) y no sería huérfano.
+                let hash = digest(bytes);
+                if live_hashes.contains(&hash) || dead_hashes.contains(&hash) {
+                    continue;
+                }
+                let stored = store.put(bytes).expect("put muerto");
+                orphan(&mut store, &stored);
+                dead_hashes.push(stored);
+            }
+
+            let removed = store.gc().expect("gc");
+
+            prop_assert_eq!(removed, dead_hashes.len());
+            for hash in &live_hashes {
+                prop_assert!(store.contains(hash));
+                prop_assert!(store.get(hash).is_ok());
+            }
+            for hash in &dead_hashes {
+                prop_assert!(matches!(store.get(hash), Err(RuscaError::Io(_))));
+                prop_assert!(!store.contains(hash));
+            }
         }
     }
 }

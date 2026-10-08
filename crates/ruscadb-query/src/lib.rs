@@ -12,7 +12,9 @@ pub mod ast;
 pub mod lexer;
 mod parser;
 
-pub use ast::{CompareOp, Explain, Expr, KnnClause, Projection, Select, Statement, TraverseClause};
+pub use ast::{
+    CompareOp, Explain, Expr, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause,
+};
 pub use parser::{parse, parse_statement};
 
 #[cfg(test)]
@@ -25,8 +27,9 @@ mod tests {
     use ruscadb_core::RuscaError;
 
     /// Palabras reservadas de RQL: no pueden usarse como identificadores.
-    const RESERVED_IDENTIFIERS: [&str; 10] = [
+    const RESERVED_IDENTIFIERS: [&str; 14] = [
         "select", "from", "where", "and", "limit", "knn", "traverse", "depth", "explain", "match",
+        "order", "by", "asc", "desc",
     ];
 
     /// Estrategia de identificadores que evita las palabras reservadas.
@@ -220,6 +223,7 @@ mod tests {
                 filter: None,
                 knn: None,
                 traverse: None,
+                order_by: None,
                 limit,
             };
             let text = select.to_string();
@@ -417,6 +421,74 @@ mod tests {
         }
     }
 
+    /// AC-0036-01 — parseo de `ORDER BY <col> [ASC|DESC]` y roundtrip canónico.
+    #[test]
+    fn test_ac_0036_01_parse_order_by() {
+        let ascending = parse("SELECT * FROM t ORDER BY a").expect("parse");
+        assert_eq!(
+            ascending.order_by,
+            Some(OrderBy {
+                column: "a".to_string(),
+                desc: false,
+            })
+        );
+
+        let explicit = parse("SELECT * FROM t ORDER BY a ASC").expect("parse");
+        assert_eq!(explicit.order_by, ascending.order_by);
+
+        let descending = parse("SELECT a FROM t ORDER BY a DESC LIMIT 2").expect("parse");
+        assert_eq!(
+            descending.order_by,
+            Some(OrderBy {
+                column: "a".to_string(),
+                desc: true,
+            })
+        );
+        assert_eq!(descending.limit, Some(2));
+
+        let canonical = parse("SELECT a FROM t WHERE a > 1 ORDER BY a DESC LIMIT 3")
+            .expect("parse")
+            .to_string();
+        assert_eq!(
+            canonical,
+            "SELECT a FROM t WHERE a > 1 ORDER BY a DESC LIMIT 3"
+        );
+        assert_eq!(
+            parse(&canonical).expect("reparse").to_string(),
+            canonical,
+            "Display → parse debe ser idempotente con ORDER BY"
+        );
+    }
+
+    /// `ORDER BY` aparece tras `TRAVERSE` y antes de `LIMIT` (orden canónico).
+    #[test]
+    fn test_order_by_canonical_position() {
+        let query = parse("SELECT * FROM nodes TRAVERSE edges DEPTH 2 ORDER BY a DESC LIMIT 5")
+            .expect("parse");
+        assert_eq!(
+            query.to_string(),
+            "SELECT * FROM nodes TRAVERSE edges DEPTH 2 ORDER BY a DESC LIMIT 5"
+        );
+    }
+
+    /// Formas mal formadas de `ORDER BY` devuelven `ParseError` con posición.
+    #[test]
+    fn test_malformed_order_by_is_error() {
+        let cases = [
+            "SELECT * FROM t ORDER a",
+            "SELECT * FROM t ORDER BY",
+            "SELECT * FROM t ORDER BY a DESC DESC",
+            "SELECT * FROM t ORDER BY a LIMIT",
+        ];
+        for input in cases {
+            let error = parse(input).unwrap_err();
+            assert!(
+                matches!(error, RuscaError::ParseError { .. }),
+                "input: {input} -> {error:?}"
+            );
+        }
+    }
+
     proptest! {
         /// Metamórfica: roundtrip `Display → parse` con cláusulas aleatorias.
         #[test]
@@ -436,6 +508,7 @@ mod tests {
                 filter: None,
                 knn: Some(KnnClause { column: knn_column, k, query }),
                 traverse: Some(TraverseClause { column: traverse_column, depth }),
+                order_by: None,
                 limit,
             };
             let text = select.to_string();
@@ -460,6 +533,7 @@ mod tests {
                 }),
                 knn: None,
                 traverse: None,
+                order_by: None,
                 limit: None,
             };
             let statement = Statement::Explain(Explain { inner: Box::new(select) });
@@ -481,7 +555,30 @@ mod tests {
                 filter: Some(Expr::Match { column, query }),
                 knn: None,
                 traverse: None,
+                order_by: None,
                 limit: None,
+            };
+            let text = select.to_string();
+            let reparsed = parse(&text).expect("reparse");
+            prop_assert_eq!(reparsed, select);
+        }
+
+        /// Metamórfica: roundtrip `Display → parse` con `ORDER BY` aleatorio.
+        #[test]
+        fn prop_order_by_display_parse_roundtrip(
+            table in ident_strategy(),
+            column in ident_strategy(),
+            desc in any::<bool>(),
+            limit in prop::option::of(0u64..1000),
+        ) {
+            let select = Select {
+                projection: Projection::All,
+                from: table,
+                filter: None,
+                knn: None,
+                traverse: None,
+                order_by: Some(OrderBy { column, desc }),
+                limit,
             };
             let text = select.to_string();
             let reparsed = parse(&text).expect("reparse");

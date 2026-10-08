@@ -378,8 +378,8 @@ mod tests {
         (dir, database)
     }
 
-    /// Crea `t(a INT, b TEXT)` con tres filas de ejemplo.
-    fn seed_table(database: &mut Database) {
+    /// Crea la tabla `t(a INT, b TEXT)` vacía.
+    fn create_ab_table(database: &mut Database) {
         database
             .create_table(
                 "t",
@@ -395,12 +395,49 @@ mod tests {
                 ],
             )
             .expect("create_table");
+    }
+
+    /// Crea `t(a INT, b TEXT)` con tres filas de ejemplo.
+    fn seed_table(database: &mut Database) {
+        create_ab_table(database);
         for (value, label) in [(1_i64, "x"), (2, "x"), (3, "y")] {
             let mut scalars = ScalarMap::new();
             scalars.insert("a".to_string(), ScalarValue::Int(value));
             scalars.insert("b".to_string(), ScalarValue::Text(label.to_string()));
             database.insert("t", scalars).expect("insert");
         }
+    }
+
+    /// Inserta en `t` los pares `(a, b)` dados (`a` admite `None` = `NULL`).
+    fn seed_pairs(database: &mut Database, pairs: &[(Option<i64>, &str)]) {
+        for (value, label) in pairs {
+            let scalar = value.map_or(ScalarValue::Null, ScalarValue::Int);
+            let mut scalars = ScalarMap::new();
+            scalars.insert("a".to_string(), scalar);
+            scalars.insert("b".to_string(), ScalarValue::Text((*label).to_string()));
+            database.insert("t", scalars).expect("insert");
+        }
+    }
+
+    /// Extrae la columna `a` como enteros, tratando `NULL`/ausente como `None`.
+    fn column_a(rows: &[Row]) -> Vec<Option<i64>> {
+        rows.iter()
+            .map(|row| match row.get("a") {
+                Some(ScalarValue::Null) | None => None,
+                Some(ScalarValue::Int(value)) => Some(*value),
+                other => panic!("se esperaba Int/NULL en 'a', se obtuvo {other:?}"),
+            })
+            .collect()
+    }
+
+    /// Extrae la columna `b` como textos.
+    fn column_b(rows: &[Row]) -> Vec<String> {
+        rows.iter()
+            .map(|row| match row.get("b") {
+                Some(ScalarValue::Text(value)) => value.clone(),
+                other => panic!("se esperaba Text en 'b', se obtuvo {other:?}"),
+            })
+            .collect()
     }
 
     /// AC-0012-01 — crear → insertar 3 filas → `SELECT *` las devuelve.
@@ -664,5 +701,149 @@ mod tests {
         }
         let parsed = parse("SELECT * FROM t").expect("parse");
         assert_eq!(parsed.projection, Projection::All);
+    }
+
+    /// AC-0036-02 — `ORDER BY a ASC` devuelve las filas en orden ascendente.
+    #[test] // @spec AC-0036-02
+    fn test_ac_0036_02_execute_order_asc() {
+        let (_dir, mut database) = open_test_db("ac0036_02");
+        create_ab_table(&mut database);
+        seed_pairs(
+            &mut database,
+            &[(Some(3), "c"), (Some(1), "a"), (Some(2), "b")],
+        );
+
+        let rows = database
+            .execute("SELECT a, b FROM t ORDER BY a ASC")
+            .expect("select");
+        assert_eq!(column_a(&rows), vec![Some(1), Some(2), Some(3)]);
+        assert_eq!(column_b(&rows), vec!["a", "b", "c"]);
+    }
+
+    /// AC-0036-03 — `ORDER BY a DESC LIMIT 2` devuelve las 2 mayores (desc.).
+    #[test] // @spec AC-0036-03
+    fn test_ac_0036_03_execute_order_desc_limit() {
+        let (_dir, mut database) = open_test_db("ac0036_03");
+        create_ab_table(&mut database);
+        seed_pairs(
+            &mut database,
+            &[(Some(1), "a"), (Some(3), "c"), (Some(2), "b")],
+        );
+
+        let rows = database
+            .execute("SELECT a FROM t ORDER BY a DESC LIMIT 2")
+            .expect("select");
+        assert_eq!(column_a(&rows), vec![Some(3), Some(2)]);
+    }
+
+    /// AC-0036-04 — los `NULL` van al final en `ASC` y al principio en `DESC`.
+    #[test] // @spec AC-0036-04
+    fn test_ac_0036_04_nulls_last_asc() {
+        let (_dir, mut database) = open_test_db("ac0036_04");
+        create_ab_table(&mut database);
+        seed_pairs(
+            &mut database,
+            &[
+                (Some(2), "b"),
+                (None, "n1"),
+                (Some(1), "a"),
+                (None, "n2"),
+                (Some(3), "c"),
+            ],
+        );
+
+        let ascending = database
+            .execute("SELECT a FROM t ORDER BY a ASC")
+            .expect("asc");
+        assert_eq!(
+            column_a(&ascending),
+            vec![Some(1), Some(2), Some(3), None, None]
+        );
+
+        let descending = database
+            .execute("SELECT a FROM t ORDER BY a DESC")
+            .expect("desc");
+        assert_eq!(
+            column_a(&descending),
+            vec![None, None, Some(3), Some(2), Some(1)]
+        );
+    }
+
+    /// AC-0036-05 — `ORDER BY` sobre columna inexistente da `ColumnNotFound`.
+    #[test] // @spec AC-0036-05
+    fn test_ac_0036_05_order_by_unknown_column() {
+        let (_dir, mut database) = open_test_db("ac0036_05");
+        seed_table(&mut database);
+
+        let error = database
+            .execute("SELECT * FROM t ORDER BY ausente")
+            .expect_err("columna ausente");
+        assert!(
+            matches!(error, RuscaError::ColumnNotFound { ref column } if column == "ausente"),
+            "se esperaba ColumnNotFound, se obtuvo {error:?}"
+        );
+        assert!(error.to_string().contains("ausente"));
+    }
+
+    /// BVA — ordenar por una columna no proyectada y con valores duplicados
+    /// (el orden es estable: empates conservan el orden de inserción).
+    #[test]
+    fn test_ac_0036_bva_unprojected_and_duplicates() {
+        let (_dir, mut database) = open_test_db("ac0036_bva");
+        create_ab_table(&mut database);
+        seed_pairs(
+            &mut database,
+            &[
+                (Some(2), "p"),
+                (Some(1), "q"),
+                (Some(2), "r"),
+                (Some(1), "s"),
+            ],
+        );
+
+        let rows = database
+            .execute("SELECT b FROM t ORDER BY a ASC")
+            .expect("select");
+        assert_eq!(column_b(&rows), vec!["q", "s", "p", "r"]);
+    }
+
+    proptest! {
+        /// PBT de monotonicidad: `ASC` es no decreciente con `NULL` al final;
+        /// `DESC` es no creciente con `NULL` al principio (orden estable).
+        #[test]
+        fn prop_order_by_is_monotonic(
+            inputs in prop::collection::vec(prop::option::of(-50i64..50), 1..40),
+        ) {
+            let (_dir, mut database) = open_test_db("prop_order");
+            create_ab_table(&mut database);
+            for (index, value) in inputs.iter().enumerate() {
+                let scalar = value.map_or(ScalarValue::Null, ScalarValue::Int);
+                let mut scalars = ScalarMap::new();
+                scalars.insert("a".to_string(), scalar);
+                scalars.insert("b".to_string(), ScalarValue::Text(format!("v{index}")));
+                database.insert("t", scalars).expect("insert");
+            }
+
+            let ascending = database
+                .execute("SELECT a FROM t ORDER BY a ASC")
+                .expect("asc");
+            let asc_values = column_a(&ascending);
+            let first_null = asc_values.iter().take_while(|value| value.is_some()).count();
+            prop_assert_eq!(asc_values.len(), inputs.len());
+            prop_assert!(asc_values[first_null..].iter().all(Option::is_none));
+            for pair in asc_values[..first_null].windows(2) {
+                prop_assert!(pair[0] <= pair[1], "ASC no monótono: {pair:?}");
+            }
+
+            let descending = database
+                .execute("SELECT a FROM t ORDER BY a DESC")
+                .expect("desc");
+            let desc_values = column_a(&descending);
+            let start = desc_values.iter().take_while(|value| value.is_none()).count();
+            prop_assert!(desc_values[..start].iter().all(Option::is_none));
+            for pair in desc_values[start..].windows(2) {
+                prop_assert!(pair[0] >= pair[1], "DESC no antimonótono: {pair:?}");
+            }
+        }
     }
 }

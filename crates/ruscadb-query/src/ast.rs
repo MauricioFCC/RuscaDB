@@ -93,6 +93,15 @@ pub struct TraverseClause {
     pub depth: u16,
 }
 
+/// Cláusula `ORDER BY <columna> [ASC|DESC]` de ordenamiento de filas.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OrderBy {
+    /// Columna de ordenamiento.
+    pub column: String,
+    /// `true` para orden descendente; `false` para ascendente.
+    pub desc: bool,
+}
+
 /// Sentencia `SELECT` analizada.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Select {
@@ -106,6 +115,8 @@ pub struct Select {
     pub knn: Option<KnnClause>,
     /// Cláusula `TRAVERSE` (opcional).
     pub traverse: Option<TraverseClause>,
+    /// Cláusula `ORDER BY` (opcional).
+    pub order_by: Option<OrderBy>,
     /// Límite `LIMIT` (opcional).
     pub limit: Option<u64>,
 }
@@ -118,6 +129,11 @@ pub struct Explain {
 }
 
 /// Sentencia RQL de nivel superior.
+///
+/// Se permite `large_enum_variant`: `Select` es la variante dominante (la otra
+/// solo guarda un `Box`), y envolverla cambiaría el patrón público
+/// `Statement::Select` consumido por adaptadores fuera de este crate.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Statement {
     /// `SELECT ...`.
@@ -189,6 +205,16 @@ impl fmt::Display for TraverseClause {
     }
 }
 
+impl fmt::Display for OrderBy {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "ORDER BY {}", self.column)?;
+        if self.desc {
+            write!(formatter, " DESC")?;
+        }
+        Ok(())
+    }
+}
+
 impl fmt::Display for Select {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "SELECT {} FROM {}", self.projection, self.from)?;
@@ -200,6 +226,9 @@ impl fmt::Display for Select {
         }
         if let Some(traverse) = &self.traverse {
             write!(formatter, " {traverse}")?;
+        }
+        if let Some(order_by) = &self.order_by {
+            write!(formatter, " {order_by}")?;
         }
         if let Some(limit) = self.limit {
             write!(formatter, " LIMIT {limit}")?;

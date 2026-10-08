@@ -25,6 +25,14 @@ pub enum Keyword {
     Explain,
     /// `MATCH` (búsqueda full-text dentro del `WHERE`).
     Match,
+    /// `ORDER`
+    Order,
+    /// `BY`
+    By,
+    /// `ASC`
+    Asc,
+    /// `DESC`
+    Desc,
 }
 
 impl Keyword {
@@ -41,6 +49,10 @@ impl Keyword {
             Self::Depth => "DEPTH",
             Self::Explain => "EXPLAIN",
             Self::Match => "MATCH",
+            Self::Order => "ORDER",
+            Self::By => "BY",
+            Self::Asc => "ASC",
+            Self::Desc => "DESC",
         }
     }
 
@@ -63,6 +75,10 @@ impl Keyword {
             "depth" => Some(Self::Depth),
             "explain" => Some(Self::Explain),
             "match" => Some(Self::Match),
+            "order" => Some(Self::Order),
+            "by" => Some(Self::By),
+            "asc" => Some(Self::Asc),
+            "desc" => Some(Self::Desc),
             _ => None,
         }
     }

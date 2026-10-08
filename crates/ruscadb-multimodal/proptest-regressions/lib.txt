@@ -5,3 +5,6 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc bb1531925bd6488498e25ebb5f51c10e4b98951f54754e3b2b6f443c220c1258 # shrinks to key = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bytes = []
+cc 4407805aaf1ed3892cb18b7ce1cb4237b8e350fb1fabd04f33f037442c3e6491 # shrinks to key = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], bytes = []
+cc fb81ba8d4794a879802fde1fe44a419f147f2e8c2ada52ff2e603369eacc58dc # shrinks to live = [[]], dead = []
+cc 9b65344b66b838a8c2315d0478733a7651b64799a779e4820e11ad65bfee0083 # shrinks to live = [], dead = [[], []]

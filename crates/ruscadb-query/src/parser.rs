@@ -1,7 +1,7 @@
 //! Parser recursive-descent de RQL sobre los tokens del lexer.
 
 use crate::ast::{
-    CompareOp, Explain, Expr, KnnClause, Projection, Select, Statement, TraverseClause,
+    CompareOp, Explain, Expr, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use ruscadb_core::RuscaError;
@@ -170,6 +170,11 @@ impl Parser {
         } else {
             None
         };
+        let order_by = if self.match_keyword(Keyword::Order) {
+            Some(self.parse_order_by()?)
+        } else {
+            None
+        };
         let limit = if self.match_keyword(Keyword::Limit) {
             Some(self.parse_limit()?)
         } else {
@@ -181,6 +186,7 @@ impl Parser {
             filter,
             knn,
             traverse,
+            order_by,
             limit,
         })
     }
@@ -307,6 +313,17 @@ impl Parser {
         self.expect_keyword(Keyword::Depth)?;
         let depth = self.parse_unsigned::<u16>(DEPTH_MESSAGE)?;
         Ok(TraverseClause { column, depth })
+    }
+
+    /// Parsea la cláusula `ORDER BY <col> [ASC|DESC]` (`ASC` por defecto).
+    fn parse_order_by(&mut self) -> Result<OrderBy, RuscaError> {
+        self.expect_keyword(Keyword::By)?;
+        let column = self.expect_ident()?;
+        let desc = self.match_keyword(Keyword::Desc);
+        if !desc {
+            self.match_keyword(Keyword::Asc);
+        }
+        Ok(OrderBy { column, desc })
     }
 
     /// Parsea el vector `[v1, v2, ...]` de `KNN` (puede ser vacío).

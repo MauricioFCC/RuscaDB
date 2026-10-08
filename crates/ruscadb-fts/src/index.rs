@@ -1,6 +1,7 @@
 //! Índice invertido `término -> postings` con ranking BM25 y borrado lógico.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Bound;
 
 use ruscadb_core::RecordId;
 use serde::{Deserialize, Serialize};
@@ -144,6 +145,51 @@ impl InvertedIndex {
         rank(scores, k)
     }
 
+    /// Busca documentos cuyos términos empiezan por `prefix`, ordenados por BM25.
+    ///
+    /// Normaliza `prefix` con [`tokenize`] (minúsculas) y explota el orden
+    /// lexicográfico del `BTreeMap` de términos mediante un **range scan**: solo
+    /// recorre el rango contiguo de términos que comienzan por el prefijo, sin
+    /// visitar el resto del índice. Acumula la contribución BM25 de cada término
+    /// coincidente —excluyendo tombstones— y devuelve el top-`k` por relevancia
+    /// descendente, con desempate estable por [`RecordId`] ascendente.
+    ///
+    /// Consistencia: si el prefijo coincide con un único término del índice, el
+    /// resultado es idéntico a [`InvertedIndex::search`] con ese término.
+    ///
+    /// # Complejidad
+    ///
+    /// `O(log T + sum(df))`, con `T` términos del índice y `sum(df)` los
+    /// documentos posteados por los términos del prefijo; no recorre los
+    /// términos fuera del rango.
+    ///
+    /// Args:
+    ///     prefix: Prefijo de término; se normaliza con [`tokenize`].
+    ///     k: Número máximo de resultados; `k == 0` devuelve vacío.
+    ///
+    /// Returns:
+    ///     Pares `(id, score)` ordenados por relevancia descendente, como máximo
+    ///     `k` elementos; vacío si el prefijo es vacío o no hay coincidencias.
+    pub fn search_prefix(&self, prefix: &str, k: usize) -> Vec<(RecordId, f32)> {
+        if k == 0 {
+            return Vec::new();
+        }
+        let Some(normalized) = normalize_prefix(prefix) else {
+            return Vec::new();
+        };
+        let average = self.average_doc_len();
+        let bm25 = Bm25::default();
+        let mut scores: BTreeMap<RecordId, f32> = BTreeMap::new();
+        let matches = self
+            .postings
+            .range::<str, _>((Bound::Included(normalized.as_str()), Bound::Unbounded))
+            .take_while(|(term, _)| term.starts_with(normalized.as_str()));
+        for (term, _) in matches {
+            self.accumulate_term(term, &bm25, average, &mut scores);
+        }
+        rank(scores, k)
+    }
+
     /// Acumula en `scores` la contribución BM25 del término `term`.
     ///
     /// Args:
@@ -261,6 +307,21 @@ fn unique_terms(query: &str) -> Vec<String> {
     terms.sort();
     terms.dedup();
     terms
+}
+
+/// Normaliza `prefix` con el tokenizador y toma su último término.
+///
+/// El tokenizador segmenta por límites de palabra y normaliza a minúsculas, de
+/// modo que un prefijo como `"  GATO,"` se reduce a `"gato"`. Se toma el último
+/// término porque el prefijo describe la palabra que se está completando.
+///
+/// Args:
+///     prefix: Prefijo crudo de la consulta.
+///
+/// Returns:
+///     El prefijo en minúsculas, o `None` si tras tokenizar queda vacío.
+fn normalize_prefix(prefix: &str) -> Option<String> {
+    tokenize(prefix).pop()
 }
 
 /// Ordena las puntuaciones por relevancia y recorta a `k` resultados.

@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ruscadb_core::{Record, RecordId, RuscaError, ScalarMap, ScalarValue};
-use ruscadb_query::{CompareOp, Expr, KnnClause, Projection, Select, TraverseClause};
+use ruscadb_query::{CompareOp, Expr, KnnClause, OrderBy, Projection, Select, TraverseClause};
 use ruscadb_txn::{Snapshot, Version};
 
 use crate::catalog::{Catalog, ColumnType, TableDef};
@@ -114,8 +114,9 @@ pub(crate) fn execute_select_at(
 /// 2. `MATCH` full-text (rank BM25) sobre el índice invertido de la columna.
 /// 3. `KNN` vectorial (índice HNSW, distancia ascendente, respeta `k`).
 /// 4. `TRAVERSE` de grafo (CSR, BFS acotado por `DEPTH`).
-/// 5. proyección.
-/// 6. `LIMIT`.
+/// 5. `ORDER BY` (orden estable; `NULL` al final en `ASC` y al principio en `DESC`).
+/// 6. proyección.
+/// 7. `LIMIT`.
 ///
 /// Args:
 ///     database: Base abierta.
@@ -190,6 +191,9 @@ pub(crate) fn execute_with_plan_at(
     }
     if let Some(traverse) = &select.traverse {
         records = apply_traverse(database, &table, traverse, records)?;
+    }
+    if let Some(order_by) = &select.order_by {
+        sort_records(&table, order_by, &mut records)?;
     }
     let mut rows = Vec::new();
     for record in &records {
@@ -397,6 +401,89 @@ fn apply_traverse(
         .into_iter()
         .filter_map(|id| by_id.remove(&id))
         .collect())
+}
+
+/// Ordena los registros por la cláusula `ORDER BY` (estable, fallible).
+///
+/// `NULL` ordena al final en `ASC` (y al principio en `DESC`); valores de tipos
+/// incompatibles devuelven [`RuscaError::TypeMismatch`] y una columna ausente
+/// [`RuscaError::ColumnNotFound`]. El orden es estable: los empates conservan
+/// su posición previa (p. ej. el ranking de `MATCH`/`KNN`/`TRAVERSE`).
+///
+/// Args:
+///     table: Definición de la tabla (para validar la columna).
+///     order_by: Cláusula de ordenamiento.
+///     records: Registros a ordenar in situ.
+///
+/// Errors:
+///     [`RuscaError::ColumnNotFound`] si la columna no existe;
+///     [`RuscaError::TypeMismatch`] si dos valores no son comparables.
+fn sort_records(
+    table: &TableDef,
+    order_by: &OrderBy,
+    records: &mut [Record],
+) -> Result<(), RuscaError> {
+    table.column_type(&order_by.column)?;
+    let mut failure: Option<RuscaError> = None;
+    records.sort_by(|left, right| {
+        if failure.is_some() {
+            return Ordering::Equal;
+        }
+        match compare_order_values(
+            left.scalars.get(&order_by.column),
+            right.scalars.get(&order_by.column),
+            order_by.desc,
+        ) {
+            Ok(ordering) => ordering,
+            Err(error) => {
+                failure = Some(error);
+                Ordering::Equal
+            }
+        }
+    });
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+
+/// Compara dos valores de la columna de orden (`NULL` al final en `ASC`).
+fn compare_order_values(
+    left: Option<&ScalarValue>,
+    right: Option<&ScalarValue>,
+    descending: bool,
+) -> Result<Ordering, RuscaError> {
+    let ordering = order_with_nulls_last(left, right)?;
+    Ok(if descending {
+        ordering.reverse()
+    } else {
+        ordering
+    })
+}
+
+/// Ordena dos valores colocando `NULL` (o ausente) al final.
+fn order_with_nulls_last(
+    left: Option<&ScalarValue>,
+    right: Option<&ScalarValue>,
+) -> Result<Ordering, RuscaError> {
+    match (non_null(left), non_null(right)) {
+        (None, None) => Ok(Ordering::Equal),
+        (None, Some(_)) => Ok(Ordering::Greater),
+        (Some(_), None) => Ok(Ordering::Less),
+        (Some(first), Some(second)) => {
+            order_values(first, second).map_err(|_| RuscaError::TypeMismatch {
+                message: format!("ORDER BY no puede comparar {first:?} con {second:?}"),
+            })
+        }
+    }
+}
+
+/// Devuelve el valor no nulo, tratando ausente y `Null` como `None`.
+fn non_null(value: Option<&ScalarValue>) -> Option<&ScalarValue> {
+    match value {
+        Some(ScalarValue::Null) | None => None,
+        Some(other) => Some(other),
+    }
 }
 
 /// Lee por índice los registros que igualan el literal.
