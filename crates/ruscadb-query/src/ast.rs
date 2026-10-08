@@ -116,6 +116,62 @@ pub enum Expr {
         /// Texto de la consulta (se tokeniza al buscar).
         query: String,
     },
+    /// Extracción documental `columna -> 'a.b'` (modelo documental, SPEC-0044).
+    ///
+    /// Selecciona un campo del documento JSON del registro por ruta (`path`);
+    /// se usa como operando de una comparación en el `WHERE`. Campo o documento
+    /// ausente ⇒ el operando vale `NULL` (la fila no cumple, sin error).
+    DocExtract {
+        /// Nombre lógico de la columna documental (el documento del registro).
+        column: String,
+        /// Ruta de claves anidadas (`'a'` → `["a"]`, `'a.b'` → `["a", "b"]`).
+        path: Vec<String>,
+    },
+    /// Contención documental `columna @> '{json}'` (modelo documental, SPEC-0044).
+    ///
+    /// Predicado que comprueba que el documento JSON del registro **contiene**
+    /// el subdocumento literal. El literal se mantiene como texto y se parsea al
+    /// ejecutar; JSON inválido ⇒ error accionable.
+    DocContains {
+        /// Nombre lógico de la columna documental (el documento del registro).
+        column: String,
+        /// Subdocumento esperado como texto JSON (p. ej. `{"a":1}`).
+        json: String,
+    },
+}
+
+/// Sentencia `INSERT INTO <tabla> (<cols>) VALUES (<fila>)[, ...]` (SPEC-0043).
+///
+/// Cada fila es una lista de literales alineada con `columns`; el ejecutor crea
+/// un [`crate::ast::Statement`] por fila y usa `insert_many` (un solo commit).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Insert {
+    /// Tabla destino.
+    pub table: String,
+    /// Columnas objetivo, en el orden de cada fila.
+    pub columns: Vec<String>,
+    /// Filas de literales (cada una con `columns.len()` valores).
+    pub rows: Vec<Vec<Expr>>,
+}
+
+/// Sentencia `UPDATE <tabla> SET <col> = <literal>[, ...] [WHERE ...]` (SPEC-0043).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Update {
+    /// Tabla destino.
+    pub table: String,
+    /// Asignaciones `columna = literal` en su orden de aparición.
+    pub assignments: Vec<(String, Expr)>,
+    /// Filtro `WHERE` (opcional; sin él se actualizan todas las filas).
+    pub filter: Option<Expr>,
+}
+
+/// Sentencia `DELETE FROM <tabla> [WHERE ...]` (SPEC-0043).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Delete {
+    /// Tabla destino.
+    pub table: String,
+    /// Filtro `WHERE` (opcional; sin él se borran todas las filas).
+    pub filter: Option<Expr>,
 }
 
 /// Cláusula `KNN <columna> <|k|> [v1, v2, ...]` de búsqueda de vecinos.
@@ -193,6 +249,12 @@ pub enum Statement {
     Select(Select),
     /// `EXPLAIN <select>`.
     Explain(Explain),
+    /// `INSERT INTO ... VALUES ...` (SPEC-0043).
+    Insert(Insert),
+    /// `UPDATE ... SET ... [WHERE ...]` (SPEC-0043).
+    Update(Update),
+    /// `DELETE FROM ... [WHERE ...]` (SPEC-0043).
+    Delete(Delete),
 }
 
 impl fmt::Display for Projection {
@@ -235,6 +297,10 @@ impl fmt::Display for Expr {
             }
             Self::And(left, right) => write!(formatter, "{left} AND {right}"),
             Self::Match { column, query } => write!(formatter, "MATCH({column}, '{query}')"),
+            Self::DocExtract { column, path } => {
+                write!(formatter, "{column} -> '{}'", path.join("."))
+            }
+            Self::DocContains { column, json } => write!(formatter, "{column} @> '{json}'"),
         }
     }
 }
@@ -357,11 +423,80 @@ impl fmt::Display for Explain {
     }
 }
 
+impl fmt::Display for Insert {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "INSERT INTO {} ({}) VALUES ",
+            self.table,
+            self.columns.join(", ")
+        )?;
+        write_rows(formatter, &self.rows)
+    }
+}
+
+/// Escribe las filas `(v1, v2), (...)` de un `INSERT` en orden canónico.
+///
+/// Args:
+///     formatter: Formateador de destino.
+///     rows: Filas de literales.
+///
+/// Returns:
+///     `Ok(())` si la escritura tuvo éxito.
+///
+/// Errors:
+///     Propaga cualquier error de [`fmt::Write`] de `formatter`.
+fn write_rows(formatter: &mut fmt::Formatter<'_>, rows: &[Vec<Expr>]) -> fmt::Result {
+    for (index, row) in rows.iter().enumerate() {
+        if index > 0 {
+            write!(formatter, ", ")?;
+        }
+        write!(formatter, "(")?;
+        for (position, value) in row.iter().enumerate() {
+            if position > 0 {
+                write!(formatter, ", ")?;
+            }
+            write!(formatter, "{value}")?;
+        }
+        write!(formatter, ")")?;
+    }
+    Ok(())
+}
+
+impl fmt::Display for Update {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "UPDATE {} SET ", self.table)?;
+        for (index, (column, value)) in self.assignments.iter().enumerate() {
+            if index > 0 {
+                write!(formatter, ", ")?;
+            }
+            write!(formatter, "{column} = {value}")?;
+        }
+        if let Some(filter) = &self.filter {
+            write!(formatter, " WHERE {filter}")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Delete {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "DELETE FROM {}", self.table)?;
+        if let Some(filter) = &self.filter {
+            write!(formatter, " WHERE {filter}")?;
+        }
+        Ok(())
+    }
+}
+
 impl fmt::Display for Statement {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Select(select) => write!(formatter, "{select}"),
             Self::Explain(explain) => write!(formatter, "{explain}"),
+            Self::Insert(insert) => write!(formatter, "{insert}"),
+            Self::Update(update) => write!(formatter, "{update}"),
+            Self::Delete(delete) => write!(formatter, "{delete}"),
         }
     }
 }

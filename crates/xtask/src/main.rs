@@ -140,10 +140,11 @@ fn walk(dir: &Path, visit: &mut impl FnMut(&Path)) {
 #[cfg(test)]
 mod tests {
     //! Tests de aceptación de SPEC-0016 (endurecimiento de CI T3 y supply
-    //! chain), SPEC-0033 (CI cross-platform + sanitizers) y SPEC-0042 (fuzzing
-    //! continuo del parser RQL). Solo `std`: leen los artefactos de
-    //! configuración/corpus como texto y verifican estructura/secciones (el
-    //! gate canónico es `scripts/check_ci_config.py`).
+    //! chain), SPEC-0033 (CI cross-platform + sanitizers), SPEC-0042 (fuzzing
+    //! continuo del parser RQL) y SPEC-0046 (matriz rápida + macOS en nightly).
+    //! Solo `std`: leen los artefactos de configuración/corpus como texto y
+    //! verifican estructura/secciones (el gate canónico es
+    //! `scripts/check_ci_config.py`).
 
     use super::workspace_root;
     use std::fs;
@@ -218,8 +219,9 @@ mod tests {
         }
     }
 
-    /// AC-0033-01: el job `test` de `ci.yml` declara la matriz OS
-    /// (ubuntu/windows/macos) y corre en paralelo sin fail-fast.
+    /// AC-0033-01: el job `test` de `ci.yml` declara la matriz OS rápida
+    /// (ubuntu/windows) y corre en paralelo sin fail-fast. macOS se valida en
+    /// `nightly.yml` (job `test-macos`, SPEC-0046).
     #[test]
     fn test_ac_0033_01_ci_has_os_matrix() {
         let yaml = read_root_file(".github/workflows/ci.yml");
@@ -235,12 +237,16 @@ mod tests {
             yaml.contains("fail-fast: false"),
             "ci.yml debe usar fail-fast: false para no cancelar evidencia"
         );
-        for runner in ["ubuntu-latest", "windows-latest", "macos-latest"] {
+        for runner in ["ubuntu-latest", "windows-latest"] {
             assert!(
                 yaml.contains(runner),
                 "ci.yml no incluye el runner '{runner}' en la matriz OS"
             );
         }
+        assert!(
+            !yaml.contains("macos-latest"),
+            "ci.yml no debe exigir macOS en cada push (SPEC-0046)"
+        );
     }
 
     /// AC-0033-02: `nightly.yml` declara el job `sanitizers` (ASan sobre FFI,
@@ -358,6 +364,69 @@ mod tests {
                 !target.contains(forbidden),
                 "el target del parser no debe contener '{forbidden}' \
                  (contrato no-panic)"
+            );
+        }
+    }
+
+    /// AC-0046-01: la matriz del job `test` de `ci.yml` es rápida
+    /// (ubuntu+windows) y no exige macOS en cada push.
+    #[test]
+    fn test_ac_0046_01_ci_matrix_fast() {
+        let yaml = read_root_file(".github/workflows/ci.yml");
+        assert!(
+            yaml.contains("matrix:"),
+            "ci.yml no declara strategy.matrix"
+        );
+        for runner in ["ubuntu-latest", "windows-latest"] {
+            assert!(
+                yaml.contains(runner),
+                "ci.yml no incluye el runner '{runner}' en la matriz del job test"
+            );
+        }
+        assert!(
+            !yaml.contains("macos-latest"),
+            "ci.yml no debe exigir macOS en cada push (SPEC-0046)"
+        );
+    }
+
+    /// AC-0046-02: `nightly.yml` declara un job que corre los tests en macOS
+    /// (schedule, alert-only).
+    #[test]
+    fn test_ac_0046_02_nightly_has_macos() {
+        let yaml = read_root_file(".github/workflows/nightly.yml");
+        assert!(
+            yaml.contains("test-macos:"),
+            "nightly.yml no declara el job 'test-macos'"
+        );
+        assert!(
+            yaml.contains("runs-on: macos-latest"),
+            "nightly.yml no corre ningún job en 'macos-latest'"
+        );
+        assert!(
+            yaml.contains("cargo test --workspace --all-features"),
+            "el job de macOS debe ejecutar cargo test --workspace --all-features"
+        );
+        assert!(
+            yaml.contains("continue-on-error: true"),
+            "el job de macOS debe ser alert-only (continue-on-error: true)"
+        );
+    }
+
+    /// AC-0046-03: `check_ci_config.py` valida la matriz rápida (ubuntu +
+    /// windows) y el job macOS de nightly.
+    #[test]
+    fn test_ac_0046_03_check_ci_config_validates_runners() {
+        let script = read_root_file("scripts/check_ci_config.py");
+        for needle in [
+            "ci.yml",
+            "ubuntu-latest",
+            "windows-latest",
+            "macos-latest",
+            "nightly.yml",
+        ] {
+            assert!(
+                script.contains(needle),
+                "check_ci_config.py no valida '{needle}'"
             );
         }
     }

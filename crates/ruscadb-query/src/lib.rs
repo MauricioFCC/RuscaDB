@@ -13,8 +13,8 @@ pub mod lexer;
 mod parser;
 
 pub use ast::{
-    AggFunc, Aggregate, CompareOp, Explain, Expr, KnnClause, OrderBy, Projection, Select,
-    Statement, TraverseClause,
+    AggFunc, Aggregate, CompareOp, Delete, Explain, Expr, Insert, KnnClause, OrderBy, Projection,
+    Select, Statement, TraverseClause, Update,
 };
 pub use parser::{parse, parse_statement};
 
@@ -28,9 +28,10 @@ mod tests {
     use ruscadb_core::RuscaError;
 
     /// Palabras reservadas de RQL: no pueden usarse como identificadores.
-    const RESERVED_IDENTIFIERS: [&str; 21] = [
+    const RESERVED_IDENTIFIERS: [&str; 27] = [
         "select", "from", "where", "and", "limit", "knn", "traverse", "depth", "explain", "match",
-        "order", "by", "asc", "desc", "group", "count", "sum", "avg", "min", "max", "as",
+        "order", "by", "asc", "desc", "group", "count", "sum", "avg", "min", "max", "as", "insert",
+        "into", "values", "update", "set", "delete",
     ];
 
     /// Estrategia de identificadores que evita las palabras reservadas.
@@ -657,6 +658,243 @@ mod tests {
                 traverse: None,
                 order_by: Some(OrderBy { column, desc }),
                 limit,
+            };
+            let text = select.to_string();
+            let reparsed = parse(&text).expect("reparse");
+            prop_assert_eq!(reparsed, select);
+        }
+    }
+
+    /// Parsea `INSERT` multi-fila y comprueba el IR canónico.
+    #[test]
+    fn test_parse_insert_multi_row() {
+        let statement =
+            parse_statement("INSERT INTO t (a, b) VALUES (1, 'x'), (2, 'y')").expect("parse");
+        let Statement::Insert(insert) = statement else {
+            panic!("se esperaba Statement::Insert");
+        };
+        assert_eq!(insert.table, "t");
+        assert_eq!(insert.columns, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(insert.rows.len(), 2);
+        assert_eq!(
+            insert.rows[0],
+            vec![Expr::Int(1), Expr::Text("x".to_string())]
+        );
+        assert_eq!(
+            insert.to_string(),
+            "INSERT INTO t (a, b) VALUES (1, 'x'), (2, 'y')"
+        );
+    }
+
+    /// Parsea `UPDATE` con `SET` múltiple y `WHERE`.
+    #[test]
+    fn test_parse_update_set_where() {
+        let statement = parse_statement("UPDATE t SET b = 'z', a = 4 WHERE a = 1").expect("parse");
+        let Statement::Update(update) = statement else {
+            panic!("se esperaba Statement::Update");
+        };
+        assert_eq!(update.table, "t");
+        assert_eq!(update.assignments.len(), 2);
+        assert_eq!(update.assignments[0].0, "b");
+        assert!(matches!(update.filter, Some(Expr::Compare { .. })));
+        assert_eq!(
+            update.to_string(),
+            "UPDATE t SET b = 'z', a = 4 WHERE a = 1"
+        );
+    }
+
+    /// Parsea `DELETE FROM ... [WHERE ...]` (con y sin filtro).
+    #[test]
+    fn test_parse_delete_with_and_without_where() {
+        let with = parse_statement("DELETE FROM t WHERE a = 2").expect("parse");
+        let Statement::Delete(delete) = with else {
+            panic!("se esperaba Statement::Delete");
+        };
+        assert_eq!(delete.table, "t");
+        assert!(delete.filter.is_some());
+        assert_eq!(delete.to_string(), "DELETE FROM t WHERE a = 2");
+
+        let without = parse_statement("DELETE FROM t").expect("parse");
+        let Statement::Delete(delete) = without else {
+            panic!("se esperaba Statement::Delete");
+        };
+        assert_eq!(delete.filter, None);
+        assert_eq!(delete.to_string(), "DELETE FROM t");
+    }
+
+    /// Formas DML mal formadas devuelven `ParseError` con posición.
+    #[test]
+    fn test_malformed_dml_is_error() {
+        let cases = [
+            "INSERT t (a) VALUES (1)",
+            "INSERT INTO t (a) (1)",
+            "INSERT INTO t (a) VALUES (1, 2)",
+            "INSERT INTO t (a, VALUES (1, 2)",
+            "UPDATE t SET",
+            "UPDATE t b = 1",
+            "UPDATE t SET b = c",
+            "DELETE t",
+            "DELETE FROM t WHERE",
+        ];
+        for input in cases {
+            let error = parse_statement(input).unwrap_err();
+            assert!(
+                matches!(error, RuscaError::ParseError { .. }),
+                "input: {input} -> {error:?}"
+            );
+        }
+    }
+
+    /// AC-0043-05 — roundtrip `Display → parse` de las tres formas DML.
+    #[test]
+    fn test_ac_0043_05_display_parse_roundtrip_dml() {
+        let cases = [
+            "INSERT INTO t (a, b) VALUES (1, 'x'), (2, 'y')",
+            "INSERT INTO docs (id, score) VALUES (7, 1.5)",
+            "UPDATE t SET b = 'z' WHERE a = 1",
+            "UPDATE t SET a = 2, b = 'q'",
+            "DELETE FROM t WHERE a = 2",
+            "DELETE FROM t",
+        ];
+        for input in cases {
+            let first = parse_statement(input).expect("parse");
+            let text = first.to_string();
+            let second = parse_statement(&text).expect("reparse");
+            assert_eq!(first, second, "roundtrip DML falló para {input:?}");
+        }
+    }
+
+    /// Parsea los operadores documentales `->` (simple/anidado) y `@>`.
+    #[test]
+    fn test_parse_document_operators() {
+        let extract = parse("SELECT * FROM t WHERE doc -> 'a.b' > 3").expect("parse");
+        let Some(Expr::Compare { left, .. }) = extract.filter else {
+            panic!("se esperaba Compare con DocExtract");
+        };
+        assert_eq!(
+            *left,
+            Expr::DocExtract {
+                column: "doc".to_string(),
+                path: vec!["a".to_string(), "b".to_string()],
+            }
+        );
+
+        let contains =
+            parse("SELECT * FROM t WHERE doc @> '{\"tags\":[\"gato\"]}'").expect("parse");
+        assert_eq!(
+            contains.filter,
+            Some(Expr::DocContains {
+                column: "doc".to_string(),
+                json: "{\"tags\":[\"gato\"]}".to_string(),
+            })
+        );
+    }
+
+    /// Formas mal formadas de los operadores documentales son `ParseError`.
+    #[test]
+    fn test_malformed_document_operators_are_errors() {
+        let cases = [
+            "SELECT * FROM t WHERE doc -> 'a'",
+            "SELECT * FROM t WHERE doc -> a = 1",
+            "SELECT * FROM t WHERE doc -> '' = 1",
+            "SELECT * FROM t WHERE doc -> 'a..b' = 1",
+            "SELECT * FROM t WHERE doc @> 1",
+            "SELECT * FROM t WHERE 1 @> '{}'",
+        ];
+        for input in cases {
+            let error = parse(input).unwrap_err();
+            assert!(
+                matches!(error, RuscaError::ParseError { .. }),
+                "input: {input} -> {error:?}"
+            );
+        }
+    }
+
+    /// AC-0044-05 — roundtrip `Display → parse` de los operadores documentales.
+    #[test]
+    fn test_ac_0044_05_display_parse_roundtrip_doc_ops() {
+        let cases = [
+            "SELECT * FROM t WHERE doc -> 'a' = 1",
+            "SELECT * FROM t WHERE doc -> 'nested.n' > 3 LIMIT 2",
+            "SELECT * FROM t WHERE doc @> '{\"tags\":[\"gato\"]}'",
+            "SELECT * FROM t WHERE a = 1 AND doc -> 'x' != 'y'",
+        ];
+        for input in cases {
+            let first = parse(input).expect("parse");
+            let text = first.to_string();
+            let second = parse(&text).expect("reparse");
+            assert_eq!(first, second, "roundtrip documental falló para {input:?}");
+        }
+    }
+
+    proptest! {
+        /// Metamórfica: el roundtrip `Display → parse_statement` cubre `INSERT`.
+        #[test]
+        fn prop_insert_display_parse_roundtrip(
+            table in ident_strategy(),
+            width in 1usize..4,
+            values in prop::collection::vec(-1_000_000i64..1_000_000, 1..16),
+        ) {
+            let columns: Vec<String> = (0..width).map(|i| format!("c{i}")).collect();
+            let rows: Vec<Vec<Expr>> = values
+                .chunks_exact(width)
+                .map(|chunk| chunk.iter().map(|value| Expr::Int(*value)).collect())
+                .collect();
+            prop_assume!(!rows.is_empty());
+            let statement = Statement::Insert(Insert { table, columns, rows });
+            let text = statement.to_string();
+            let reparsed = parse_statement(&text).expect("reparse");
+            prop_assert_eq!(reparsed, statement);
+        }
+
+        /// Metamórfica: el roundtrip cubre `UPDATE` y `DELETE`.
+        #[test]
+        fn prop_update_delete_display_parse_roundtrip(
+            table in ident_strategy(),
+            column in ident_strategy(),
+            value in -1_000_000i64..1_000_000,
+            filter_value in -1_000_000i64..1_000_000,
+        ) {
+            let filter = Expr::Compare {
+                left: Box::new(Expr::Column(column.clone())),
+                op: CompareOp::Eq,
+                right: Box::new(Expr::Int(filter_value)),
+            };
+            let update = Statement::Update(Update {
+                table: table.clone(),
+                assignments: vec![(column.clone(), Expr::Int(value))],
+                filter: Some(filter.clone()),
+            });
+            let reparsed_update = parse_statement(&update.to_string()).expect("reparse update");
+            prop_assert_eq!(reparsed_update, update);
+
+            let delete = Statement::Delete(Delete { table, filter: Some(filter) });
+            let reparsed_delete = parse_statement(&delete.to_string()).expect("reparse delete");
+            prop_assert_eq!(reparsed_delete, delete);
+        }
+
+        /// Metamórfica: `Display → parse` con `DocExtract` de ruta aleatoria.
+        #[test]
+        fn prop_doc_extract_display_parse_roundtrip(
+            table in ident_strategy(),
+            column in ident_strategy(),
+            segments in prop::collection::vec("[a-z]{1,6}", 1..4),
+            value in -1_000_000i64..1_000_000,
+        ) {
+            let select = Select {
+                projection: Projection::All,
+                aggregates: vec![],
+                group_by: vec![],
+                from: table,
+                filter: Some(Expr::Compare {
+                    left: Box::new(Expr::DocExtract { column, path: segments }),
+                    op: CompareOp::Eq,
+                    right: Box::new(Expr::Int(value)),
+                }),
+                knn: None,
+                traverse: None,
+                order_by: None,
+                limit: None,
             };
             let text = select.to_string();
             let reparsed = parse(&text).expect("reparse");

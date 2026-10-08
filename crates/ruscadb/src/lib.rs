@@ -14,6 +14,8 @@ mod builder;
 mod catalog;
 mod database;
 mod delete;
+mod dml;
+mod document;
 mod encryption;
 mod executor;
 mod gc;

@@ -18,7 +18,7 @@
 use std::collections::BTreeSet;
 
 use ruscadb_core::{Metric, RuscaError};
-use ruscadb_vector::distance;
+use ruscadb_vector::{HnswIndex, distance};
 
 /// Umbral de selectividad a partir del cual se usa `PostFilter` (`s >= 0.6`).
 pub const POST_THRESHOLD: f32 = 0.6;
@@ -290,12 +290,173 @@ pub fn search_auto(
     search_filtered(set, query, k, allowed, strategy)
 }
 
+/// Amplitud de búsqueda por defecto de las consultas indexadas.
+///
+/// Se usa en [`search_auto_indexed`] cuando la estrategia elegida necesita un
+/// `ef_search` explícito. Un valor mayor mejora el recall a mayor coste.
+const DEFAULT_EF_SEARCH: usize = 128;
+
+/// iFVS sobre HNSW: aplica el filtro durante el recorrido del grafo.
+///
+/// Recorre el índice con amplitud `ef` recuperando `max(k, k * OVERSAMPLE)`
+/// candidatos y conserva solo los ids permitidos por `allowed`. Es la
+/// estrategia `InFilter` real (in-filter vector search, arXiv:2607.22922)
+/// frente al post-filtrado clásico.
+///
+/// Args:
+///     index: Índice HNSW a recorrer.
+///     query: Vector de consulta de dimensión `index.dim()`.
+///     k: Número máximo de resultados.
+///     ef: Amplitud de búsqueda (`ef_search`); mayor implica mejor recall.
+///     allowed: Ids de nodo permitidos por el predicado.
+///
+/// Returns:
+///     Hasta `k` pares `(id, distancia)` ordenados por distancia ascendente,
+///     todos pertenecientes a `allowed` (sonido). Vacío si `k == 0` o
+///     `allowed` está vacío. Determinista.
+///
+/// Errors:
+///     [`RuscaError::DimensionMismatch`] si `query` no coincide con la
+///     dimensión del índice.
+pub fn search_ifvs(
+    index: &HnswIndex,
+    query: &[f32],
+    k: usize,
+    ef: usize,
+    allowed: &BTreeSet<u64>,
+) -> Result<Vec<(u64, f32)>, RuscaError> {
+    if k == 0 || allowed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let effective_k = k.max(k.saturating_mul(OVERSAMPLE));
+    let candidates = index.search(query, effective_k, ef)?;
+    Ok(candidates
+        .into_iter()
+        .filter(|(id, _)| allowed.contains(&(*id as u64)))
+        .take(k)
+        .map(|(id, distance)| (id as u64, distance))
+        .collect())
+}
+
+/// Post-filtrado sobre el índice HNSW: top-`k * OVERSAMPLE` y luego filtro.
+///
+/// Args:
+///     index: Índice HNSW a recorrer.
+///     query: Vector de consulta de dimensión `index.dim()`.
+///     k: Número máximo de resultados finales.
+///     ef: Amplitud de búsqueda (`ef_search`).
+///     allowed: Ids de nodo permitidos por el predicado.
+///
+/// Returns:
+///     Hasta `k` pares `(id, distancia)` sonoros; vacío si `k == 0` o
+///     `allowed` está vacío.
+///
+/// Errors:
+///     [`RuscaError::DimensionMismatch`] si `query` no coincide con la
+///     dimensión del índice.
+fn post_filter_indexed(
+    index: &HnswIndex,
+    query: &[f32],
+    k: usize,
+    ef: usize,
+    allowed: &BTreeSet<u64>,
+) -> Result<Vec<(u64, f32)>, RuscaError> {
+    if k == 0 || allowed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let oversample = k.saturating_mul(OVERSAMPLE);
+    let candidates = index.search(query, oversample, ef)?;
+    Ok(candidates
+        .into_iter()
+        .filter(|(id, _)| allowed.contains(&(*id as u64)))
+        .take(k)
+        .map(|(id, distance)| (id as u64, distance))
+        .collect())
+}
+
+/// Pre-filtrado exacto sobre el índice HNSW (fuerza bruta restringida).
+///
+/// Recupera el corpus completo del índice (`k = ef = n`) y filtra por
+/// `allowed`, equivalente al top-k exacto restringido al predicado.
+///
+/// Args:
+///     index: Índice HNSW a recorrer.
+///     query: Vector de consulta de dimensión `index.dim()`.
+///     k: Número máximo de resultados.
+///     allowed: Ids de nodo permitidos por el predicado.
+///
+/// Returns:
+///     Hasta `k` pares `(id, distancia)` exactos y sonoros.
+///
+/// Errors:
+///     [`RuscaError::DimensionMismatch`] si `query` no coincide con la
+///     dimensión del índice.
+fn exact_filtered_indexed(
+    index: &HnswIndex,
+    query: &[f32],
+    k: usize,
+    allowed: &BTreeSet<u64>,
+) -> Result<Vec<(u64, f32)>, RuscaError> {
+    if k == 0 || allowed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let total = index.len();
+    if total == 0 {
+        return Ok(Vec::new());
+    }
+    let candidates = index.search(query, total, total)?;
+    Ok(candidates
+        .into_iter()
+        .filter(|(id, _)| allowed.contains(&(*id as u64)))
+        .take(k)
+        .map(|(id, distance)| (id as u64, distance))
+        .collect())
+}
+
+/// Búsqueda filtrada sobre un índice HNSW eligiendo la estrategia por
+/// selectividad.
+///
+/// Calcula `s = selectivity(|allowed|, total)` y aplica [`choose_strategy`]:
+/// `PreFilter` (fuerza bruta restringida), `InFilter` ([`search_ifvs`]) o
+/// `PostFilter` (top-sobre-muestreado y filtro). El coste efectivo depende de
+/// `DEFAULT_EF_SEARCH`; `InFilter` es la opción de la frontera iFVS
+/// (arXiv:2607.22922) para selectividades moderadas.
+///
+/// Args:
+///     index: Índice HNSW a recorrer.
+///     query: Vector de consulta de dimensión `index.dim()`.
+///     k: Número máximo de resultados.
+///     allowed: Ids de nodo permitidos por el predicado.
+///     total: Número total de vectores del corpus (denominador de `s`).
+///
+/// Returns:
+///     Hasta `k` pares `(id, distancia)` sonoros según la estrategia elegida.
+///
+/// Errors:
+///     [`RuscaError::DimensionMismatch`] si `query` no coincide con la
+///     dimensión del índice.
+pub fn search_auto_indexed(
+    index: &HnswIndex,
+    query: &[f32],
+    k: usize,
+    allowed: &BTreeSet<u64>,
+    total: usize,
+) -> Result<Vec<(u64, f32)>, RuscaError> {
+    let strategy = choose_strategy(selectivity(allowed.len(), total));
+    match strategy {
+        FvsStrategy::PreFilter => exact_filtered_indexed(index, query, k, allowed),
+        FvsStrategy::InFilter => search_ifvs(index, query, k, DEFAULT_EF_SEARCH, allowed),
+        FvsStrategy::PostFilter => post_filter_indexed(index, query, k, DEFAULT_EF_SEARCH, allowed),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
     use proptest::prelude::*;
     use rstest::rstest;
+    use ruscadb_vector::HnswParams;
     use std::ops::Range;
 
     /// Construye un corpus desde entradas `(id, vector)`.
@@ -631,6 +792,295 @@ mod tests {
                 for pair in got.windows(2) {
                     prop_assert!(pair[0].1 <= pair[1].1);
                 }
+            }
+        }
+    }
+
+    // --- SPEC-0047: iFVS real sobre HNSW ---------------------------------
+
+    /// Semilla fija del corpus determinista de iFVS.
+    const IFVS_CORPUS_SEED: u64 = 0x0047_2026_1234_5678;
+    /// Vectores del corpus de recall.
+    const IFVS_N_VECTORS: usize = 1000;
+    /// Dimensión de los vectores.
+    const IFVS_DIM: usize = 16;
+    /// Consultas de evaluación del recall.
+    const IFVS_N_QUERIES: usize = 20;
+    /// Vecinos recuperados (recall@10).
+    const IFVS_K: usize = 10;
+    /// Amplitud de búsqueda elegida para superar el objetivo de recall.
+    const IFVS_EF_SEARCH: usize = 256;
+    /// Umbral mínimo de aceptación del recall.
+    const IFVS_RECALL_TARGET: f64 = 0.90;
+
+    /// Generador congruencial lineal (LCG) propio y determinista.
+    struct IfvsLcg {
+        state: u64,
+    }
+
+    impl IfvsLcg {
+        /// Crea el LCG con una semilla no nula.
+        fn new(seed: u64) -> Self {
+            Self { state: seed | 1 }
+        }
+
+        /// Siguiente entero de 64 bits (constantes de Knuth).
+        fn next_u64(&mut self) -> u64 {
+            self.state = self
+                .state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            self.state
+        }
+
+        /// Siguiente flotante uniforme en `[0, 1)`.
+        fn next_unit(&mut self) -> f32 {
+            ((self.next_u64() >> 40) as f32) / ((1u32 << 24) as f32)
+        }
+    }
+
+    /// Vectores deterministas en `[-1, 1]` generados con el LCG propio.
+    fn ifvs_vectors(count: usize, dim: usize, seed: u64) -> Vec<Vec<f32>> {
+        let mut rng = IfvsLcg::new(seed);
+        (0..count)
+            .map(|_| (0..dim).map(|_| rng.next_unit() * 2.0 - 1.0).collect())
+            .collect()
+    }
+
+    /// Construye un índice HNSW insertando `vectors` en orden (id = índice).
+    fn build_hnsw(vectors: &[Vec<f32>], metric: Metric) -> HnswIndex {
+        let mut index =
+            HnswIndex::new(HnswParams::new(metric), vectors[0].len()).expect("new hnsw");
+        for vector in vectors {
+            index.insert(vector).expect("insert");
+        }
+        index
+    }
+
+    /// Oráculo exacto restringido al filtro: top-k `(id, distancia)` por L2.
+    fn brute_force_filtered_pairs(
+        vectors: &[Vec<f32>],
+        query: &[f32],
+        k: usize,
+        allowed: &BTreeSet<u64>,
+    ) -> Vec<(u64, f32)> {
+        let mut scored: Vec<(u64, f32)> = vectors
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| allowed.contains(&(*index as u64)))
+            .map(|(index, vector)| {
+                (
+                    index as u64,
+                    distance(Metric::L2, query, vector).expect("distance"),
+                )
+            })
+            .collect();
+        scored.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        scored.truncate(k);
+        scored
+    }
+
+    /// Recall de `got` respecto de `expected` (1.0 si `expected` está vacío).
+    fn ifvs_recall(expected: &[u64], got: &[u64]) -> f64 {
+        if expected.is_empty() {
+            return 1.0;
+        }
+        let hits = expected.iter().filter(|id| got.contains(id)).count();
+        hits as f64 / expected.len() as f64
+    }
+
+    /// AC-0047-01 — iFVS es sonido: todos los ids pertenecen a `allowed`.
+    #[test]
+    fn test_ac_0047_01_ifvs_is_sound() {
+        let vectors = ifvs_vectors(200, 8, 0x0047_0001);
+        let index = build_hnsw(&vectors, Metric::L2);
+        // Los vecinos más cercanos (ids bajos) quedan fuera del filtro.
+        let allowed: BTreeSet<u64> = (0..200u64).filter(|id| id % 7 == 0).collect();
+        let query = ifvs_vectors(1, 8, 0x0047_0002).remove(0);
+
+        let got = search_ifvs(&index, &query, 5, 128, &allowed).expect("ifvs");
+        assert!(got.iter().all(|(id, _)| allowed.contains(id)));
+        assert!(got.len() <= 5);
+        for pair in got.windows(2) {
+            assert!(pair[0].1 <= pair[1].1, "resultados no ordenados");
+        }
+    }
+
+    /// AC-0047-02 — recall@10 de iFVS vs fuerza bruta filtrada >= 0.90.
+    #[test]
+    fn test_ac_0047_02_ifvs_recall() {
+        let vectors = ifvs_vectors(IFVS_N_VECTORS, IFVS_DIM, IFVS_CORPUS_SEED);
+        let queries = ifvs_vectors(IFVS_N_QUERIES, IFVS_DIM, IFVS_CORPUS_SEED ^ 0xDEAD_BEEF);
+        let index = build_hnsw(&vectors, Metric::L2);
+        // Filtro moderado: s = 0.3 (dentro de [0.05, 0.6) => InFilter).
+        let allowed: BTreeSet<u64> = (0..IFVS_N_VECTORS as u64)
+            .filter(|id| id % 10 < 3)
+            .collect();
+        let selectivity_value = selectivity(allowed.len(), IFVS_N_VECTORS);
+        assert!(
+            (0.05..0.6).contains(&selectivity_value),
+            "selectividad fuera del rango moderado: {selectivity_value}"
+        );
+
+        let mut total = 0.0;
+        for query in &queries {
+            let expected_ids: Vec<u64> =
+                brute_force_filtered_pairs(&vectors, query, IFVS_K, &allowed)
+                    .into_iter()
+                    .map(|(id, _)| id)
+                    .collect();
+            let got = search_ifvs(&index, query, IFVS_K, IFVS_EF_SEARCH, &allowed).expect("ifvs");
+            assert!(got.iter().all(|(id, _)| allowed.contains(id)));
+            let got_ids: Vec<u64> = got.iter().map(|(id, _)| *id).collect();
+            total += ifvs_recall(&expected_ids, &got_ids);
+        }
+        let average = total / queries.len() as f64;
+        println!(
+            "SPEC-0047 recall@{IFVS_K} = {average:.4} (N={IFVS_N_VECTORS}, M={IFVS_N_QUERIES}, ef={IFVS_EF_SEARCH}, s={selectivity_value:.2})"
+        );
+        assert!(
+            average >= IFVS_RECALL_TARGET,
+            "recall@{IFVS_K} = {average:.4} (objetivo >= {IFVS_RECALL_TARGET}, ef = {IFVS_EF_SEARCH})"
+        );
+    }
+
+    /// AC-0047-03 — fronteras: filtro vacío, k=0, filtro total y s=0.6/0.05.
+    #[test]
+    fn test_ac_0047_03_ifvs_boundaries() {
+        let vectors = ifvs_vectors(32, 4, 0x0047_0003);
+        let index = build_hnsw(&vectors, Metric::L2);
+        let query = ifvs_vectors(1, 4, 0x0047_0004).remove(0);
+        let empty: BTreeSet<u64> = BTreeSet::new();
+        let all: BTreeSet<u64> = (0..32).collect();
+
+        // Filtro vacío => vacío.
+        assert!(
+            search_ifvs(&index, &query, 5, 64, &empty)
+                .expect("empty")
+                .is_empty()
+        );
+        // k == 0 => vacío.
+        assert!(
+            search_ifvs(&index, &query, 0, 64, &all)
+                .expect("k0")
+                .is_empty()
+        );
+        // Filtro total con k > n: acotado a n, sonoro y sin panics.
+        let full = search_ifvs(&index, &query, 99, 64, &all).expect("full");
+        assert_eq!(full.len(), 32);
+        assert!(full.iter().all(|(id, _)| all.contains(id)));
+
+        // Fronteras de selectividad 0.6 / 0.05 (BVA).
+        assert_eq!(choose_strategy(0.6), FvsStrategy::PostFilter);
+        assert_eq!(choose_strategy(0.05), FvsStrategy::InFilter);
+        assert_eq!(choose_strategy(0.0499), FvsStrategy::PreFilter);
+    }
+
+    /// AC-0047-04 — `search_auto_indexed` elige Pre/In/Post por selectividad.
+    #[test]
+    fn test_ac_0047_04_ifvs_strategy_selection() {
+        let vectors = ifvs_vectors(100, 8, 0x0047_0005);
+        let index = build_hnsw(&vectors, Metric::L2);
+        let query = ifvs_vectors(1, 8, 0x0047_0006).remove(0);
+        let total = vectors.len();
+
+        // s = 0.6 => PostFilter.
+        let allowed_post: BTreeSet<u64> = (0..total as u64).filter(|id| id % 5 < 3).collect();
+        assert_eq!(
+            choose_strategy(selectivity(allowed_post.len(), total)),
+            FvsStrategy::PostFilter
+        );
+        let auto_post =
+            search_auto_indexed(&index, &query, 5, &allowed_post, total).expect("auto post");
+        let explicit_post =
+            post_filter_indexed(&index, &query, 5, DEFAULT_EF_SEARCH, &allowed_post).expect("post");
+        assert_eq!(auto_post, explicit_post);
+
+        // s = 0.05 => InFilter.
+        let allowed_in: BTreeSet<u64> = (0..total as u64).filter(|id| id % 20 == 0).collect();
+        assert_eq!(
+            choose_strategy(selectivity(allowed_in.len(), total)),
+            FvsStrategy::InFilter
+        );
+        let auto_in = search_auto_indexed(&index, &query, 5, &allowed_in, total).expect("auto in");
+        let explicit_in =
+            search_ifvs(&index, &query, 5, DEFAULT_EF_SEARCH, &allowed_in).expect("ifvs");
+        assert_eq!(auto_in, explicit_in);
+
+        // s < 0.05 => PreFilter (fuerza bruta filtrada exacta).
+        let allowed_pre: BTreeSet<u64> = BTreeSet::from([0u64, 1]);
+        assert_eq!(
+            choose_strategy(selectivity(allowed_pre.len(), total)),
+            FvsStrategy::PreFilter
+        );
+        let auto_pre =
+            search_auto_indexed(&index, &query, 5, &allowed_pre, total).expect("auto pre");
+        let expected_pre = brute_force_filtered_pairs(&vectors, &query, 5, &allowed_pre);
+        assert_eq!(auto_pre, expected_pre);
+    }
+
+    /// AC-0047-05 — iFVS y `search_auto_indexed` son deterministas.
+    #[test]
+    fn test_ac_0047_05_ifvs_deterministic() {
+        let vectors = ifvs_vectors(256, 12, 0x0047_0007);
+        let index = build_hnsw(&vectors, Metric::L2);
+        let query = ifvs_vectors(1, 12, 0x0047_0008).remove(0);
+        let allowed: BTreeSet<u64> = (0..256u64).filter(|id| id % 3 == 0).collect();
+
+        let first = search_ifvs(&index, &query, 8, 128, &allowed).expect("first");
+        let second = search_ifvs(&index, &query, 8, 128, &allowed).expect("second");
+        assert_eq!(first, second);
+
+        let total = vectors.len();
+        let auto_first =
+            search_auto_indexed(&index, &query, 8, &allowed, total).expect("auto first");
+        let auto_second =
+            search_auto_indexed(&index, &query, 8, &allowed, total).expect("auto second");
+        assert_eq!(auto_first, auto_second);
+    }
+
+    /// El post-filtrado indexado devuelve el top-k exacto con filtro total.
+    #[test]
+    fn test_post_filter_indexed_matches_brute_force() {
+        let vectors = ifvs_vectors(50, 4, 0x0047_0009);
+        let index = build_hnsw(&vectors, Metric::L2);
+        let query = ifvs_vectors(1, 4, 0x0047_000A).remove(0);
+        let allowed: BTreeSet<u64> = (0..50u64).collect();
+        let got =
+            post_filter_indexed(&index, &query, 5, DEFAULT_EF_SEARCH, &allowed).expect("post");
+        let expected = brute_force_filtered_pairs(&vectors, &query, 5, &allowed);
+        assert_eq!(got, expected);
+        assert!(!got.is_empty());
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(24))]
+
+        /// Propiedad (PBT): iFVS es sonoro, ordenado y devuelve a lo sumo k.
+        #[test]
+        fn prop_ifvs_is_sound(
+            rows in proptest::collection::vec(proptest::collection::vec(-5.0f32..5.0, 2..6), 4..40),
+            mask in proptest::collection::vec(any::<bool>(), 4..40),
+            query_raw in proptest::collection::vec(-5.0f32..5.0, 2..6),
+            k in 0usize..12,
+            ef in 1usize..256,
+        ) {
+            let dim = rows[0].len();
+            let entries: Vec<Vec<f32>> = rows.iter().map(|row| fit(row, dim)).collect();
+            let index = build_hnsw(&entries, Metric::L2);
+            let allowed: BTreeSet<u64> = entries
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| mask.get(*index).copied().unwrap_or(false))
+                .map(|(index, _)| index as u64)
+                .collect();
+            let query = fit(&query_raw, dim);
+
+            let got = search_ifvs(&index, &query, k, ef, &allowed).expect("ifvs");
+            prop_assert!(got.len() <= k);
+            prop_assert!(got.iter().all(|(id, _)| allowed.contains(id)));
+            for pair in got.windows(2) {
+                prop_assert!(pair[0].1 <= pair[1].1);
             }
         }
     }

@@ -172,13 +172,35 @@ pub fn open_json(key_hex: &str, nonce_hex: &str, ciphertext_hex: &str) -> String
 ///     statement: Sentencia RQL analizada.
 ///
 /// Returns:
-///     Objeto JSON con `kind` (`select` o `explain`).
+///     Objeto JSON con `kind` (`select`, `explain`, `insert`, `update` o
+///     `delete`).
 fn statement_json(statement: &Statement) -> Value {
     match statement {
         Statement::Select(select) => select_json(select),
         Statement::Explain(explain) => {
             json!({ "kind": "explain", "inner": select_json(&explain.inner) })
         }
+        Statement::Insert(insert) => json!({
+            "kind": "insert",
+            "table": &insert.table,
+            "columns": &insert.columns,
+            "rows": insert.rows.iter().map(|row| {
+                row.iter().map(expr_json).collect::<Vec<_>>()
+            }).collect::<Vec<_>>(),
+        }),
+        Statement::Update(update) => json!({
+            "kind": "update",
+            "table": &update.table,
+            "assignments": update.assignments.iter().map(|(column, value)| {
+                json!({ "column": column, "value": expr_json(value) })
+            }).collect::<Vec<_>>(),
+            "filter": update.filter.as_ref().map(expr_json),
+        }),
+        Statement::Delete(delete) => json!({
+            "kind": "delete",
+            "table": &delete.table,
+            "filter": delete.filter.as_ref().map(expr_json),
+        }),
     }
 }
 
@@ -242,6 +264,15 @@ fn expr_json(expr: &Expr) -> Value {
         }),
         Expr::Match { column, query } => {
             json!({ "kind": "match", "column": column, "query": query })
+        }
+        Expr::DocExtract { column, path } => {
+            json!({ "kind": "doc_extract", "column": column, "path": path })
+        }
+        Expr::DocContains {
+            column,
+            json: literal,
+        } => {
+            json!({ "kind": "doc_contains", "column": column, "json": literal })
         }
     }
 }

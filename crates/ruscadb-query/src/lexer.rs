@@ -47,6 +47,18 @@ pub enum Keyword {
     Max,
     /// `AS`
     As,
+    /// `INSERT` (DML).
+    Insert,
+    /// `INTO` (DML).
+    Into,
+    /// `VALUES` (DML).
+    Values,
+    /// `UPDATE` (DML).
+    Update,
+    /// `SET` (DML).
+    Set,
+    /// `DELETE` (DML).
+    Delete,
 }
 
 impl Keyword {
@@ -74,6 +86,12 @@ impl Keyword {
             Self::Min => "MIN",
             Self::Max => "MAX",
             Self::As => "AS",
+            Self::Insert => "INSERT",
+            Self::Into => "INTO",
+            Self::Values => "VALUES",
+            Self::Update => "UPDATE",
+            Self::Set => "SET",
+            Self::Delete => "DELETE",
         }
     }
 
@@ -107,6 +125,12 @@ impl Keyword {
             "min" => Some(Self::Min),
             "max" => Some(Self::Max),
             "as" => Some(Self::As),
+            "insert" => Some(Self::Insert),
+            "into" => Some(Self::Into),
+            "values" => Some(Self::Values),
+            "update" => Some(Self::Update),
+            "set" => Some(Self::Set),
+            "delete" => Some(Self::Delete),
             _ => None,
         }
     }
@@ -153,6 +177,10 @@ pub enum Token {
     LParen,
     /// `)`
     RParen,
+    /// `->` (extracción documental).
+    Arrow,
+    /// `@>` (contención documental).
+    AtGt,
 }
 
 /// Token con su posición (byte) en el texto original.
@@ -234,6 +262,24 @@ impl<'a> Lexer<'a> {
             b'!' => return Err(parse_error("se esperaba '!='", position)),
             b'<' => self.consume_lt(),
             b'>' => self.consume_optional_eq(Token::GtEq, Token::Gt),
+            b'-' if self.peek_next() == Some(b'>') => {
+                self.index += 2;
+                Token::Arrow
+            }
+            b'-' if matches!(self.peek_next(), Some(b'0'..=b'9')) => {
+                self.index += 1;
+                match self.read_number(position)? {
+                    Token::Int(value) => Token::Int(-value),
+                    Token::Float(value) => Token::Float(-value),
+                    other => other,
+                }
+            }
+            b'-' => return Err(parse_error("se esperaba '->'", position)),
+            b'@' if self.peek_next() == Some(b'>') => {
+                self.index += 2;
+                Token::AtGt
+            }
+            b'@' => return Err(parse_error("se esperaba '@>'", position)),
             b'|' if self.peek_next() == Some(b'>') => {
                 self.index += 2;
                 Token::KnnClose

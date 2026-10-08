@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 37b0ca7484b934a978271d08d2d37d4512c9dcf8b712287cc7c4469b6fc2e691 # shrinks to columns = ["a"], table = "a", limit = None
 cc 1f65e7a6aedac1566d1aebf37b0c022ff244b5121784247285216d3663ba272c # shrinks to input = ""
+cc 5c41237b3c7f70b136e0d77f902736c1b9491a307a4653ff52072aaede0b65ff # shrinks to table = "a", values = [[0], [0, 0]]

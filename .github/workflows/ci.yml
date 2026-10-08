@@ -6,8 +6,10 @@
 #   Architecture-> guards de hexagonal + unsafe (scripts/check_*.py)
 #   Security    -> cargo-deny + cargo-audit
 #
-# Cross-platform (SPEC-0033): el job `test` corre sobre linux/windows/macos en
-# paralelo (strategy.matrix.os) para validar que el workspace es portable.
+# Cross-platform (SPEC-0033/SPEC-0046): el job `test` corre en paralelo sobre
+# linux/windows (strategy.matrix.os) para feedback rápido en push/PR. macOS se
+# valida en `.github/workflows/nightly.yml` (job `test-macos`, schedule) por la
+# cola de runners, que no debe bloquear el PR.
 #
 # T2 (LLM-judge) corre sobre el diff del PR. T3 (regresión nightly: mutation
 # full sharded, fuzz, miri, sanitizers ASan, crash-recovery) es alert-only y
@@ -49,13 +51,15 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }})
-    # Cross-platform (SPEC-0033): el mismo slice corre en los 3 SO. `fail-fast:
-    # false` garantiza que un runner rojo no cancele la evidencia de los demás.
+    # Cross-platform (SPEC-0033/SPEC-0046): el mismo slice corre en linux y
+    # windows (matriz rápida). macOS se valida en `nightly.yml` (job
+    # `test-macos`) porque su cola de runners es larga. `fail-fast: false`
+    # garantiza que un runner rojo no cancele la evidencia del otro.
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

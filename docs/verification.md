@@ -51,22 +51,27 @@ pre-commit run --all-files   # gitleaks + cargo fmt + cargo clippy
 **Fitness functions** relevantes (roadmap §4.7): FF-01/FF-02 (grafo hexagonal),
 FF-04 (`unsafe`), FF-08 (mutation score), FF-10 (dependencias), FF-11 (specs).
 
-### Cross-platform (SPEC-0033) — T1
+### Cross-platform (SPEC-0033/SPEC-0046) — T1
 
-El job `test` de `ci.yml` corre sobre una **matriz OS** en paralelo:
+El job `test` de `ci.yml` corre sobre una **matriz OS rápida** en paralelo
+(ubuntu + windows) para no bloquear el PR con la cola de runners de macOS:
 
 ```yaml
 strategy:
   fail-fast: false
   matrix:
-    os: [ubuntu-latest, windows-latest, macos-latest]
+    os: [ubuntu-latest, windows-latest]
 runs-on: ${{ matrix.os }}
 ```
 
 Mismos comandos por runner (`cargo test --workspace --all-features --locked`);
 el workspace debe ser portable (sin rutas de SO ni separadores hardcodeados).
-`fail-fast: false` evita que un SO rojo cancele la evidencia de los demás.
-`scripts/check_ci_config.py` valida que la matriz declare los tres runners.
+`fail-fast: false` evita que un SO rojo cancele la evidencia del otro.
+`scripts/check_ci_config.py` valida que la matriz declare ubuntu+windows.
+
+**macOS se valida en T3** (`nightly.yml`, job `test-macos`) por `schedule`: la
+cola de runners macOS es larga (~20 min) y no debe retrasar el feedback de
+push/PR. Ver la sección T3.
 
 ---
 
@@ -141,6 +146,19 @@ RUSTFLAGS="-Zsanitizer=address" ASAN_OPTIONS=detect_leaks=0 \
 diseño; interesan los errores de memoria. El job `sanitizers` es **alert-only**
 (`continue-on-error: true`) y sube `asan-test.log` como artifact.
 
+### macOS — cross-platform fuera del PR (SPEC-0046)
+
+La cobertura macOS se movió fuera del PR: el job `test-macos` de `nightly.yml`
+corre en `macos-latest` con `continue-on-error: true` (alert-only):
+
+```bash
+cargo test --workspace --all-features --locked
+```
+
+Se ejecuta en `schedule`/`workflow_dispatch` porque la cola de runners macOS es
+larga. `scripts/check_ci_config.py` valida que nightly declare un job en
+`macos-latest` y que `ci.yml` mantenga la matriz rápida ubuntu+windows.
+
 ### SBOM (CycloneDX, supply chain §6.5)
 
 Job `sbom` de T1 (informativo): `cargo cyclonedx --format json --all`.
@@ -162,9 +180,10 @@ el parseo de T1/T2/T3.
 
 | Artefacto | Gate | Comando |
 |---|---|---|
-| `ci.yml` (matriz OS) | SPEC-0033/AC-01 | `python scripts/check_ci_config.py`, `cargo test -p xtask` |
+| `ci.yml` (matriz rápida) | SPEC-0033/SPEC-0046/AC-01 | `python scripts/check_ci_config.py`, `cargo test -p xtask` |
+| `nightly.yml` (`test-macos`) | SPEC-0046/AC-02 | idem |
+| `check_ci_config.py` (runners) | SPEC-0046/AC-03 | idem |
 | `nightly.yml` (sanitizers) | SPEC-0033/AC-02 | idem |
-| `check_ci_config.py` | SPEC-0033/AC-03 | idem |
 | `nightly.yml` | SPEC-0016/AC-01 | idem |
 | `.cargo/mutants.toml` | SPEC-0016/AC-02 | idem |
 | `deny.toml` | SPEC-0016/AC-03 | idem |

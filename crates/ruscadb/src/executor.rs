@@ -17,6 +17,7 @@ use ruscadb_txn::{Snapshot, Version};
 
 use crate::catalog::{Catalog, ColumnType, TableDef};
 use crate::database::Database;
+use crate::document::{doc_contains, extract_doc_scalar};
 use crate::heap::{heap_read, heap_scan};
 use crate::index::{canonical_key, index_lookup_eq};
 
@@ -179,9 +180,7 @@ pub(crate) fn execute_with_plan_at(
     let (matches, scalar_filter) = split_matches(select.filter.as_ref());
     let mut records = Vec::new();
     for (_, record) in candidates {
-        if is_visible(snapshot, &record)
-            && keeps_row(&table, scalar_filter.as_ref(), &record.scalars)?
-        {
+        if is_visible(snapshot, &record) && keeps_row(&table, scalar_filter.as_ref(), &record)? {
             records.push(record);
         }
     }
@@ -200,14 +199,13 @@ pub(crate) fn execute_with_plan_at(
     if let Some(order_by) = &select.order_by {
         sort_records(&table, order_by, &mut records)?;
     }
+    let limit = select.limit.map_or(usize::MAX, |value| value as usize);
     let mut rows = Vec::new();
     for record in &records {
-        rows.push(project_row(&table, &select.projection, &record.scalars)?);
-        if let Some(limit) = select.limit {
-            if rows.len() >= limit as usize {
-                break;
-            }
+        if rows.len() >= limit {
+            break;
         }
+        rows.push(project_row(&table, &select.projection, &record.scalars)?);
     }
     Ok(rows)
 }
@@ -223,7 +221,7 @@ pub(crate) fn execute_with_plan_at(
 ///
 /// Returns:
 ///     `true` si la versión del registro es visible para el snapshot.
-fn is_visible(snapshot: &Snapshot, record: &Record) -> bool {
+pub(crate) fn is_visible(snapshot: &Snapshot, record: &Record) -> bool {
     let version = Version {
         created_tx: record.meta.created_tx,
         deleted_tx: record.meta.deleted_tx,
@@ -539,21 +537,42 @@ fn expr_literal(expression: &Expr) -> Option<ScalarValue> {
         Expr::Int(number) => Some(ScalarValue::Int(*number)),
         Expr::Float(number) => Some(ScalarValue::Float(*number)),
         Expr::Text(text) => Some(ScalarValue::Text(text.clone())),
-        Expr::Column(_) | Expr::Compare { .. } | Expr::And(_, _) | Expr::Match { .. } => None,
+        Expr::Column(_)
+        | Expr::Compare { .. }
+        | Expr::And(_, _)
+        | Expr::Match { .. }
+        | Expr::DocExtract { .. }
+        | Expr::DocContains { .. } => None,
     }
 }
 
+/// Convierte un literal del IR a `ScalarValue` o falla con error accionable.
+///
+/// Args:
+///     expression: Expresión del IR que debe ser un literal.
+///
+/// Returns:
+///     El [`ScalarValue`] del literal.
+///
+/// Errors:
+///     [`RuscaError::TypeMismatch`] si la expresión no es un literal escalar.
+pub(crate) fn literal_scalar(expression: &Expr) -> Result<ScalarValue, RuscaError> {
+    expr_literal(expression).ok_or_else(|| RuscaError::TypeMismatch {
+        message: "se esperaba un literal (entero, flotante o texto)".to_string(),
+    })
+}
+
 /// Decide si la fila pasa el filtro (valida las columnas contra el esquema).
-fn keeps_row(
+pub(crate) fn keeps_row(
     table: &TableDef,
     filter: Option<&Expr>,
-    scalars: &ScalarMap,
+    record: &Record,
 ) -> Result<bool, RuscaError> {
     let Some(expression) = filter else {
         return Ok(true);
     };
     validate_filter_columns(table, expression)?;
-    eval_predicate(expression, scalars)
+    eval_predicate(expression, record)
 }
 
 /// Comprueba que cada columna del filtro exista en el esquema.
@@ -570,28 +589,34 @@ fn validate_filter_columns(table: &TableDef, expression: &Expr) -> Result<(), Ru
             validate_filter_columns(table, right)
         }
         // `MATCH` se extrae antes de evaluar el filtro escalar (lo resuelve el
-        // índice full-text), así que aquí no valida columnas.
-        Expr::Match { .. } => Ok(()),
+        // índice full-text), así que aquí no valida columnas. Los operadores
+        // documentales tampoco referencian columnas del esquema (usan `Record.doc`).
+        Expr::Match { .. } | Expr::DocExtract { .. } | Expr::DocContains { .. } => Ok(()),
     }
 }
 
-/// Evalúa un predicado sobre los escalares de la fila.
-fn eval_predicate(expression: &Expr, scalars: &ScalarMap) -> Result<bool, RuscaError> {
+/// Evalúa un predicado sobre el registro (escalares + documento).
+fn eval_predicate(expression: &Expr, record: &Record) -> Result<bool, RuscaError> {
     match expression {
         Expr::And(left, right) => {
-            Ok(eval_predicate(left, scalars)? && eval_predicate(right, scalars)?)
+            Ok(eval_predicate(left, record)? && eval_predicate(right, record)?)
         }
         Expr::Compare { left, op, right } => {
-            let first = eval_operand(left, scalars)?;
-            let second = eval_operand(right, scalars)?;
+            let first = eval_operand(left, record)?;
+            let second = eval_operand(right, record)?;
             compare_values(*op, &first, &second)
         }
+        Expr::DocContains { json, .. } => doc_contains(record, json),
         Expr::Column(_) | Expr::Int(_) | Expr::Float(_) | Expr::Text(_) => {
             Err(RuscaError::TypeMismatch {
                 message: "el filtro WHERE debe ser una comparación o AND de comparaciones"
                     .to_string(),
             })
         }
+        Expr::DocExtract { .. } => Err(RuscaError::TypeMismatch {
+            message: "la extracción documental '->' debe usarse dentro de una comparación"
+                .to_string(),
+        }),
         Expr::Match { .. } => Err(RuscaError::TypeMismatch {
             message: "MATCH se resuelve en el índice full-text, no como comparación escalar"
                 .to_string(),
@@ -599,14 +624,21 @@ fn eval_predicate(expression: &Expr, scalars: &ScalarMap) -> Result<bool, RuscaE
     }
 }
 
-/// Evalúa un operando (columna → valor de la fila, ausente → `NULL`).
-fn eval_operand(expression: &Expr, scalars: &ScalarMap) -> Result<ScalarValue, RuscaError> {
+/// Evalúa un operando (columna o extracción documental → valor; ausente → `NULL`).
+fn eval_operand(expression: &Expr, record: &Record) -> Result<ScalarValue, RuscaError> {
     match expression {
-        Expr::Column(name) => Ok(scalars.get(name).cloned().unwrap_or(ScalarValue::Null)),
+        Expr::Column(name) => Ok(record
+            .scalars
+            .get(name)
+            .cloned()
+            .unwrap_or(ScalarValue::Null)),
+        Expr::DocExtract { path, .. } => {
+            Ok(extract_doc_scalar(record, path).unwrap_or(ScalarValue::Null))
+        }
         Expr::Int(number) => Ok(ScalarValue::Int(*number)),
         Expr::Float(number) => Ok(ScalarValue::Float(*number)),
         Expr::Text(text) => Ok(ScalarValue::Text(text.clone())),
-        Expr::Compare { .. } | Expr::And(_, _) | Expr::Match { .. } => {
+        Expr::Compare { .. } | Expr::And(_, _) | Expr::Match { .. } | Expr::DocContains { .. } => {
             Err(RuscaError::TypeMismatch {
                 message: "una comparación no puede anidarse como operando".to_string(),
             })

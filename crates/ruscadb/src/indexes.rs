@@ -280,6 +280,22 @@ impl TableIndexes {
         }
     }
 
+    /// Reindexa el texto de un registro actualizado (sin tombstone).
+    ///
+    /// Retira el `RecordId` de todos los índices invertidos y lo reinserta con el
+    /// texto actual del registro. Una actualización escalar no altera el vector
+    /// ni las aristas, así que los índices HNSW y CSR no cambian (SPEC-0043).
+    ///
+    /// Args:
+    ///     record: Registro actualizado (mismo `id`).
+    ///     table: Definición de la tabla (columnas `TEXT`).
+    pub(crate) fn refresh_text(&mut self, record: &Record, table: &TableDef) {
+        for index in self.fts.values_mut() {
+            index.remove(&record.id);
+        }
+        self.index_text(record, table);
+    }
+
     /// Inserta el embedding del registro en el índice HNSW.
     fn index_vector(&mut self, record: &Record) -> Result<(), RuscaError> {
         let Some(embedding) = record.vector.as_ref() else {

@@ -3,10 +3,12 @@
 
 Comprueba, sin dependencias externas obligatorias (solo stdlib):
 
-1. ``.github/workflows/ci.yml`` (T1) declara la matriz cross-platform del job
-   ``test`` (``ubuntu-latest``/``windows-latest``/``macos-latest``) — SPEC-0033.
+1. ``.github/workflows/ci.yml`` (T1) declara la matriz rápida del job ``test``
+   (``ubuntu-latest``/``windows-latest``); macOS queda fuera del PR por la
+   cola de runners (SPEC-0046).
 2. ``.github/workflows/nightly.yml`` (T3) es YAML parseable y declara los jobs
-   ``mutation``/``fuzz``/``miri``/``sanitizers`` (alert-only); además, el job
+   ``mutation``/``fuzz``/``miri``/``sanitizers`` (alert-only) más el job
+   ``test-macos`` que corre en ``macos-latest`` (SPEC-0046); además, el job
    ``fuzz`` declara la matriz de targets ``query_parse``/``wal_recover`` y el
    target del parser usa un dictionary (SPEC-0042). Si PyYAML no está
    instalado se aplica un parser textual robusto por indentación.
@@ -38,9 +40,18 @@ MUTANTS = ROOT / ".cargo" / "mutants.toml"
 DENY = ROOT / "deny.toml"
 CRATES_DIR = ROOT / "crates"
 
-# Runners que debe declarar la matriz cross-platform de ci.yml (SPEC-0033/AC-01).
-MATRIX_OS: tuple[str, ...] = ("ubuntu-latest", "windows-latest", "macos-latest")
-REQUIRED_JOBS: tuple[str, ...] = ("mutation", "fuzz", "miri", "sanitizers")
+# Runners de la matriz rápida de ci.yml (SPEC-0033/SPEC-0046/AC-01):
+# ubuntu+windows en push/PR; macOS se valida en nightly.yml (cola larga).
+MATRIX_OS: tuple[str, ...] = ("ubuntu-latest", "windows-latest")
+# Runner de macOS que debe declarar nightly.yml (SPEC-0046/AC-02).
+NIGHTLY_OS: str = "macos-latest"
+REQUIRED_JOBS: tuple[str, ...] = (
+    "mutation",
+    "fuzz",
+    "miri",
+    "sanitizers",
+    "test-macos",
+)
 # Targets que debe fuzzear el job `fuzz` de nightly.yml (SPEC-0042/AC-03).
 FUZZ_TARGETS: tuple[str, ...] = ("query_parse", "wal_recover")
 REQUIRED_DENY_SECTIONS: tuple[str, ...] = (
@@ -122,11 +133,13 @@ def _fuzz_targets_from_matrix(job: dict[str, Any]) -> set[str]:
 
 
 def check_ci_matrix(errors: list[str]) -> None:
-    """Valida la matriz cross-platform del job ``test`` de ``ci.yml``.
+    """Valida la matriz rápida del job ``test`` de ``ci.yml``.
 
-    SPEC-0033/AC-01: el job ``test`` (T1) debe declarar ``strategy.matrix.os``
-    con los tres runners. Con PyYAML se comprueba la estructura; sin él, un
-    chequeo textual verifica que los runners aparezcan en el workflow.
+    SPEC-0033/SPEC-0046/AC-01: el job ``test`` (T1) debe declarar
+    ``strategy.matrix.os`` con los runners ``ubuntu-latest``/``windows-latest``
+    (macOS se valida en ``nightly.yml``). Con PyYAML se comprueba la estructura;
+    sin él, un chequeo textual verifica que los runners aparezcan en el
+    workflow.
     """
     if not CI.exists():
         errors.append(f"no existe {CI.relative_to(ROOT)}")
@@ -159,6 +172,22 @@ def check_ci_matrix(errors: list[str]) -> None:
             errors.append(
                 f"ci.yml: no declara el runner '{target}' (chequeo textual)"
             )
+
+
+def _has_runner(jobs: dict[str, Any], runner: str) -> bool:
+    """Indica si algún job de ``jobs`` declara ``runs-on: <runner>``.
+
+    Args:
+        jobs: Mapa de nombre de job a su especificación YAML.
+        runner: Etiqueta del runner (p. ej. ``macos-latest``).
+
+    Returns:
+        ``True`` si algún job usa ese runner; ``False`` en caso contrario.
+    """
+    for spec in jobs.values():
+        if isinstance(spec, dict) and spec.get("runs-on") == runner:
+            return True
+    return False
 
 
 def check_nightly(errors: list[str]) -> None:
@@ -194,6 +223,10 @@ def check_nightly(errors: list[str]) -> None:
                     )
         if data.get("permissions") != {"contents": "read"}:
             errors.append("nightly.yml: permissions debe ser contents: read")
+        if not _has_runner(jobs, NIGHTLY_OS):
+            errors.append(
+                f"nightly.yml: ningún job corre en '{NIGHTLY_OS}' (SPEC-0046)"
+            )
         return
     # Fallback sin PyYAML: chequeo textual por indentación.
     jobs = _jobs_from_text(text)
@@ -214,6 +247,10 @@ def check_nightly(errors: list[str]) -> None:
         errors.append(
             "nightly.yml: el fuzz de query_parse no usa dictionary "
             "(-dict=) (chequeo textual)"
+        )
+    if NIGHTLY_OS not in text:
+        errors.append(
+            f"nightly.yml: no declara el runner '{NIGHTLY_OS}' (chequeo textual)"
         )
 
 
@@ -305,9 +342,9 @@ def main() -> int:
         return 1
 
     print(
-        "[OK] check_ci_config: ci.yml (matriz ubuntu/windows/macos), "
-        "nightly.yml (mutation/fuzz/miri/sanitizers, alert-only; fuzz con "
-        "query_parse/wal_recover + dictionary), "
+        "[OK] check_ci_config: ci.yml (matriz rápida ubuntu/windows), "
+        "nightly.yml (mutation/fuzz/miri/sanitizers + test-macos, alert-only; "
+        "fuzz con query_parse/wal_recover + dictionary), "
         "mutants.toml y deny.toml (4 secciones) válidos."
     )
     return 0

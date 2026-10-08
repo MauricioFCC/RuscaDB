@@ -130,6 +130,38 @@ pub struct RecordMeta {
     pub embedding_version: Option<u32>,
 }
 
+/// (De)serializa `doc` como texto JSON para formatos binarios que no admiten
+/// valores auto-descriptivos (p. ej. `postcard`, usado por el heap): el valor se
+/// guarda como `String` y se parsea al leer. `None` se codifica igual que antes,
+/// así que los registros sin documento conservan el formato.
+mod doc_json_string {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use serde_json::Value;
+
+    /// Serializa `Option<Value>` como `Option<String>` (JSON textual).
+    pub fn serialize<S: Serializer>(
+        value: &Option<Value>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(document) => serializer.serialize_some(&document.to_string()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    /// Deserializa `Option<String>` (JSON textual) a `Option<Value>`.
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<Value>, D::Error> {
+        match Option::<String>::deserialize(deserializer)? {
+            Some(text) => serde_json::from_str(&text)
+                .map(Some)
+                .map_err(serde::de::Error::custom),
+            None => Ok(None),
+        }
+    }
+}
+
 /// Registro universal de RuscaDB: un solo tipo físico para los cinco modelos.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Record {
@@ -138,6 +170,7 @@ pub struct Record {
     /// Escalares tipados: PK, columnas relacionales, timestamp (time-series).
     pub scalars: ScalarMap,
     /// Documento JSON anidado y libre (modelo documental).
+    #[serde(with = "doc_json_string")]
     pub doc: Option<serde_json::Value>,
     /// Aristas entrantes/salientes (modelo de grafo).
     pub edges: EdgeSet,

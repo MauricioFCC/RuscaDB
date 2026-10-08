@@ -10,7 +10,7 @@
 use ruscadb_core::{
     EdgeSet, Metric, Record, RecordId, RecordMeta, RuscaError, ScalarMap, ScalarValue,
 };
-use ruscadb_query::parse;
+use ruscadb_query::{Statement, parse_statement};
 use ruscadb_txn::Snapshot;
 
 use crate::catalog::{Catalog, ColumnDef, ColumnType, TableDef};
@@ -195,15 +195,17 @@ impl Database {
         catalog.save(self)
     }
 
-    /// Ejecuta una consulta RQL y devuelve las filas proyectadas.
+    /// Ejecuta una sentencia RQL y devuelve las filas resultantes.
     ///
-    /// Usa el snapshot más reciente (todos los commits visibles).
+    /// Usa el snapshot más reciente (todos los commits visibles) para `SELECT`,
+    /// `UPDATE` y `DELETE`. Las sentencias DML (SPEC-0043) devuelven una fila
+    /// `{"affected": N}` con el número de filas insertadas/actualizadas/borradas.
     ///
     /// Args:
-    ///     query: Texto RQL (`SELECT ... FROM ... WHERE ... LIMIT ...`).
+    ///     query: Texto RQL (`SELECT`, `INSERT`, `UPDATE` o `DELETE`).
     ///
     /// Returns:
-    ///     Filas como mapas columna → escalar.
+    ///     Filas como mapas columna → escalar (`{"affected": N}` para DML).
     ///
     /// Errors:
     ///     [`RuscaError::ParseError`] si el texto no parsea;
@@ -213,21 +215,35 @@ impl Database {
         self.execute_at(query, &snapshot)
     }
 
-    /// Ejecuta una consulta RQL con visibilidad "as of" un snapshot MVCC.
+    /// Ejecuta una sentencia RQL con visibilidad "as of" un snapshot MVCC.
+    ///
+    /// Despacha `SELECT`/`INSERT`/`UPDATE`/`DELETE` (SPEC-0043). `EXPLAIN` no es
+    /// una sentencia ejecutable y devuelve [`RuscaError::ParseError`] (se
+    /// inspecciona con `parse_statement`).
     ///
     /// Args:
-    ///     query: Texto RQL (`SELECT ... FROM ... WHERE ... LIMIT ...`).
+    ///     query: Texto RQL.
     ///     snapshot: Vista fija de visibilidad ([`Database::snapshot`]).
     ///
     /// Returns:
-    ///     Filas visibles para `snapshot`, como mapas columna → escalar.
+    ///     Filas visibles para `snapshot` (o `{"affected": N}` para DML).
     ///
     /// Errors:
     ///     [`RuscaError::ParseError`] si el texto no parsea;
     ///     errores de esquema del ejecutor en otro caso.
     pub fn execute_at(&mut self, query: &str, snapshot: &Snapshot) -> Result<Vec<Row>, RuscaError> {
-        let select = parse(query)?;
-        execute_select_at(self, &select, snapshot)
+        match parse_statement(query)? {
+            Statement::Select(select) => execute_select_at(self, &select, snapshot),
+            Statement::Insert(insert) => self.execute_insert(&insert),
+            Statement::Update(update) => self.execute_update(&update, snapshot),
+            Statement::Delete(delete) => self.execute_delete(&delete, snapshot),
+            Statement::Explain(_) => Err(RuscaError::ParseError {
+                message:
+                    "EXPLAIN no es una sentencia ejecutable; inspecciónala con parse_statement"
+                        .to_string(),
+                position: 0,
+            }),
+        }
     }
 
     /// Carga el catálogo actual (instantánea para planificar e inspeccionar).
@@ -367,7 +383,7 @@ mod tests {
     use crate::{ColumnType, Embedding, EmbeddingMeta, ScalarValue};
     use pretty_assertions::assert_eq;
     use proptest::prelude::*;
-    use ruscadb_query::Projection;
+    use ruscadb_query::{Projection, parse};
 
     /// Abre una base temporal de pruebas con pool amplio (sin backpressure).
     fn open_test_db(tag: &str) -> (tempfile::TempDir, Database) {
