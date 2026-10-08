@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "ruscadb-ts"
 description = "Serie temporal de RuscaDB: bucketing, ventanas y remuestreo."
 version.workspace = true
