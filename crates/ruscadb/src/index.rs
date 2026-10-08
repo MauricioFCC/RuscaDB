@@ -42,7 +42,10 @@ type IndexEntry = (Vec<u8>, RowLocator);
 ///
 /// Errors:
 ///     [`RuscaError::TypeMismatch`] si el valor no pertenece a la columna.
-pub fn canonical_key(column_type: ColumnType, value: &ScalarValue) -> Result<Vec<u8>, RuscaError> {
+pub(crate) fn canonical_key(
+    column_type: ColumnType,
+    value: &ScalarValue,
+) -> Result<Vec<u8>, RuscaError> {
     match (column_type, value) {
         (ColumnType::Bool, ScalarValue::Bool(flag)) => Ok(vec![TAG_BOOL, u8::from(*flag)]),
         (ColumnType::Int, ScalarValue::Int(number)) => Ok(int_key(*number)),
@@ -71,7 +74,7 @@ pub fn canonical_key(column_type: ColumnType, value: &ScalarValue) -> Result<Vec
 /// Errors:
 ///     [`RuscaError::InvalidConfig`] si la tabla no tiene índice;
 ///     [`RuscaError::TypeMismatch`] si el valor no pertenece a la columna.
-pub fn index_insert(
+pub(crate) fn index_insert(
     database: &mut Database,
     catalog: &mut Catalog,
     table_name: &str,
@@ -102,7 +105,7 @@ pub fn index_insert(
 ///
 /// Errors:
 ///     [`RuscaError::TypeMismatch`] si el valor no pertenece a la columna.
-pub fn index_remove(
+pub(crate) fn index_remove(
     database: &mut Database,
     catalog: &mut Catalog,
     table_name: &str,
@@ -132,7 +135,7 @@ pub fn index_remove(
 /// Errors:
 ///     [`RuscaError::InvalidConfig`] si la tabla no tiene índice;
 ///     [`RuscaError::TypeMismatch`] si el literal no pertenece a la columna.
-pub fn index_lookup_eq(
+pub(crate) fn index_lookup_eq(
     database: &mut Database,
     table: &TableDef,
     value: &ScalarValue,
@@ -158,7 +161,7 @@ pub fn index_lookup_eq(
 ///     database: Base abierta.
 ///     catalog: Catálogo (asignador *bump* + definición de la tabla).
 ///     table_name: Tabla dueña del índice.
-pub fn index_build(
+pub(crate) fn index_build(
     database: &mut Database,
     catalog: &mut Catalog,
     table_name: &str,

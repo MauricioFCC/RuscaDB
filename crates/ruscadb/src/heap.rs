@@ -14,7 +14,7 @@ use crate::catalog::Catalog;
 use crate::database::Database;
 
 /// Localizador físico de una fila: página + índice de slot.
-pub type RowLocator = (PageId, u32);
+pub(crate) type RowLocator = (PageId, u32);
 
 /// Tamaño del contador de slots en bytes.
 const COUNT_SIZE: usize = 2;
@@ -42,7 +42,7 @@ const MAX_ROW_BYTES: usize = PAGE_SIZE - COUNT_SIZE - SLOT_SIZE;
 /// Errors:
 ///     [`RuscaError::TableNotFound`] si la tabla no existe;
 ///     [`RuscaError::InvalidConfig`] si la fila no cabe en 4 KiB.
-pub fn heap_insert(
+pub(crate) fn heap_insert(
     database: &mut Database,
     catalog: &mut Catalog,
     table_name: &str,
@@ -73,7 +73,10 @@ pub fn heap_insert(
 ///
 /// Errors:
 ///     [`RuscaError::CorruptManifest`] si el slot o los bytes son inválidos.
-pub fn heap_read(database: &mut Database, locator: RowLocator) -> Result<Record, RuscaError> {
+pub(crate) fn heap_read(
+    database: &mut Database,
+    locator: RowLocator,
+) -> Result<Record, RuscaError> {
     let page = database.read_page(locator.0)?;
     let slots = parse_slots(page.data())?;
     let (offset, length) = slots.get(locator.1 as usize).ok_or_else(|| {
@@ -99,7 +102,7 @@ pub fn heap_read(database: &mut Database, locator: RowLocator) -> Result<Record,
 /// Errors:
 ///     [`RuscaError::CorruptManifest`] si el slot no existe o el heap es inválido;
 ///     [`RuscaError::InvalidConfig`] si la fila serializada no cabe en 4 KiB.
-pub fn heap_update(
+pub(crate) fn heap_update(
     database: &mut Database,
     locator: RowLocator,
     record: &Record,
@@ -133,7 +136,10 @@ pub fn heap_update(
 ///
 /// Errors:
 ///     [`RuscaError::CorruptManifest`] si el slot no existe o el heap es inválido.
-pub fn heap_remove(database: &mut Database, locator: RowLocator) -> Result<Record, RuscaError> {
+pub(crate) fn heap_remove(
+    database: &mut Database,
+    locator: RowLocator,
+) -> Result<Record, RuscaError> {
     let page = database.read_page(locator.0)?;
     let slots = parse_slots(page.data())?;
     let target = locator.1 as usize;
@@ -328,7 +334,7 @@ fn repack_page_fits(
 ///
 /// Errors:
 ///     [`RuscaError::CorruptManifest`] si una página del heap es inválida.
-pub fn heap_scan(
+pub(crate) fn heap_scan(
     database: &mut Database,
     table: &crate::catalog::TableDef,
 ) -> Result<Vec<(RowLocator, Record)>, RuscaError> {
@@ -346,7 +352,7 @@ pub fn heap_scan(
 ///
 /// Returns:
 ///     Página con contador de slots a cero.
-pub fn blank_slotted_page(id: PageId) -> Page {
+pub(crate) fn blank_slotted_page(id: PageId) -> Page {
     let mut page = Page::new(id);
     page.data_mut()[0..COUNT_SIZE].copy_from_slice(&0u16.to_le_bytes());
     page

@@ -61,7 +61,7 @@ pub enum Plan {
 ///
 /// Errors:
 ///     [`RuscaError::TableNotFound`] si la tabla no existe.
-pub fn plan_for(select: &Select, catalog: &Catalog) -> Result<Plan, RuscaError> {
+pub(crate) fn plan_for(select: &Select, catalog: &Catalog) -> Result<Plan, RuscaError> {
     let table = catalog.get(&select.from)?;
     if let Some(knn) = &select.knn {
         return Ok(Plan::KnnScan {
@@ -83,23 +83,6 @@ pub fn plan_for(select: &Select, catalog: &Catalog) -> Result<Plan, RuscaError> 
     Ok(Plan::FullScan)
 }
 
-/// Ejecuta un `SELECT` analizado con el snapshot más reciente.
-///
-/// Args:
-///     database: Base abierta.
-///     select: Consulta analizada.
-///
-/// Returns:
-///     Filas proyectadas (hasta `LIMIT`, en orden de inserción).
-///
-/// Errors:
-///     [`RuscaError::TableNotFound`] / [`RuscaError::ColumnNotFound`] /
-///     [`RuscaError::TypeMismatch`] ante errores de esquema.
-pub fn execute_select(database: &mut Database, select: &Select) -> Result<Vec<Row>, RuscaError> {
-    let snapshot = database.snapshot();
-    execute_select_at(database, select, &snapshot)
-}
-
 /// Ejecuta un `SELECT` analizado con visibilidad "as of" `snapshot` (SPEC-0019).
 ///
 /// Args:
@@ -113,7 +96,7 @@ pub fn execute_select(database: &mut Database, select: &Select) -> Result<Vec<Ro
 /// Errors:
 ///     [`RuscaError::TableNotFound`] / [`RuscaError::ColumnNotFound`] /
 ///     [`RuscaError::TypeMismatch`] ante errores de esquema.
-pub fn execute_select_at(
+pub(crate) fn execute_select_at(
     database: &mut Database,
     select: &Select,
     snapshot: &Snapshot,
@@ -149,7 +132,10 @@ pub fn execute_select_at(
 ///     [`RuscaError::MissingTextColumn`] / [`RuscaError::MissingVector`] /
 ///     [`RuscaError::MissingGraph`] / [`RuscaError::DimensionMismatch`] ante
 ///     cláusulas que no encajan con los datos de la tabla.
-pub fn execute_with_plan(
+///
+/// Punto de entrada para tests que fijan el plan (solo compilado en tests).
+#[cfg(test)]
+pub(crate) fn execute_with_plan(
     database: &mut Database,
     select: &Select,
     plan: Plan,
@@ -179,7 +165,7 @@ pub fn execute_with_plan(
 ///     [`RuscaError::MissingTextColumn`] / [`RuscaError::MissingVector`] /
 ///     [`RuscaError::MissingGraph`] / [`RuscaError::DimensionMismatch`] ante
 ///     cláusulas que no encajan con los datos de la tabla.
-pub fn execute_with_plan_at(
+pub(crate) fn execute_with_plan_at(
     database: &mut Database,
     select: &Select,
     plan: Plan,

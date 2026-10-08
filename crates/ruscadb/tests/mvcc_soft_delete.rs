@@ -337,14 +337,9 @@ fn test_ac_0022_06_secondary_index_entry_removed() {
     let victim = insert_row(&mut database, 10, "x");
     insert_row(&mut database, 20, "y");
 
-    let table = database
-        .catalog()
-        .expect("catalog")
-        .get("t")
-        .expect("tabla")
-        .clone();
     assert_eq!(
-        ruscadb::index_lookup_eq(&mut database, &table, &ScalarValue::Int(10))
+        database
+            .execute("SELECT * FROM t WHERE a = 10")
             .expect("lookup antes")
             .len(),
         1,
@@ -354,13 +349,15 @@ fn test_ac_0022_06_secondary_index_entry_removed() {
     assert!(database.delete("t", &victim).expect("delete"));
 
     assert!(
-        ruscadb::index_lookup_eq(&mut database, &table, &ScalarValue::Int(10))
+        database
+            .execute("SELECT * FROM t WHERE a = 10")
             .expect("lookup víctima")
             .is_empty(),
         "la entrada del índice secundario de la fila borrada debe eliminarse"
     );
     assert_eq!(
-        ruscadb::index_lookup_eq(&mut database, &table, &ScalarValue::Int(20))
+        database
+            .execute("SELECT * FROM t WHERE a = 20")
             .expect("lookup superviviente")
             .len(),
         1,
@@ -378,14 +375,9 @@ fn test_ac_0022_07_secondary_index_duplicate_keys() {
     let first = insert_row(&mut database, 10, "x");
     insert_row(&mut database, 10, "y");
 
-    let table = database
-        .catalog()
-        .expect("catalog")
-        .get("t")
-        .expect("tabla")
-        .clone();
     assert_eq!(
-        ruscadb::index_lookup_eq(&mut database, &table, &ScalarValue::Int(10))
+        database
+            .execute("SELECT * FROM t WHERE a = 10")
             .expect("lookup antes")
             .len(),
         2
@@ -394,7 +386,8 @@ fn test_ac_0022_07_secondary_index_duplicate_keys() {
     assert!(database.delete("t", &first).expect("delete"));
 
     assert_eq!(
-        ruscadb::index_lookup_eq(&mut database, &table, &ScalarValue::Int(10))
+        database
+            .execute("SELECT * FROM t WHERE a = 10")
             .expect("lookup después")
             .len(),
         1,

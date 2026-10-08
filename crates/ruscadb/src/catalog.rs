@@ -20,10 +20,10 @@ use ruscadb_storage::{PAGE_SIZE, Page, PageId};
 use crate::Database;
 
 /// Magia del superblock (`"RUSCDB01"`): distingue la página 0 del catálogo.
-pub const CATALOG_MAGIC: u64 = 0x5255_5343_4442_3031;
+pub(crate) const CATALOG_MAGIC: u64 = 0x5255_5343_4442_3031;
 
 /// Versión del formato del catálogo persistido.
-pub const CATALOG_VERSION: u32 = 1;
+pub(crate) const CATALOG_VERSION: u32 = 1;
 
 /// Tamaño del superblock en bytes (magic u64 + versión u32 + páginas u32).
 const SUPERBLOCK_SIZE: usize = 16;
