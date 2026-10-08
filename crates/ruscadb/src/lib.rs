@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+mod batch;
 mod catalog;
 mod database;
 mod delete;

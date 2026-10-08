@@ -305,6 +305,53 @@ mod tests {
         assert!(matches!(err, RuscaError::InvalidConfig(_)));
     }
 
+    /// SPEC-0027 — `rollback` aborta: la tx sale de vuelo y nunca se confirma.
+    #[test]
+    fn test_txn_manager_rollback_aborts_in_flight() {
+        let mut manager = TxnManager::new();
+        let tx = manager.begin();
+        assert_eq!(manager.low_watermark(), tx, "la tx bloquea el watermark");
+
+        manager.rollback(tx).expect("rollback de tx en vuelo");
+
+        assert!(!manager.is_committed(tx), "una tx abortada no se publica");
+        assert_eq!(
+            manager.low_watermark(),
+            tx + 1,
+            "al salir de vuelo deja de bloquear el watermark"
+        );
+        let err = manager
+            .rollback(tx)
+            .expect_err("doble rollback debe fallar");
+        assert!(matches!(err, RuscaError::InvalidConfig(_)));
+    }
+
+    /// SPEC-0027 — `rollback` de una tx inexistente es error accionable.
+    #[test]
+    fn test_txn_manager_rollback_unknown_tx_is_error() {
+        let mut manager = TxnManager::new();
+        let err = manager
+            .rollback(42)
+            .expect_err("tx inexistente debe fallar");
+        assert!(matches!(err, RuscaError::InvalidConfig(_)));
+        assert!(err.to_string().contains("42"));
+    }
+
+    /// SPEC-0027 — tras `commit`, `rollback` de la misma tx falla (ya no está
+    /// en vuelo) y no la despublica.
+    #[test]
+    fn test_txn_manager_rollback_after_commit_is_error() {
+        let mut manager = TxnManager::new();
+        let tx = manager.begin();
+        manager.commit(tx).expect("commit");
+
+        let err = manager
+            .rollback(tx)
+            .expect_err("rollback de tx confirmada debe fallar");
+        assert!(matches!(err, RuscaError::InvalidConfig(_)));
+        assert!(manager.is_committed(tx), "el commit previo se conserva");
+    }
+
     /// BVA `is_committed`: antes, durante y después; 0 y desconocidos dan `false`.
     #[test]
     fn test_bva_is_committed_boundaries() {

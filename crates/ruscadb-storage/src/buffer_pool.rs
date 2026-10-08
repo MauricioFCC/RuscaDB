@@ -161,6 +161,41 @@ impl BufferPool {
         Ok(())
     }
 
+    /// Descarta un marco (incluido su estado sucio) sin escribirlo a disco.
+    ///
+    /// El marco vuelve a quedar vacío, de modo que la página se relee del
+    /// almacén persistente la próxima vez que se solicite: cualquier cambio
+    /// que solo viviese en memoria (dirty, sin commit) se pierde y la página
+    /// regresa a su **último estado persistido**. Es el primitivo de aborto
+    /// usado por `Database::rollback` (SPEC-0027, FR-0027-02).
+    ///
+    /// Args:
+    ///     id: Página cuyo marco se desea descartar.
+    ///
+    /// Returns:
+    ///     `Ok(())` si el marco existía, estaba sin pinnear y se descartó.
+    ///
+    /// Errors:
+    ///     [`RuscaError::PageNotInPool`] si la página no está en memoria;
+    ///     [`RuscaError::InvalidConfig`] si el marco está pinneado (pin_count > 0)
+    ///     y descartarlo rompería el contrato de préstamo de [`BufferPool::get`].
+    pub fn discard(&mut self, id: PageId) -> Result<(), RuscaError> {
+        let Some(&idx) = self.index.get(&id) else {
+            return Err(RuscaError::PageNotInPool { id: id.0 });
+        };
+        let pin_count = self.frames[idx].pin_count;
+        if pin_count > 0 {
+            return Err(RuscaError::InvalidConfig(format!(
+                "no se puede descartar la página {}: está pinneada (pin_count = {pin_count}); \
+                 despinéala con BufferPool::unpin antes de abortar",
+                id.0
+            )));
+        }
+        self.index.remove(&id);
+        self.frames[idx] = Frame::empty();
+        Ok(())
+    }
+
     /// Obtiene una página, cargándola con `load` si no está en memoria.
     ///
     /// Deja la página **pinneada**; el llamador debe invocar [`BufferPool::unpin`].
@@ -313,5 +348,61 @@ mod unit_tests {
         let mut pool = BufferPool::new(1).expect("pool");
         let _ = pool.get(PageId(0), |id| Ok(Page::new(id))).expect("get");
         assert_eq!(pool.clock, 1);
+    }
+
+    // ── SPEC-0027 — `BufferPool::discard` (FR-0027-02) ───────────────────────
+
+    /// `discard` elimina el marco sucio sin escribir y la página se relee de la
+    /// fuente original (vuelve al último estado persistido).
+    #[test]
+    fn discard_dirty_frame_reloads_from_source() {
+        let mut pool = BufferPool::new(2).expect("pool");
+        let _ = pool.get(PageId(5), |id| Ok(Page::new(id))).expect("get");
+        pool.unpin(PageId(5), true).expect("unpin dirty");
+        {
+            let page = pool
+                .get_mut(PageId(5), |id| Ok(Page::new(id)))
+                .expect("get_mut");
+            page.data_mut()[0] = 0xAB;
+        }
+        pool.unpin(PageId(5), true).expect("unpin");
+        assert_eq!(pool.is_dirty(PageId(5)), Some(true));
+
+        pool.discard(PageId(5)).expect("discard");
+        assert!(!pool.contains(PageId(5)), "el marco se elimina del índice");
+
+        let reloaded = pool
+            .get(PageId(5), |id| Ok(Page::new(id)))
+            .expect("relectura");
+        assert_eq!(
+            reloaded.data()[0],
+            0,
+            "la página vuelve al estado de la fuente (sin el 0xAB descartado)"
+        );
+        pool.unpin(PageId(5), false).expect("unpin");
+    }
+
+    /// `discard` de una página ausente devuelve `PageNotInPool`.
+    #[test]
+    fn discard_missing_page_is_error() {
+        let mut pool = BufferPool::new(1).expect("pool");
+        let err = pool.discard(PageId(9)).expect_err("página ausente");
+        assert!(matches!(err, RuscaError::PageNotInPool { id: 9 }));
+    }
+
+    /// `discard` de un marco pinneado es error; tras despinnear sí descarta.
+    #[test]
+    fn discard_pinned_frame_is_error() {
+        let mut pool = BufferPool::new(1).expect("pool");
+        let _ = pool.get(PageId(1), |id| Ok(Page::new(id))).expect("get");
+        let err = pool.discard(PageId(1)).expect_err("marco pinneado");
+        assert!(
+            matches!(err, RuscaError::InvalidConfig(_)),
+            "se esperaba InvalidConfig, se obtuvo {err:?}"
+        );
+
+        pool.unpin(PageId(1), false).expect("unpin");
+        pool.discard(PageId(1)).expect("discard tras unpin");
+        assert_eq!(pool.len(), 0);
     }
 }

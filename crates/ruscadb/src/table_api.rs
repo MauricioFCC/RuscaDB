@@ -232,7 +232,7 @@ fn validate_schema(name: &str, columns: &[ColumnDef]) -> Result<(), RuscaError> 
 }
 
 /// Valida los escalares contra el esquema (con coerción `Int→Float`).
-fn validate_scalars(
+pub(crate) fn validate_scalars(
     definition: &TableDef,
     table: &str,
     scalars: ScalarMap,
@@ -282,7 +282,7 @@ fn coerce_value(
 }
 
 /// Actualiza el índice de la tabla con la fila recién insertada.
-fn maintain_index(
+pub(crate) fn maintain_index(
     database: &mut Database,
     catalog: &mut Catalog,
     table: &str,

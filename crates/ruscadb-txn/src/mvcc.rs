@@ -145,6 +145,32 @@ impl TxnManager {
         Ok(())
     }
 
+    /// Aborta una transacción en vuelo: la retira de `in_flight` y **no** la
+    /// publica (nunca entra en `committed`).
+    ///
+    /// Es la operación dual de [`commit`](TxnManager::commit): tras un `rollback`
+    /// la transacción deja de bloquear el *low watermark* y sus versiones no
+    /// quedan confirmadas. El llamador (p. ej. `Database::rollback`) es
+    /// responsable de descartar las páginas que solo existían en memoria.
+    ///
+    /// Args:
+    ///     tx: Identificador devuelto por [`begin`](TxnManager::begin).
+    ///
+    /// Returns:
+    ///     `Ok(())` si la transacción estaba en vuelo; `Err` en caso contrario.
+    ///
+    /// Raises:
+    ///     [`RuscaError::InvalidConfig`] si `tx` no está en vuelo (inexistente,
+    ///     ya confirmada o ya abortada).
+    pub fn rollback(&mut self, tx: TxId) -> Result<(), RuscaError> {
+        if !self.in_flight.remove(&tx) {
+            return Err(RuscaError::InvalidConfig(format!(
+                "rollback de transacción no en vuelo: tx_id {tx}"
+            )));
+        }
+        Ok(())
+    }
+
     /// Toma un snapshot con la visibilidad actual.
     ///
     /// Semántica exacta: `tx_id` es el último identificador asignado

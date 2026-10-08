@@ -51,7 +51,9 @@ impl DbConfig {
 /// Base de datos embebida con durabilidad WAL-first.
 pub struct Database {
     file: PagedFile,
-    pool: BufferPool,
+    /// Buffer pool de páginas (SPEC-0003). `pub(crate)` para que el rollback de
+    /// la fachada y sus tests puedan inspeccionar/descartar marcos sucios.
+    pub(crate) pool: BufferPool,
     pub(crate) wal: Wal,
     wal_path: PathBuf,
     encryption: Option<EncryptionConfig>,
@@ -215,6 +217,64 @@ impl Database {
     pub fn close(mut self) -> Result<(), RuscaError> {
         self.commit()?;
         self.file.flush()?;
+        Ok(())
+    }
+
+    /// Aborta la transacción activa y descarta los cambios sin confirmar.
+    ///
+    /// Semántica: la base vuelve a su **último estado confirmado**. Si hay una
+    /// transacción en vuelo ([`Database::begin`]) se aborta con
+    /// [`TxnManager::rollback`]; después se descartan todas las páginas sucias
+    /// del buffer pool ([`BufferPool::discard`]), de modo que no se escriben a
+    /// disco ni se publican en el WAL. Los índices derivados y el índice
+    /// primario se reconstruyen desde el heap persistido para eliminar las
+    /// entradas de las filas abortadas y dejar la base operativa.
+    ///
+    /// ## Límite documentado (modo cifrado)
+    ///
+    /// En modo cifrado las páginas nunca se publican a `.data` (el WAL es la
+    /// fuente de verdad), así que un `rollback` no puede revertir el estado en
+    /// memoria sin rehacer el replay. Se rechaza con
+    /// [`RuscaError::InvalidConfig`]: para volver al último estado confirmado,
+    /// cierra y reabre la base con la clave.
+    ///
+    /// Returns:
+    ///     `Ok(())` tras abortar y descartar; es un *no-op* sin cambios.
+    ///
+    /// Errors:
+    ///     [`RuscaError::InvalidConfig`] si la base está en modo cifrado o si
+    ///     una página sucia está pinneada (invariante interno roto);
+    ///     [`RuscaError::CorruptManifest`] si el heap persistido es inválido.
+    pub fn rollback(&mut self) -> Result<(), RuscaError> {
+        if self.encryption.is_some() {
+            return Err(RuscaError::InvalidConfig(
+                "rollback no está soportado en modo cifrado: las páginas viven en el WAL y \
+                 nunca se publican a .data; cierra y reabre la base para volver al último \
+                 estado confirmado"
+                    .to_string(),
+            ));
+        }
+        if let Some(tx) = self.active_tx.take() {
+            self.txn.rollback(tx)?;
+        }
+        self.discard_dirty_pages()?;
+        self.rebuild_indexes()?;
+        self.rebuild_primary_index()?;
+        Ok(())
+    }
+
+    /// Descarta todos los marcos sucios del buffer pool (sin escribir a disco).
+    ///
+    /// Returns:
+    ///     `Ok(())` cuando no quedan páginas sucias.
+    ///
+    /// Errors:
+    ///     [`RuscaError::InvalidConfig`] si alguna página sucia está pinneada.
+    fn discard_dirty_pages(&mut self) -> Result<(), RuscaError> {
+        let dirty = self.pool.dirty_pages();
+        for page in dirty {
+            self.pool.discard(page.id())?;
+        }
         Ok(())
     }
 
