@@ -11,6 +11,51 @@ pub enum Projection {
     Columns(Vec<String>),
 }
 
+/// Función de agregación soportada por RQL.
+///
+/// `CountStar` es `COUNT(*)` (cuenta filas, incluidas las de columnas `NULL`);
+/// el resto ignora los `NULL` (semántica SQL:2016). La estrategia de ejecución
+/// es *hash aggregation* (como DuckDB/DataFusion), no *sort-based*.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AggFunc {
+    /// `COUNT(*)`: cuenta todas las filas del grupo.
+    CountStar,
+    /// `COUNT(columna)`: cuenta valores no `NULL`.
+    Count,
+    /// `SUM(columna)`: suma valores numéricos no `NULL`.
+    Sum,
+    /// `AVG(columna)`: media de valores numéricos no `NULL`.
+    Avg,
+    /// `MIN(columna)`: mínimo de valores no `NULL`.
+    Min,
+    /// `MAX(columna)`: máximo de valores no `NULL`.
+    Max,
+}
+
+impl AggFunc {
+    /// Texto canónico de la función.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CountStar | Self::Count => "COUNT",
+            Self::Sum => "SUM",
+            Self::Avg => "AVG",
+            Self::Min => "MIN",
+            Self::Max => "MAX",
+        }
+    }
+}
+
+/// Agregado de la proyección (p. ej. `COUNT(*)`, `SUM(a) AS total`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Aggregate {
+    /// Función de agregación.
+    pub func: AggFunc,
+    /// Columna de entrada (`None` solo para `COUNT(*)`).
+    pub column: Option<String>,
+    /// Alias opcional (`AS nombre`); si falta, el executor deriva el nombre.
+    pub alias: Option<String>,
+}
+
 /// Operador de comparación.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompareOp {
@@ -107,6 +152,12 @@ pub struct OrderBy {
 pub struct Select {
     /// Columnas proyectadas.
     pub projection: Projection,
+    /// Agregados de la proyección (`COUNT(*)`, `SUM(a)`, ...).
+    ///
+    /// Se mantienen separados de [`Projection`] para no romper la variante
+    /// pública `Projection::Columns` (consumida por adaptadores como
+    /// `ruscadb-wasm`); el orden canónico los serializa tras las columnas.
+    pub aggregates: Vec<Aggregate>,
     /// Tabla de origen.
     pub from: String,
     /// Filtro `WHERE` (opcional).
@@ -115,6 +166,8 @@ pub struct Select {
     pub knn: Option<KnnClause>,
     /// Cláusula `TRAVERSE` (opcional).
     pub traverse: Option<TraverseClause>,
+    /// Columnas de `GROUP BY` (vacío si no hay agrupación).
+    pub group_by: Vec<String>,
     /// Cláusula `ORDER BY` (opcional).
     pub order_by: Option<OrderBy>,
     /// Límite `LIMIT` (opcional).
@@ -215,9 +268,24 @@ impl fmt::Display for OrderBy {
     }
 }
 
+impl fmt::Display for Aggregate {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.column {
+            Some(column) => write!(formatter, "{}({column})", self.func.as_str())?,
+            None => write!(formatter, "{}(*)", self.func.as_str())?,
+        }
+        if let Some(alias) = &self.alias {
+            write!(formatter, " AS {alias}")?;
+        }
+        Ok(())
+    }
+}
+
 impl fmt::Display for Select {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "SELECT {} FROM {}", self.projection, self.from)?;
+        write!(formatter, "SELECT ")?;
+        write_projection(formatter, &self.projection, &self.aggregates)?;
+        write!(formatter, " FROM {}", self.from)?;
         if let Some(filter) = &self.filter {
             write!(formatter, " WHERE {filter}")?;
         }
@@ -227,6 +295,9 @@ impl fmt::Display for Select {
         if let Some(traverse) = &self.traverse {
             write!(formatter, " {traverse}")?;
         }
+        if !self.group_by.is_empty() {
+            write!(formatter, " GROUP BY {}", self.group_by.join(", "))?;
+        }
         if let Some(order_by) = &self.order_by {
             write!(formatter, " {order_by}")?;
         }
@@ -235,6 +306,49 @@ impl fmt::Display for Select {
         }
         Ok(())
     }
+}
+
+/// Escribe la proyección canónica: columnas y, tras ellas, los agregados.
+///
+/// Args:
+///     formatter: Formateador de destino.
+///     projection: Proyección `*` o lista de columnas.
+///     aggregates: Agregados de la proyección (en su orden de aparición).
+///
+/// Returns:
+///     `Ok(())` si la escritura tuvo éxito.
+///
+/// Errors:
+///     Propaga cualquier error de [`fmt::Write`] de `formatter`.
+fn write_projection(
+    formatter: &mut fmt::Formatter<'_>,
+    projection: &Projection,
+    aggregates: &[Aggregate],
+) -> fmt::Result {
+    let mut wrote = false;
+    match projection {
+        Projection::All => {
+            write!(formatter, "*")?;
+            wrote = true;
+        }
+        Projection::Columns(columns) => {
+            for (index, column) in columns.iter().enumerate() {
+                if index > 0 {
+                    write!(formatter, ", ")?;
+                }
+                write!(formatter, "{column}")?;
+                wrote = true;
+            }
+        }
+    }
+    for aggregate in aggregates {
+        if wrote {
+            write!(formatter, ", ")?;
+        }
+        write!(formatter, "{aggregate}")?;
+        wrote = true;
+    }
+    Ok(())
 }
 
 impl fmt::Display for Explain {

@@ -10,13 +10,15 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ruscadb_core::{Record, RecordId, RuscaError, ScalarMap, ScalarValue};
-use ruscadb_query::{CompareOp, Expr, KnnClause, OrderBy, Projection, Select, TraverseClause};
+use ruscadb_query::{
+    AggFunc, Aggregate, CompareOp, Expr, KnnClause, OrderBy, Projection, Select, TraverseClause,
+};
 use ruscadb_txn::{Snapshot, Version};
 
 use crate::catalog::{Catalog, ColumnType, TableDef};
 use crate::database::Database;
 use crate::heap::{heap_read, heap_scan};
-use crate::index::index_lookup_eq;
+use crate::index::{canonical_key, index_lookup_eq};
 
 /// Fila resultado: escalares proyectados por nombre de columna.
 pub type Row = BTreeMap<String, ScalarValue>;
@@ -191,6 +193,9 @@ pub(crate) fn execute_with_plan_at(
     }
     if let Some(traverse) = &select.traverse {
         records = apply_traverse(database, &table, traverse, records)?;
+    }
+    if is_aggregate_query(select) {
+        return aggregate_records(&table, select, &records);
     }
     if let Some(order_by) = &select.order_by {
         sort_records(&table, order_by, &mut records)?;
@@ -672,5 +677,524 @@ fn project_row(
             }
             Ok(row)
         }
+    }
+}
+
+/// Indica si la consulta requiere agregación (`GROUP BY` o agregados).
+///
+/// Args:
+///     select: Consulta analizada.
+///
+/// Returns:
+///     `true` si hay columnas de agrupación o agregados en la proyección.
+fn is_aggregate_query(select: &Select) -> bool {
+    !select.group_by.is_empty() || !select.aggregates.is_empty()
+}
+
+/// Tipo de acumulador resuelto de un agregado (columna y tipo ya verificados).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AggKind {
+    /// `COUNT(*)`.
+    CountStar,
+    /// `COUNT(columna)`.
+    Count,
+    /// `SUM` sobre columna entera.
+    SumInt,
+    /// `SUM` sobre columna flotante.
+    SumFloat,
+    /// `AVG`.
+    Avg,
+    /// `MIN`.
+    Min,
+    /// `MAX`.
+    Max,
+}
+
+/// Estado acumulado de un grupo: claves representativas + celdas de agregados.
+struct GroupAccumulator {
+    /// Valores de las columnas de `GROUP BY` (de la primera fila del grupo).
+    keys: ScalarMap,
+    /// Número de filas del grupo (`COUNT(*)`).
+    row_count: u64,
+    /// Estado por agregado, alineado con `select.aggregates`.
+    cells: Vec<AggregateState>,
+}
+
+impl GroupAccumulator {
+    /// Crea un grupo vacío (sin filas) para la agregación global.
+    fn empty(kinds: &[AggKind]) -> Self {
+        Self {
+            keys: ScalarMap::new(),
+            row_count: 0,
+            cells: new_cells(kinds),
+        }
+    }
+
+    /// Crea un grupo con las claves de su primera fila.
+    fn new(keys: ScalarMap, kinds: &[AggKind]) -> Self {
+        Self {
+            keys,
+            row_count: 0,
+            cells: new_cells(kinds),
+        }
+    }
+
+    /// Materializa la fila de salida: columnas de grupo + agregados.
+    fn to_row(&self, projection: &Projection, aggregates: &[Aggregate]) -> Row {
+        let mut row = Row::new();
+        if let Projection::Columns(columns) = projection {
+            for column in columns {
+                let value = self.keys.get(column).cloned().unwrap_or(ScalarValue::Null);
+                row.insert(column.clone(), value);
+            }
+        }
+        for (aggregate, state) in aggregates.iter().zip(&self.cells) {
+            let value = if aggregate.func == AggFunc::CountStar {
+                ScalarValue::Int(self.row_count as i64)
+            } else {
+                state.finish()
+            };
+            row.insert(aggregate_output_key(aggregate), value);
+        }
+        row
+    }
+}
+
+/// Estado acumulado de un único agregado en un grupo.
+enum AggregateState {
+    /// `COUNT(*)` (se resuelve con el conteo de filas del grupo).
+    CountStar,
+    /// `COUNT(columna)`.
+    Count {
+        /// Valores no `NULL` vistos.
+        count: u64,
+    },
+    /// `SUM` entero.
+    SumInt {
+        /// Suma acumulada.
+        total: i64,
+        /// `true` si se vio algún valor no `NULL`.
+        seen: bool,
+    },
+    /// `SUM` flotante.
+    SumFloat {
+        /// Suma acumulada.
+        total: f64,
+        /// `true` si se vio algún valor no `NULL`.
+        seen: bool,
+    },
+    /// `AVG`.
+    Avg {
+        /// Suma acumulada.
+        total: f64,
+        /// Número de valores no `NULL`.
+        count: u64,
+    },
+    /// `MIN`/`MAX` (el orden lo decide el tipo de agregado).
+    Extreme {
+        /// Extremo actual (`None` si aún no hay valores no `NULL`).
+        current: Option<ScalarValue>,
+    },
+}
+
+impl AggregateState {
+    /// Crea el estado inicial para un tipo de agregado.
+    fn new(kind: AggKind) -> Self {
+        match kind {
+            AggKind::CountStar => Self::CountStar,
+            AggKind::Count => Self::Count { count: 0 },
+            AggKind::SumInt => Self::SumInt {
+                total: 0,
+                seen: false,
+            },
+            AggKind::SumFloat => Self::SumFloat {
+                total: 0.0,
+                seen: false,
+            },
+            AggKind::Avg => Self::Avg {
+                total: 0.0,
+                count: 0,
+            },
+            AggKind::Min | AggKind::Max => Self::Extreme { current: None },
+        }
+    }
+
+    /// Valor final del agregado (semántica SQL de `NULL`).
+    fn finish(&self) -> ScalarValue {
+        match self {
+            Self::CountStar => ScalarValue::Null,
+            Self::Count { count } => ScalarValue::Int(*count as i64),
+            Self::SumInt { total, seen } => {
+                if *seen {
+                    ScalarValue::Int(*total)
+                } else {
+                    ScalarValue::Null
+                }
+            }
+            Self::SumFloat { total, seen } => {
+                if *seen {
+                    ScalarValue::Float(*total)
+                } else {
+                    ScalarValue::Null
+                }
+            }
+            Self::Avg { total, count } => {
+                if *count == 0 {
+                    ScalarValue::Null
+                } else {
+                    ScalarValue::Float(*total / *count as f64)
+                }
+            }
+            Self::Extreme { current } => current.clone().unwrap_or(ScalarValue::Null),
+        }
+    }
+}
+
+/// Crea las celdas de agregado alineadas con la lista de tipos.
+fn new_cells(kinds: &[AggKind]) -> Vec<AggregateState> {
+    kinds
+        .iter()
+        .map(|kind| AggregateState::new(*kind))
+        .collect()
+}
+
+/// Ejecuta la agregación por hash (*hash aggregation*; patrón DuckDB/DataFusion).
+///
+/// Agrupa por las columnas de `GROUP BY` con una `BTreeMap` de clave canónica
+/// (determinismo del orden de salida) y acumula los agregados en una sola
+/// pasada. Sin `GROUP BY` produce una única fila global (incluso con 0 filas).
+/// La semántica SQL de `NULL` se respeta: `COUNT(*)` cuenta filas mientras que
+/// `COUNT(col)`/`SUM`/`AVG`/`MIN`/`MAX` ignoran los `NULL`.
+///
+/// Args:
+///     table: Definición de la tabla (esquema).
+///     select: Consulta con agregados y/o `GROUP BY`.
+///     records: Filas ya filtradas (WHERE/MATCH/KNN/TRAVERSE) y visibles a MVCC.
+///
+/// Returns:
+///     Una fila por grupo (o una global), con columnas de grupo + agregados.
+///
+/// Errors:
+///     [`RuscaError::ColumnNotFound`] si una columna no existe;
+///     [`RuscaError::TypeMismatch`] si una columna proyectada no está agrupada
+///     o si `SUM`/`AVG` se aplican sobre una columna no numérica.
+fn aggregate_records(
+    table: &TableDef,
+    select: &Select,
+    records: &[Record],
+) -> Result<Vec<Row>, RuscaError> {
+    validate_aggregate_query(table, select)?;
+    let kinds = aggregate_kinds(table, select)?;
+    let mut groups: BTreeMap<Vec<u8>, GroupAccumulator> = BTreeMap::new();
+    if select.group_by.is_empty() {
+        groups.insert(Vec::new(), GroupAccumulator::empty(&kinds));
+    }
+    for record in records {
+        let keys = group_values(&select.group_by, &record.scalars);
+        let key = group_key(table, &select.group_by, &keys)?;
+        let group = groups
+            .entry(key)
+            .or_insert_with(|| GroupAccumulator::new(keys, &kinds));
+        group.row_count += 1;
+        accumulate(
+            &select.aggregates,
+            &kinds,
+            &record.scalars,
+            &mut group.cells,
+        )?;
+    }
+    let mut rows: Vec<Row> = groups
+        .values()
+        .map(|group| group.to_row(&select.projection, &select.aggregates))
+        .collect();
+    if let Some(order_by) = &select.order_by {
+        sort_rows(order_by, &mut rows)?;
+    }
+    if let Some(limit) = select.limit {
+        rows.truncate(limit as usize);
+    }
+    Ok(rows)
+}
+
+/// Valida la consulta agregada (proyección agrupada, columnas y tipos).
+///
+/// Args:
+///     table: Definición de la tabla.
+///     select: Consulta con agregados y/o `GROUP BY`.
+///
+/// Returns:
+///     `Ok(())` si la consulta es agregable.
+///
+/// Errors:
+///     [`RuscaError::ColumnNotFound`] si una columna no existe;
+///     [`RuscaError::TypeMismatch`] si la proyección viola la regla de
+///     agrupación o si un agregado no es aplicable al tipo de la columna.
+fn validate_aggregate_query(table: &TableDef, select: &Select) -> Result<(), RuscaError> {
+    let Projection::Columns(columns) = &select.projection else {
+        return Err(RuscaError::TypeMismatch {
+            message: "SELECT * no se puede combinar con GROUP BY ni agregados".to_string(),
+        });
+    };
+    for column in &select.group_by {
+        table.column_type(column)?;
+    }
+    for column in columns {
+        table.column_type(column)?;
+        if !select.group_by.contains(column) {
+            return Err(RuscaError::TypeMismatch {
+                message: format!(
+                    "la columna '{column}' no está en GROUP BY ni es un agregado (agrúpala con GROUP BY o envuélvela en COUNT/SUM/AVG/MIN/MAX)"
+                ),
+            });
+        }
+    }
+    let _ = aggregate_kinds(table, select)?;
+    if let Some(order_by) = &select.order_by {
+        if !is_aggregate_output_column(select, &order_by.column) {
+            return Err(RuscaError::ColumnNotFound {
+                column: order_by.column.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Resuelve el tipo de acumulador de cada agregado (valida columnas/tipos).
+fn aggregate_kinds(table: &TableDef, select: &Select) -> Result<Vec<AggKind>, RuscaError> {
+    select
+        .aggregates
+        .iter()
+        .map(|aggregate| aggregate_kind(table, aggregate))
+        .collect()
+}
+
+/// Resuelve el tipo de acumulador de un agregado.
+fn aggregate_kind(table: &TableDef, aggregate: &Aggregate) -> Result<AggKind, RuscaError> {
+    if aggregate.func == AggFunc::CountStar {
+        return Ok(AggKind::CountStar);
+    }
+    let column = aggregate
+        .column
+        .as_deref()
+        .ok_or_else(|| RuscaError::TypeMismatch {
+            message: format!("{} requiere una columna", aggregate.func.as_str()),
+        })?;
+    let column_type = table.column_type(column)?;
+    match aggregate.func {
+        AggFunc::CountStar => Ok(AggKind::CountStar),
+        AggFunc::Count => Ok(AggKind::Count),
+        AggFunc::Min => Ok(AggKind::Min),
+        AggFunc::Max => Ok(AggKind::Max),
+        AggFunc::Sum | AggFunc::Avg => numeric_kind(aggregate.func, column, column_type),
+    }
+}
+
+/// Resuelve `SUM`/`AVG` exigiendo una columna numérica.
+fn numeric_kind(
+    func: AggFunc,
+    column: &str,
+    column_type: ColumnType,
+) -> Result<AggKind, RuscaError> {
+    match (func, column_type) {
+        (AggFunc::Sum, ColumnType::Int) => Ok(AggKind::SumInt),
+        (AggFunc::Sum, ColumnType::Float) => Ok(AggKind::SumFloat),
+        (AggFunc::Avg, ColumnType::Int | ColumnType::Float) => Ok(AggKind::Avg),
+        _ => Err(RuscaError::TypeMismatch {
+            message: format!(
+                "{} requiere una columna numérica, pero '{column}' es {column_type:?}",
+                func.as_str()
+            ),
+        }),
+    }
+}
+
+/// Extrae los valores de las columnas de `GROUP BY` (ausente → `NULL`).
+fn group_values(group_by: &[String], scalars: &ScalarMap) -> ScalarMap {
+    group_by
+        .iter()
+        .map(|column| {
+            let value = scalars.get(column).cloned().unwrap_or(ScalarValue::Null);
+            (column.clone(), value)
+        })
+        .collect()
+}
+
+/// Construye la clave canónica ordenable de un grupo (`NULL` ordena primero).
+fn group_key(
+    table: &TableDef,
+    group_by: &[String],
+    keys: &ScalarMap,
+) -> Result<Vec<u8>, RuscaError> {
+    let mut encoded = Vec::new();
+    for column in group_by {
+        match keys.get(column).unwrap_or(&ScalarValue::Null) {
+            ScalarValue::Null => encoded.push(0x00),
+            other => encoded.extend_from_slice(&canonical_key(table.column_type(column)?, other)?),
+        }
+        encoded.push(0xFF);
+    }
+    Ok(encoded)
+}
+
+/// Acumula una fila en las celdas de su grupo (ignorando `NULL`).
+fn accumulate(
+    aggregates: &[Aggregate],
+    kinds: &[AggKind],
+    scalars: &ScalarMap,
+    cells: &mut [AggregateState],
+) -> Result<(), RuscaError> {
+    for ((aggregate, kind), state) in aggregates.iter().zip(kinds).zip(cells.iter_mut()) {
+        let value = match aggregate.column.as_deref() {
+            Some(column) => scalars
+                .get(column)
+                .filter(|value| **value != ScalarValue::Null),
+            None => None,
+        };
+        apply_aggregate(*kind, value, state)?;
+    }
+    Ok(())
+}
+
+/// Aplica un valor al estado del agregado correspondiente.
+fn apply_aggregate(
+    kind: AggKind,
+    value: Option<&ScalarValue>,
+    state: &mut AggregateState,
+) -> Result<(), RuscaError> {
+    match (kind, state) {
+        (AggKind::CountStar, AggregateState::CountStar) => {}
+        (AggKind::Count, AggregateState::Count { count }) => {
+            if value.is_some() {
+                *count += 1;
+            }
+        }
+        (AggKind::SumInt, AggregateState::SumInt { total, seen }) => {
+            if let Some(value) = value {
+                *total += numeric_i64(value)?;
+                *seen = true;
+            }
+        }
+        (AggKind::SumFloat, AggregateState::SumFloat { total, seen }) => {
+            if let Some(value) = value {
+                *total += numeric_f64(value)?;
+                *seen = true;
+            }
+        }
+        (AggKind::Avg, AggregateState::Avg { total, count }) => {
+            if let Some(value) = value {
+                *total += numeric_f64(value)?;
+                *count += 1;
+            }
+        }
+        (AggKind::Min, AggregateState::Extreme { current }) => {
+            update_extreme(current, value, false)?;
+        }
+        (AggKind::Max, AggregateState::Extreme { current }) => {
+            update_extreme(current, value, true)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Actualiza el extremo actual con un candidato no nulo (`MIN` o `MAX`).
+fn update_extreme(
+    current: &mut Option<ScalarValue>,
+    candidate: Option<&ScalarValue>,
+    want_max: bool,
+) -> Result<(), RuscaError> {
+    let Some(candidate) = candidate else {
+        return Ok(());
+    };
+    match current {
+        None => *current = Some(candidate.clone()),
+        Some(existing) => {
+            let ordering = order_values(candidate, existing)?;
+            let replace = if want_max {
+                ordering == Ordering::Greater
+            } else {
+                ordering == Ordering::Less
+            };
+            if replace {
+                *current = Some(candidate.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Convierte un valor entero para `SUM` entero.
+fn numeric_i64(value: &ScalarValue) -> Result<i64, RuscaError> {
+    match value {
+        ScalarValue::Int(number) => Ok(*number),
+        other => Err(RuscaError::TypeMismatch {
+            message: format!("SUM sobre una columna no entera: {other:?}"),
+        }),
+    }
+}
+
+/// Convierte un valor numérico a `f64` para `SUM`/`AVG`.
+fn numeric_f64(value: &ScalarValue) -> Result<f64, RuscaError> {
+    match value {
+        ScalarValue::Int(number) => Ok(*number as f64),
+        ScalarValue::Float(number) => Ok(*number),
+        ScalarValue::UInt(number) => Ok(*number as f64),
+        other => Err(RuscaError::TypeMismatch {
+            message: format!("se esperaba un valor numérico para SUM/AVG, se obtuvo {other:?}"),
+        }),
+    }
+}
+
+/// Nombre de salida de un agregado: el alias si existe, o uno derivado.
+fn aggregate_output_key(aggregate: &Aggregate) -> String {
+    if let Some(alias) = &aggregate.alias {
+        return alias.clone();
+    }
+    let column = aggregate.column.as_deref().unwrap_or_default();
+    match aggregate.func {
+        AggFunc::CountStar => "count".to_string(),
+        AggFunc::Count => format!("count_{column}"),
+        AggFunc::Sum => format!("sum_{column}"),
+        AggFunc::Avg => format!("avg_{column}"),
+        AggFunc::Min => format!("min_{column}"),
+        AggFunc::Max => format!("max_{column}"),
+    }
+}
+
+/// Indica si `column` aparece en la salida agregada (columna proyectada o agregado).
+fn is_aggregate_output_column(select: &Select, column: &str) -> bool {
+    let projected = match &select.projection {
+        Projection::All => false,
+        Projection::Columns(columns) => columns.iter().any(|name| name == column),
+    };
+    projected
+        || select
+            .aggregates
+            .iter()
+            .any(|aggregate| aggregate_output_key(aggregate) == column)
+}
+
+/// Ordena las filas agregadas por la cláusula `ORDER BY` (estable, fallible).
+fn sort_rows(order_by: &OrderBy, rows: &mut [Row]) -> Result<(), RuscaError> {
+    let mut failure: Option<RuscaError> = None;
+    rows.sort_by(|left, right| {
+        if failure.is_some() {
+            return Ordering::Equal;
+        }
+        match compare_order_values(
+            left.get(&order_by.column),
+            right.get(&order_by.column),
+            order_by.desc,
+        ) {
+            Ok(ordering) => ordering,
+            Err(error) => {
+                failure = Some(error);
+                Ordering::Equal
+            }
+        }
+    });
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(()),
     }
 }

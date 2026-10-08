@@ -140,9 +140,10 @@ fn walk(dir: &Path, visit: &mut impl FnMut(&Path)) {
 #[cfg(test)]
 mod tests {
     //! Tests de aceptación de SPEC-0016 (endurecimiento de CI T3 y supply
-    //! chain) y SPEC-0033 (CI cross-platform + sanitizers). Solo `std`: leen
-    //! los artefactos de configuración como texto y verifican
-    //! estructura/secciones (el gate canónico es `scripts/check_ci_config.py`).
+    //! chain), SPEC-0033 (CI cross-platform + sanitizers) y SPEC-0042 (fuzzing
+    //! continuo del parser RQL). Solo `std`: leen los artefactos de
+    //! configuración/corpus como texto y verifican estructura/secciones (el
+    //! gate canónico es `scripts/check_ci_config.py`).
 
     use super::workspace_root;
     use std::fs;
@@ -281,6 +282,82 @@ mod tests {
             assert!(
                 script.contains(needle),
                 "check_ci_config.py no valida '{needle}'"
+            );
+        }
+    }
+
+    /// AC-0042-01: el target `query_parse` cubre toda la gramática del lenguaje
+    /// (referencia a SELECT/WHERE/AND/MATCH/KNN/TRAVERSE/EXPLAIN/ORDER BY/
+    /// GROUP BY/LIMIT) e invoca las dos entradas públicas del parser.
+    #[test]
+    fn test_ac_0042_01_fuzz_target_covers_grammar() {
+        let target = read_root_file("fuzz/fuzz_targets/query_parse.rs");
+        for clause in [
+            "SELECT", "WHERE", "AND", "MATCH", "KNN", "TRAVERSE", "EXPLAIN", "ORDER BY",
+            "GROUP BY", "LIMIT",
+        ] {
+            assert!(
+                target.contains(clause),
+                "el target del parser no menciona la cláusula '{clause}'"
+            );
+        }
+        assert!(
+            target.contains("parse_statement") && target.contains("parse("),
+            "el target debe invocar ruscadb_query::parse_statement y ::parse"
+        );
+    }
+
+    /// AC-0042-02: el corpus del parser está sembrado con al menos 5 ficheros
+    /// versionables bajo `fuzz/corpus/query_parse/`.
+    #[test]
+    fn test_ac_0042_02_fuzz_corpus_seeded() {
+        let root = workspace_root().expect("raíz del workspace");
+        let corpus = root.join("fuzz/corpus/query_parse");
+        let count = fs::read_dir(&corpus)
+            .unwrap_or_else(|e| panic!("no se pudo leer {}: {e}", corpus.display()))
+            .flatten()
+            .filter(|entry| entry.path().is_file())
+            .count();
+        assert!(
+            count >= 5,
+            "el corpus debe tener >= 5 semillas versionadas, tiene {count}"
+        );
+    }
+
+    /// AC-0042-03: `nightly.yml` declara el job `fuzz` (alert-only) con la
+    /// matriz de targets del parser y el dictionary de RQL para `query_parse`.
+    #[test]
+    fn test_ac_0042_03_nightly_fuzz_job() {
+        let yaml = read_root_file(".github/workflows/nightly.yml");
+        assert!(yaml.contains("fuzz:"), "nightly.yml sin job 'fuzz'");
+        assert!(
+            yaml.contains("query_parse") && yaml.contains("wal_recover"),
+            "nightly.yml: la matriz de fuzz debe incluir query_parse y wal_recover"
+        );
+        assert!(
+            yaml.contains("continue-on-error: true"),
+            "el job 'fuzz' debe ser alert-only (continue-on-error: true)"
+        );
+        assert!(
+            yaml.contains("-max_total_time=300"),
+            "el job 'fuzz' debe acotar la corrida a 300 s"
+        );
+        assert!(
+            yaml.contains("-dict=query_parse.dict"),
+            "el target query_parse debe usar el dictionary de tokens de RQL"
+        );
+    }
+
+    /// AC-0042-04: el target del parser mantiene el contrato no-panic (sin
+    /// `unwrap(`/`expect(` sobre el resultado del parser).
+    #[test]
+    fn test_ac_0042_04_fuzz_target_is_panic_free() {
+        let target = read_root_file("fuzz/fuzz_targets/query_parse.rs");
+        for forbidden in ["unwrap(", "expect("] {
+            assert!(
+                !target.contains(forbidden),
+                "el target del parser no debe contener '{forbidden}' \
+                 (contrato no-panic)"
             );
         }
     }

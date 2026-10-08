@@ -97,9 +97,17 @@ jobs:
         with:
           tool: cargo-fuzz
 
-      - name: cargo fuzz run ${{ matrix.target }} (300 s)
+      - name: cargo fuzz run query_parse (300 s, con dictionary)
+        # `-dict` se resuelve relativo a `fuzz/` (working-directory); las
+        # claves de RQL se inyectan al mutar el corpus (SPEC-0042).
+        if: matrix.target == 'query_parse'
         working-directory: fuzz
-        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=300
+        run: cargo +nightly fuzz run query_parse -- -max_total_time=300 -dict=query_parse.dict
+
+      - name: cargo fuzz run wal_recover (300 s)
+        if: matrix.target == 'wal_recover'
+        working-directory: fuzz
+        run: cargo +nightly fuzz run wal_recover -- -max_total_time=300
 
       - name: Upload fuzz artifacts
         if: always()

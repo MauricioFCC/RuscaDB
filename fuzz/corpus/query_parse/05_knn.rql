@@ -1,0 +1,1 @@
+SELECT * FROM docs KNN embedding <|5|> [0.1, 0.2, 0.3]

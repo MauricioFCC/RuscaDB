@@ -33,6 +33,20 @@ pub enum Keyword {
     Asc,
     /// `DESC`
     Desc,
+    /// `GROUP`
+    Group,
+    /// `COUNT` (agregado).
+    Count,
+    /// `SUM` (agregado).
+    Sum,
+    /// `AVG` (agregado).
+    Avg,
+    /// `MIN` (agregado).
+    Min,
+    /// `MAX` (agregado).
+    Max,
+    /// `AS`
+    As,
 }
 
 impl Keyword {
@@ -53,6 +67,13 @@ impl Keyword {
             Self::By => "BY",
             Self::Asc => "ASC",
             Self::Desc => "DESC",
+            Self::Group => "GROUP",
+            Self::Count => "COUNT",
+            Self::Sum => "SUM",
+            Self::Avg => "AVG",
+            Self::Min => "MIN",
+            Self::Max => "MAX",
+            Self::As => "AS",
         }
     }
 
@@ -79,6 +100,13 @@ impl Keyword {
             "by" => Some(Self::By),
             "asc" => Some(Self::Asc),
             "desc" => Some(Self::Desc),
+            "group" => Some(Self::Group),
+            "count" => Some(Self::Count),
+            "sum" => Some(Self::Sum),
+            "avg" => Some(Self::Avg),
+            "min" => Some(Self::Min),
+            "max" => Some(Self::Max),
+            "as" => Some(Self::As),
             _ => None,
         }
     }

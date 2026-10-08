@@ -6,7 +6,9 @@ Comprueba, sin dependencias externas obligatorias (solo stdlib):
 1. ``.github/workflows/ci.yml`` (T1) declara la matriz cross-platform del job
    ``test`` (``ubuntu-latest``/``windows-latest``/``macos-latest``) — SPEC-0033.
 2. ``.github/workflows/nightly.yml`` (T3) es YAML parseable y declara los jobs
-   ``mutation``/``fuzz``/``miri``/``sanitizers`` (alert-only). Si PyYAML no está
+   ``mutation``/``fuzz``/``miri``/``sanitizers`` (alert-only); además, el job
+   ``fuzz`` declara la matriz de targets ``query_parse``/``wal_recover`` y el
+   target del parser usa un dictionary (SPEC-0042). Si PyYAML no está
    instalado se aplica un parser textual robusto por indentación.
 3. ``.cargo/mutants.toml`` es TOML válido y declara ``exclude_globs``/
    ``test_tool``/``additional_cargo_test_args`` sin claves desconocidas que
@@ -38,6 +40,8 @@ DENY = ROOT / "deny.toml"
 # Runners que debe declarar la matriz cross-platform de ci.yml (SPEC-0033/AC-01).
 MATRIX_OS: tuple[str, ...] = ("ubuntu-latest", "windows-latest", "macos-latest")
 REQUIRED_JOBS: tuple[str, ...] = ("mutation", "fuzz", "miri", "sanitizers")
+# Targets que debe fuzzear el job `fuzz` de nightly.yml (SPEC-0042/AC-03).
+FUZZ_TARGETS: tuple[str, ...] = ("query_parse", "wal_recover")
 REQUIRED_DENY_SECTIONS: tuple[str, ...] = (
     "advisories",
     "licenses",
@@ -90,6 +94,30 @@ def _jobs_from_text(text: str) -> set[str]:
             if key.endswith(":"):
                 jobs.add(key[:-1].strip())
     return jobs
+
+
+def _fuzz_targets_from_matrix(job: dict[str, Any]) -> set[str]:
+    """Extrae los targets de la matriz del job ``fuzz`` de nightly.yml.
+
+    Soporta la forma ``matrix.target: [a, b]`` y la forma ``matrix.include``
+    con entradas ``{target: ...}``. Devuelve el conjunto de nombres; vacío si
+    la estructura no es reconocible.
+    """
+    strategy = job.get("strategy")
+    matrix = strategy.get("matrix") if isinstance(strategy, dict) else None
+    if not isinstance(matrix, dict):
+        return set()
+    targets = matrix.get("target")
+    if isinstance(targets, list):
+        return {name for name in targets if isinstance(name, str)}
+    include = matrix.get("include")
+    if isinstance(include, list):
+        names: set[str] = set()
+        for entry in include:
+            if isinstance(entry, dict) and isinstance(entry.get("target"), str):
+                names.add(entry["target"])
+        return names
+    return set()
 
 
 def check_ci_matrix(errors: list[str]) -> None:
@@ -154,6 +182,15 @@ def check_nightly(errors: list[str]) -> None:
                     f"nightly.yml: el job '{job}' no es alert-only "
                     f"(falta continue-on-error: true)"
                 )
+        fuzz = jobs.get("fuzz")
+        if isinstance(fuzz, dict):
+            targets = _fuzz_targets_from_matrix(fuzz)
+            for target in FUZZ_TARGETS:
+                if target not in targets:
+                    errors.append(
+                        f"nightly.yml: el job 'fuzz' no incluye el target "
+                        f"'{target}' en su matriz"
+                    )
         if data.get("permissions") != {"contents": "read"}:
             errors.append("nightly.yml: permissions debe ser contents: read")
         return
@@ -166,6 +203,17 @@ def check_nightly(errors: list[str]) -> None:
         errors.append("nightly.yml: no declara continue-on-error (alert-only)")
     if "contents: read" not in text:
         errors.append("nightly.yml: no declara permissions contents: read")
+    for target in FUZZ_TARGETS:
+        if target not in text:
+            errors.append(
+                f"nightly.yml: no declara el target de fuzz '{target}' "
+                f"(chequeo textual)"
+            )
+    if "-dict=" not in text:
+        errors.append(
+            "nightly.yml: el fuzz de query_parse no usa dictionary "
+            "(-dict=) (chequeo textual)"
+        )
 
 
 def check_mutants(errors: list[str]) -> None:
@@ -231,7 +279,8 @@ def main() -> int:
 
     print(
         "[OK] check_ci_config: ci.yml (matriz ubuntu/windows/macos), "
-        "nightly.yml (mutation/fuzz/miri/sanitizers, alert-only), "
+        "nightly.yml (mutation/fuzz/miri/sanitizers, alert-only; fuzz con "
+        "query_parse/wal_recover + dictionary), "
         "mutants.toml y deny.toml (4 secciones) válidos."
     )
     return 0

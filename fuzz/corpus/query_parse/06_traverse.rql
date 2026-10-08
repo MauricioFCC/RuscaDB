@@ -1,0 +1,1 @@
+SELECT * FROM nodes TRAVERSE edges DEPTH 3

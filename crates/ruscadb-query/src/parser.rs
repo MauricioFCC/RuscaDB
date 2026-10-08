@@ -1,7 +1,8 @@
 //! Parser recursive-descent de RQL sobre los tokens del lexer.
 
 use crate::ast::{
-    CompareOp, Explain, Expr, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause,
+    AggFunc, Aggregate, CompareOp, Explain, Expr, KnnClause, OrderBy, Projection, Select,
+    Statement, TraverseClause,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use ruscadb_core::RuscaError;
@@ -152,7 +153,7 @@ impl Parser {
     /// Parsea una sentencia `SELECT` completa (cláusulas en orden canónico).
     fn parse_select(&mut self) -> Result<Select, RuscaError> {
         self.expect_keyword(Keyword::Select)?;
-        let projection = self.parse_projection()?;
+        let (projection, aggregates) = self.parse_projection()?;
         self.expect_keyword(Keyword::From)?;
         let from = self.expect_ident()?;
         let filter = if self.match_keyword(Keyword::Where) {
@@ -170,6 +171,11 @@ impl Parser {
         } else {
             None
         };
+        let group_by = if self.match_keyword(Keyword::Group) {
+            self.parse_group_by()?
+        } else {
+            Vec::new()
+        };
         let order_by = if self.match_keyword(Keyword::Order) {
             Some(self.parse_order_by()?)
         } else {
@@ -182,27 +188,117 @@ impl Parser {
         };
         Ok(Select {
             projection,
+            aggregates,
             from,
             filter,
             knn,
             traverse,
+            group_by,
             order_by,
             limit,
         })
     }
 
-    /// Parsea la proyección (`*` o lista de columnas).
-    fn parse_projection(&mut self) -> Result<Projection, RuscaError> {
+    /// Parsea la proyección: `*` o una lista de columnas y agregados.
+    ///
+    /// Returns:
+    ///     `(proyección, agregados)`; las columnas y los agregados se separan
+    ///     pero conservan su orden relativo dentro de cada grupo.
+    fn parse_projection(&mut self) -> Result<(Projection, Vec<Aggregate>), RuscaError> {
         if self.peek() == Some(&Token::Star) {
             self.advance();
-            return Ok(Projection::All);
+            return Ok((Projection::All, Vec::new()));
         }
+        let mut columns = Vec::new();
+        let mut aggregates = Vec::new();
+        loop {
+            if self.is_aggregate_function() {
+                aggregates.push(self.parse_aggregate()?);
+            } else {
+                columns.push(self.expect_ident()?);
+            }
+            if self.peek() == Some(&Token::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        Ok((Projection::Columns(columns), aggregates))
+    }
+
+    /// Indica si el token actual inicia una función de agregación.
+    fn is_aggregate_function(&self) -> bool {
+        matches!(
+            self.peek(),
+            Some(Token::Keyword(
+                Keyword::Count | Keyword::Sum | Keyword::Avg | Keyword::Min | Keyword::Max
+            ))
+        )
+    }
+
+    /// Parsea un agregado `FUNC(<*|columna>) [AS alias]`.
+    fn parse_aggregate(&mut self) -> Result<Aggregate, RuscaError> {
+        let func = self.parse_agg_func()?;
+        self.expect_token(
+            &Token::LParen,
+            &format!("{EXPECTED_PREFIX}'(' tras {}", func.as_str()),
+        )?;
+        let column = if self.peek() == Some(&Token::Star) {
+            self.advance();
+            None
+        } else {
+            Some(self.expect_ident()?)
+        };
+        self.expect_token(
+            &Token::RParen,
+            &format!("{EXPECTED_PREFIX}')' para cerrar {}", func.as_str()),
+        )?;
+        let func = match (func, column.is_some()) {
+            (AggFunc::Count, false) => AggFunc::CountStar,
+            (other, false) => {
+                return Err(self.error(format!(
+                    "'{}(*)' no es válido: solo COUNT admite '*'; usa {}(columna)",
+                    other.as_str(),
+                    other.as_str()
+                )));
+            }
+            (other, true) => other,
+        };
+        let alias = if self.match_keyword(Keyword::As) {
+            Some(self.expect_ident()?)
+        } else {
+            None
+        };
+        Ok(Aggregate {
+            func,
+            column,
+            alias,
+        })
+    }
+
+    /// Parsea la función de agregación y avanza el cursor.
+    fn parse_agg_func(&mut self) -> Result<AggFunc, RuscaError> {
+        let func = match self.peek() {
+            Some(Token::Keyword(Keyword::Count)) => AggFunc::Count,
+            Some(Token::Keyword(Keyword::Sum)) => AggFunc::Sum,
+            Some(Token::Keyword(Keyword::Avg)) => AggFunc::Avg,
+            Some(Token::Keyword(Keyword::Min)) => AggFunc::Min,
+            Some(Token::Keyword(Keyword::Max)) => AggFunc::Max,
+            _ => return Err(self.error(format!("{EXPECTED_PREFIX}una función de agregación"))),
+        };
+        self.advance();
+        Ok(func)
+    }
+
+    /// Parsea `BY <col>[, <col>...]` de la cláusula `GROUP BY`.
+    fn parse_group_by(&mut self) -> Result<Vec<String>, RuscaError> {
+        self.expect_keyword(Keyword::By)?;
         let mut columns = vec![self.expect_ident()?];
         while self.peek() == Some(&Token::Comma) {
             self.advance();
             columns.push(self.expect_ident()?);
         }
-        Ok(Projection::Columns(columns))
+        Ok(columns)
     }
 
     /// Parsea el filtro `WHERE` (predicados unidos por `AND`, asociativo izq.).

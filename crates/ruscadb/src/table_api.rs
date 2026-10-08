@@ -807,6 +807,353 @@ mod tests {
         assert_eq!(column_b(&rows), vec!["q", "s", "p", "r"]);
     }
 
+    /// Localiza la fila del grupo etiquetado con `label` en la columna `b`.
+    ///
+    /// Args:
+    ///     rows: Filas agregadas.
+    ///     label: Etiqueta del grupo.
+    ///
+    /// Returns:
+    ///     La fila del grupo.
+    ///
+    /// Raises:
+    ///     Panic si no existe el grupo (fallo de test).
+    fn group_row<'a>(rows: &'a [Row], label: &str) -> &'a Row {
+        rows.iter()
+            .find(|row| row.get("b") == Some(&ScalarValue::Text(label.to_string())))
+            .unwrap_or_else(|| panic!("no hay grupo '{label}' en {rows:?}"))
+    }
+
+    /// Devuelve `COUNT(*)` del grupo etiquetado con `label` en `b`.
+    ///
+    /// Args:
+    ///     rows: Filas agregadas.
+    ///     label: Etiqueta del grupo.
+    ///
+    /// Returns:
+    ///     El conteo del grupo, o `None` si no existe.
+    fn group_count(rows: &[Row], label: &str) -> Option<i64> {
+        rows.iter()
+            .find(|row| row.get("b") == Some(&ScalarValue::Text(label.to_string())))
+            .and_then(|row| match row.get("count") {
+                Some(ScalarValue::Int(value)) => Some(*value),
+                _ => None,
+            })
+    }
+
+    /// AC-0040-02 — `COUNT(*)` agrupado cuenta las filas de cada grupo.
+    #[test] // @spec AC-0040-02
+    fn test_ac_0040_02_count_groups() {
+        let (_dir, mut database) = open_test_db("ac0040_02");
+        create_ab_table(&mut database);
+        seed_pairs(
+            &mut database,
+            &[
+                (Some(1), "x"),
+                (Some(2), "x"),
+                (Some(3), "y"),
+                (Some(4), "z"),
+            ],
+        );
+
+        let rows = database
+            .execute("SELECT b, COUNT(*) FROM t GROUP BY b")
+            .expect("select");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(group_count(&rows, "x"), Some(2));
+        assert_eq!(group_count(&rows, "y"), Some(1));
+        assert_eq!(group_count(&rows, "z"), Some(1));
+    }
+
+    /// AC-0040-03 — `SUM`/`AVG`/`COUNT(col)` ignoran los `NULL`.
+    #[test] // @spec AC-0040-03
+    fn test_ac_0040_03_sum_avg_ignore_nulls() {
+        let (_dir, mut database) = open_test_db("ac0040_03");
+        create_ab_table(&mut database);
+        seed_pairs(
+            &mut database,
+            &[
+                (Some(1), "g"),
+                (Some(2), "g"),
+                (None, "g"),
+                (Some(10), "h"),
+                (None, "h"),
+            ],
+        );
+
+        let rows = database
+            .execute("SELECT b, SUM(a), AVG(a), COUNT(a) FROM t GROUP BY b")
+            .expect("select");
+        let group_g = group_row(&rows, "g");
+        assert_eq!(group_g.get("sum_a"), Some(&ScalarValue::Int(3)));
+        assert_eq!(group_g.get("avg_a"), Some(&ScalarValue::Float(1.5)));
+        assert_eq!(group_g.get("count_a"), Some(&ScalarValue::Int(2)));
+
+        let group_h = group_row(&rows, "h");
+        assert_eq!(group_h.get("sum_a"), Some(&ScalarValue::Int(10)));
+        assert_eq!(group_h.get("avg_a"), Some(&ScalarValue::Float(10.0)));
+        assert_eq!(group_h.get("count_a"), Some(&ScalarValue::Int(1)));
+    }
+
+    /// AC-0040-04 — `MIN`/`MAX` devuelven el mínimo y máximo por grupo.
+    #[test] // @spec AC-0040-04
+    fn test_ac_0040_04_min_max() {
+        let (_dir, mut database) = open_test_db("ac0040_04");
+        create_ab_table(&mut database);
+        seed_pairs(
+            &mut database,
+            &[
+                (Some(3), "g"),
+                (None, "g"),
+                (Some(1), "g"),
+                (Some(2), "g"),
+                (Some(5), "h"),
+            ],
+        );
+
+        let rows = database
+            .execute("SELECT b, MIN(a), MAX(a) FROM t GROUP BY b")
+            .expect("select");
+        let group_g = group_row(&rows, "g");
+        assert_eq!(group_g.get("min_a"), Some(&ScalarValue::Int(1)));
+        assert_eq!(group_g.get("max_a"), Some(&ScalarValue::Int(3)));
+        let group_h = group_row(&rows, "h");
+        assert_eq!(group_h.get("min_a"), Some(&ScalarValue::Int(5)));
+        assert_eq!(group_h.get("max_a"), Some(&ScalarValue::Int(5)));
+    }
+
+    /// AC-0040-05 — agregados sin `GROUP BY` devuelven una única fila global.
+    #[test] // @spec AC-0040-05
+    fn test_ac_0040_05_aggregate_without_group_by() {
+        let (_dir, mut database) = open_test_db("ac0040_05");
+        create_ab_table(&mut database);
+        seed_pairs(
+            &mut database,
+            &[(Some(1), "x"), (Some(2), "y"), (Some(3), "z")],
+        );
+
+        let rows = database
+            .execute("SELECT COUNT(*), SUM(a), AVG(a), MIN(a), MAX(a) FROM t")
+            .expect("select");
+        assert_eq!(rows.len(), 1, "sin GROUP BY debe haber una sola fila");
+        let row = &rows[0];
+        assert_eq!(row.get("count"), Some(&ScalarValue::Int(3)));
+        assert_eq!(row.get("sum_a"), Some(&ScalarValue::Int(6)));
+        assert_eq!(row.get("avg_a"), Some(&ScalarValue::Float(2.0)));
+        assert_eq!(row.get("min_a"), Some(&ScalarValue::Int(1)));
+        assert_eq!(row.get("max_a"), Some(&ScalarValue::Int(3)));
+
+        // BVA: tabla vacía → COUNT(*) = 0 y el resto NULL (semántica SQL).
+        let (_empty_dir, mut empty) = open_test_db("ac0040_05_empty");
+        create_ab_table(&mut empty);
+        let global = empty
+            .execute("SELECT COUNT(*), SUM(a), MIN(a) FROM t")
+            .expect("select");
+        assert_eq!(global.len(), 1);
+        assert_eq!(global[0].get("count"), Some(&ScalarValue::Int(0)));
+        assert_eq!(global[0].get("sum_a"), Some(&ScalarValue::Null));
+        assert_eq!(global[0].get("min_a"), Some(&ScalarValue::Null));
+    }
+
+    /// NF-0040-02 — errores accionables de la agregación.
+    #[test] // @spec NF-0040-02
+    fn test_ac_0040_errors_are_actionable() {
+        let (_dir, mut database) = open_test_db("ac0040_err");
+        seed_table(&mut database);
+
+        let ungrouped = database
+            .execute("SELECT a FROM t GROUP BY b")
+            .expect_err("columna a fuera de GROUP BY");
+        assert!(
+            matches!(ungrouped, RuscaError::TypeMismatch { .. }),
+            "se esperaba TypeMismatch, se obtuvo {ungrouped:?}"
+        );
+
+        let missing = database
+            .execute("SELECT a FROM t GROUP BY ausente")
+            .expect_err("GROUP BY inexistente");
+        assert!(
+            matches!(missing, RuscaError::ColumnNotFound { ref column } if column == "ausente"),
+            "se esperaba ColumnNotFound, se obtuvo {missing:?}"
+        );
+
+        let bad_type = database
+            .execute("SELECT SUM(b) FROM t")
+            .expect_err("SUM sobre texto");
+        assert!(
+            matches!(bad_type, RuscaError::TypeMismatch { .. }),
+            "se esperaba TypeMismatch, se obtuvo {bad_type:?}"
+        );
+    }
+
+    /// BVA — agregados sobre columnas flotantes (`SUM`/`AVG` tipo `Float`).
+    #[test] // @spec AC-0040-06
+    fn test_ac_0040_06_float_aggregates() {
+        let (_dir, mut database) = open_test_db("ac0040_06");
+        database
+            .create_table(
+                "f",
+                vec![
+                    ColumnDef {
+                        name: "x".to_string(),
+                        col_type: ColumnType::Float,
+                    },
+                    ColumnDef {
+                        name: "g".to_string(),
+                        col_type: ColumnType::Text,
+                    },
+                ],
+            )
+            .expect("create_table");
+        for (value, group) in [(1.5_f64, "a"), (2.5, "a"), (10.0, "b")] {
+            let mut scalars = ScalarMap::new();
+            scalars.insert("x".to_string(), ScalarValue::Float(value));
+            scalars.insert("g".to_string(), ScalarValue::Text(group.to_string()));
+            database.insert("f", scalars).expect("insert");
+        }
+
+        let rows = database
+            .execute("SELECT g, SUM(x), AVG(x) FROM f GROUP BY g")
+            .expect("select");
+        let group_a = rows
+            .iter()
+            .find(|row| row.get("g") == Some(&ScalarValue::Text("a".to_string())))
+            .expect("grupo a");
+        assert_eq!(group_a.get("sum_x"), Some(&ScalarValue::Float(4.0)));
+        assert_eq!(group_a.get("avg_x"), Some(&ScalarValue::Float(2.0)));
+        let group_b = rows
+            .iter()
+            .find(|row| row.get("g") == Some(&ScalarValue::Text("b".to_string())))
+            .expect("grupo b");
+        assert_eq!(group_b.get("sum_x"), Some(&ScalarValue::Float(10.0)));
+    }
+
+    /// BVA — `GROUP BY` con `ORDER BY` de un agregado y `LIMIT`.
+    #[test] // @spec AC-0040-07
+    fn test_ac_0040_07_group_by_order_limit() {
+        let (_dir, mut database) = open_test_db("ac0040_07");
+        create_ab_table(&mut database);
+        seed_pairs(
+            &mut database,
+            &[
+                (Some(1), "x"),
+                (Some(2), "x"),
+                (Some(3), "y"),
+                (Some(4), "z"),
+                (Some(5), "z"),
+                (Some(6), "z"),
+            ],
+        );
+
+        let rows = database
+            .execute("SELECT b, COUNT(*) AS total FROM t GROUP BY b ORDER BY total DESC LIMIT 2")
+            .expect("select");
+        assert_eq!(rows.len(), 2, "LIMIT se aplica a las filas agregadas");
+        assert_eq!(rows[0].get("b"), Some(&ScalarValue::Text("z".to_string())));
+        assert_eq!(rows[0].get("total"), Some(&ScalarValue::Int(3)));
+        assert_eq!(rows[1].get("b"), Some(&ScalarValue::Text("x".to_string())));
+        assert_eq!(rows[1].get("total"), Some(&ScalarValue::Int(2)));
+
+        let unknown = database
+            .execute("SELECT b, COUNT(*) AS total FROM t GROUP BY b ORDER BY ausente")
+            .expect_err("ORDER BY no proyectado");
+        assert!(
+            matches!(unknown, RuscaError::ColumnNotFound { ref column } if column == "ausente"),
+            "se esperaba ColumnNotFound, se obtuvo {unknown:?}"
+        );
+    }
+
+    proptest! {
+        /// PBT — invariantes de agregados sobre datos no nulos:
+        /// `COUNT(*) == n`, `SUM == suma manual` y `MIN <= AVG <= MAX`.
+        #[test]
+        fn prop_aggregate_invariants(
+            values in prop::collection::vec(-1000i64..1000, 1..40),
+        ) {
+            let (_dir, mut database) = open_test_db("prop_agg");
+            create_ab_table(&mut database);
+            for value in &values {
+                let mut scalars = ScalarMap::new();
+                scalars.insert("a".to_string(), ScalarValue::Int(*value));
+                scalars.insert("b".to_string(), ScalarValue::Text("g".to_string()));
+                database.insert("t", scalars).expect("insert");
+            }
+
+            let rows = database
+                .execute("SELECT b, COUNT(*), SUM(a), AVG(a), MIN(a), MAX(a) FROM t GROUP BY b")
+                .expect("select");
+            prop_assert_eq!(rows.len(), 1);
+            let row = &rows[0];
+            let count = match row.get("count") {
+                Some(ScalarValue::Int(value)) => *value,
+                other => panic!("count inesperado: {other:?}"),
+            };
+            let sum = match row.get("sum_a") {
+                Some(ScalarValue::Int(value)) => *value,
+                other => panic!("sum_a inesperado: {other:?}"),
+            };
+            let avg = match row.get("avg_a") {
+                Some(ScalarValue::Float(value)) => *value,
+                other => panic!("avg_a inesperado: {other:?}"),
+            };
+            let min = match row.get("min_a") {
+                Some(ScalarValue::Int(value)) => *value,
+                other => panic!("min_a inesperado: {other:?}"),
+            };
+            let max = match row.get("max_a") {
+                Some(ScalarValue::Int(value)) => *value,
+                other => panic!("max_a inesperado: {other:?}"),
+            };
+            prop_assert_eq!(count, values.len() as i64);
+            prop_assert_eq!(sum, values.iter().sum::<i64>());
+            prop_assert!(min <= max);
+            prop_assert!(avg >= min as f64 && avg <= max as f64);
+        }
+
+        /// PBT — con `NULL` intercalados: `COUNT(*) == n`,
+        /// `COUNT(a) == nº de no nulos` y `SUM` ignora los `NULL`.
+        #[test]
+        fn prop_aggregate_ignores_nulls(
+            values in prop::collection::vec(prop::option::of(-1000i64..1000), 1..40),
+        ) {
+            let (_dir, mut database) = open_test_db("prop_agg_null");
+            create_ab_table(&mut database);
+            for value in &values {
+                let scalar = value.map_or(ScalarValue::Null, ScalarValue::Int);
+                let mut scalars = ScalarMap::new();
+                scalars.insert("a".to_string(), scalar);
+                scalars.insert("b".to_string(), ScalarValue::Text("g".to_string()));
+                database.insert("t", scalars).expect("insert");
+            }
+
+            let rows = database
+                .execute("SELECT COUNT(*), COUNT(a), SUM(a) FROM t GROUP BY b")
+                .expect("select");
+            prop_assert_eq!(rows.len(), 1);
+            let row = &rows[0];
+            let non_null: Vec<i64> = values.iter().filter_map(|value| *value).collect();
+            let count_star = match row.get("count") {
+                Some(ScalarValue::Int(value)) => *value,
+                other => panic!("count inesperado: {other:?}"),
+            };
+            let count_a = match row.get("count_a") {
+                Some(ScalarValue::Int(value)) => *value,
+                other => panic!("count_a inesperado: {other:?}"),
+            };
+            prop_assert_eq!(count_star, values.len() as i64);
+            prop_assert_eq!(count_a, non_null.len() as i64);
+            if non_null.is_empty() {
+                prop_assert_eq!(row.get("sum_a"), Some(&ScalarValue::Null));
+            } else {
+                let sum = match row.get("sum_a") {
+                    Some(ScalarValue::Int(value)) => *value,
+                    other => panic!("sum_a inesperado: {other:?}"),
+                };
+                prop_assert_eq!(sum, non_null.iter().sum::<i64>());
+            }
+        }
+    }
+
     proptest! {
         /// PBT de monotonicidad: `ASC` es no decreciente con `NULL` al final;
         /// `DESC` es no creciente con `NULL` al principio (orden estable).

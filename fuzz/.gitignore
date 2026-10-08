@@ -1,6 +1,10 @@
 # Artefactos de cargo-fuzz (no versionar).
 /target/
-/corpus/
 /artifacts/
 /coverage/
 *.profraw
+
+# Corpus: se versionan las semillas curadas del parser RQL (SPEC-0042). El
+# resto del corpus generado por libFuzzer durante las corridas se ignora.
+/corpus/*
+!/corpus/query_parse/

@@ -2,16 +2,20 @@
 //!
 //! Almacén de grafo de RuscaDB: adyacencia **CSR** (Compressed Sparse Row) para
 //! salientes y entrantes, más traversal BFS acotado por profundidad y número de
-//! nodos (protección de RAM).
+//! nodos (protección de RAM) y los algoritmos [`bfs`], [`connected_components`]
+//! y [`pagerank`].
 //!
-//! Especificación: `specs/graph_store.md` (SPEC-0007).
+//! Especificación: `specs/graph_store.md` (SPEC-0007) y
+//! `specs/graph_algorithms.md` (SPEC-0041).
 //! Diseño: `docs/RuscaDB-roadmap.md` §5.4 (Fase F3b).
 
 #![forbid(unsafe_code)]
 
+mod algorithms;
 mod csr;
 mod traversal;
 
+pub use algorithms::{bfs, connected_components, pagerank};
 pub use csr::CsrGraph;
 
 /// Identificador de nodo dentro del grafo.

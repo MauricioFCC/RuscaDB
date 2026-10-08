@@ -1,0 +1,1 @@
+SELECT titulo FROM t WHERE MATCH(titulo, 'gato negro')

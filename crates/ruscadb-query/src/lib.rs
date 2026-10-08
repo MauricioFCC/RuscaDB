@@ -13,7 +13,8 @@ pub mod lexer;
 mod parser;
 
 pub use ast::{
-    CompareOp, Explain, Expr, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause,
+    AggFunc, Aggregate, CompareOp, Explain, Expr, KnnClause, OrderBy, Projection, Select,
+    Statement, TraverseClause,
 };
 pub use parser::{parse, parse_statement};
 
@@ -27,9 +28,9 @@ mod tests {
     use ruscadb_core::RuscaError;
 
     /// Palabras reservadas de RQL: no pueden usarse como identificadores.
-    const RESERVED_IDENTIFIERS: [&str; 14] = [
+    const RESERVED_IDENTIFIERS: [&str; 21] = [
         "select", "from", "where", "and", "limit", "knn", "traverse", "depth", "explain", "match",
-        "order", "by", "asc", "desc",
+        "order", "by", "asc", "desc", "group", "count", "sum", "avg", "min", "max", "as",
     ];
 
     /// Estrategia de identificadores que evita las palabras reservadas.
@@ -219,6 +220,8 @@ mod tests {
         ) {
             let select = Select {
                 projection: Projection::Columns(columns),
+                aggregates: vec![],
+                group_by: vec![],
                 from: table,
                 filter: None,
                 knn: None,
@@ -421,6 +424,73 @@ mod tests {
         }
     }
 
+    /// AC-0040-01 — parseo de `GROUP BY` + agregados en la proyección y roundtrip.
+    #[test]
+    fn test_ac_0040_01_parse_group_by() {
+        let select = parse("SELECT a, COUNT(*) FROM t GROUP BY a").expect("parse");
+        assert_eq!(
+            select.group_by,
+            vec!["a".to_string()],
+            "GROUP BY a debe poblar group_by"
+        );
+        assert_eq!(
+            select.projection,
+            Projection::Columns(vec!["a".to_string()])
+        );
+        assert_eq!(
+            select.aggregates,
+            vec![Aggregate {
+                func: AggFunc::CountStar,
+                column: None,
+                alias: None,
+            }]
+        );
+        let canonical = "SELECT a, COUNT(*) FROM t GROUP BY a";
+        assert_eq!(select.to_string(), canonical);
+        assert_eq!(parse(canonical).expect("reparse"), select);
+    }
+
+    /// AC-0040-01 (extensión) — agregados variados, orden canónico y alias.
+    #[test]
+    fn test_ac_0040_01_parse_aggregates_and_alias() {
+        let query = parse(
+            "SELECT b, SUM(a), AVG(a), MIN(a), MAX(a), COUNT(a) FROM t GROUP BY b ORDER BY b DESC LIMIT 3",
+        )
+        .expect("parse");
+        assert_eq!(query.group_by, vec!["b".to_string()]);
+        assert_eq!(query.aggregates.len(), 5);
+        assert_eq!(query.aggregates[0].func, AggFunc::Sum);
+        assert_eq!(query.aggregates[0].column.as_deref(), Some("a"));
+        assert_eq!(query.limit, Some(3));
+        let canonical = "SELECT b, SUM(a), AVG(a), MIN(a), MAX(a), COUNT(a) FROM t GROUP BY b ORDER BY b DESC LIMIT 3";
+        assert_eq!(query.to_string(), canonical);
+        assert_eq!(parse(canonical).expect("reparse"), query);
+
+        let aliased = parse("SELECT COUNT(*) AS total FROM t").expect("parse");
+        assert_eq!(aliased.aggregates[0].alias.as_deref(), Some("total"));
+        assert_eq!(aliased.to_string(), "SELECT COUNT(*) AS total FROM t");
+        assert_eq!(parse(&aliased.to_string()).expect("reparse"), aliased);
+    }
+
+    /// Formas mal formadas de agregados y `GROUP BY` devuelven `ParseError`.
+    #[test]
+    fn test_ac_0040_01_malformed_aggregates_are_errors() {
+        let cases = [
+            "SELECT SUM(*) FROM t",
+            "SELECT COUNT(a FROM t",
+            "SELECT COUNT FROM t",
+            "SELECT a FROM t GROUP BY",
+            "SELECT a FROM t GROUP a",
+        ];
+        for input in cases {
+            let error = parse(input).unwrap_err();
+            assert!(
+                matches!(error, RuscaError::ParseError { .. }),
+                "input: {input} -> {error:?}"
+            );
+        }
+    }
+
     /// AC-0036-01 — parseo de `ORDER BY <col> [ASC|DESC]` y roundtrip canónico.
     #[test]
     fn test_ac_0036_01_parse_order_by() {
@@ -504,6 +574,8 @@ mod tests {
         ) {
             let select = Select {
                 projection: Projection::Columns(columns),
+                aggregates: vec![],
+                group_by: vec![],
                 from: table,
                 filter: None,
                 knn: Some(KnnClause { column: knn_column, k, query }),
@@ -525,6 +597,8 @@ mod tests {
         ) {
             let select = Select {
                 projection: Projection::All,
+                aggregates: vec![],
+                group_by: vec![],
                 from: table,
                 filter: Some(Expr::Compare {
                     left: Box::new(Expr::Column(filter_column)),
@@ -551,6 +625,8 @@ mod tests {
         ) {
             let select = Select {
                 projection: Projection::All,
+                aggregates: vec![],
+                group_by: vec![],
                 from: table,
                 filter: Some(Expr::Match { column, query }),
                 knn: None,
@@ -573,6 +649,8 @@ mod tests {
         ) {
             let select = Select {
                 projection: Projection::All,
+                aggregates: vec![],
+                group_by: vec![],
                 from: table,
                 filter: None,
                 knn: None,

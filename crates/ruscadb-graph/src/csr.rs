@@ -127,6 +127,18 @@ impl CsrGraph {
         self.edge_count
     }
 
+    /// Identificadores de todos los nodos del grafo, orden ascendente.
+    ///
+    /// Se expone como `pub(crate)` para los algoritmos del módulo
+    /// [`crate::algorithms`], que necesitan enumerar el universo de nodos sin
+    /// ampliar la API pública del crate.
+    ///
+    /// Returns:
+    ///     La lista ordenada y sin duplicados de nodos compilados.
+    pub(crate) fn node_ids(&self) -> &[NodeId] {
+        &self.nodes
+    }
+
     /// Indica si `node` pertenece al grafo compilado.
     ///
     /// Args:
