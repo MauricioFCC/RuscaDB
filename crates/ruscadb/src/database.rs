@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use ruscadb_ai::ModelRegistry;
 use ruscadb_btree::BPlusTree;
 use ruscadb_core::{RecordId, RuscaError};
+use ruscadb_multimodal::BlobStore;
 use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
 use ruscadb_txn::{CURRENT_SCHEMA_VERSION, Manifest, Snapshot, TxId, TxnManager};
 use ruscadb_wal::{Lsn, RecordKind, Wal};
@@ -32,10 +33,16 @@ pub struct DbConfig {
     pub pool_capacity: usize,
     /// Cifrado en reposo (`None` = modo claro). Ver [`EncryptionConfig`].
     pub encryption: Option<EncryptionConfig>,
+    /// Directorio raíz del blob store (`None` = sin blobs, SPEC-0038).
+    ///
+    /// Si es `Some`, [`Database::open`] abre (o crea) un [`BlobStore`] en esa
+    /// ruta. El cifrado del blob store queda fuera de alcance en esta iteración:
+    /// el store se abre siempre en modo claro.
+    pub blob_path: Option<PathBuf>,
 }
 
 impl DbConfig {
-    /// Crea una configuración de apertura (sin cifrado por defecto).
+    /// Crea una configuración de apertura (sin cifrado ni blob store).
     ///
     /// Args:
     ///     data_path: Ruta del archivo de páginas.
@@ -45,6 +52,7 @@ impl DbConfig {
             data_path: data_path.into(),
             pool_capacity,
             encryption: None,
+            blob_path: None,
         }
     }
 }
@@ -81,6 +89,11 @@ pub struct Database {
     pub(crate) registry: ModelRegistry,
     /// Último LSN confirmado (checkpoint en memoria).
     last_lsn: Lsn,
+    /// Blob store content-addressed abierto junto a la base (SPEC-0038).
+    ///
+    /// `None` cuando `DbConfig::blob_path` no se fijó: las operaciones de blob
+    /// devuelven un error accionable (no configurado).
+    pub(crate) blobs: Option<BlobStore>,
 }
 
 impl Database {
@@ -90,6 +103,11 @@ impl Database {
     /// `Wal::open_encrypted` y el replay descifra con esa clave (SPEC-0013).
     /// Carga (o crea) el manifiesto `<data>.manifest.json` y valida su
     /// `schema_version` (SPEC-0019).
+    ///
+    /// Si `config.blob_path` es `Some`, abre (o crea) un [`BlobStore`] en esa
+    /// ruta para `put_blob`/`get_blob`/`gc_blobs` (SPEC-0038). El blob store se
+    /// abre siempre en modo claro: **el cifrado del blob store queda fuera de
+    /// alcance** de esta iteración (se cableará con `open_encrypted` después).
     ///
     /// Args:
     ///     config: Configuración de apertura.
@@ -112,6 +130,12 @@ impl Database {
             None => Wal::open(&wal_path)?,
         };
         let (manifest, is_new) = load_or_create_manifest(&manifest_path)?;
+        // Blob store opcional (SPEC-0038): se abre en claro (el cifrado del
+        // blob store queda fuera de alcance en esta iteración).
+        let blobs = match config.blob_path.as_ref() {
+            Some(blob_path) => Some(BlobStore::open(blob_path)?),
+            None => None,
+        };
         let mut database = Self {
             file,
             pool: BufferPool::new(config.pool_capacity)?,
@@ -126,6 +150,7 @@ impl Database {
             active_tx: None,
             registry: ModelRegistry::new(),
             last_lsn: 0,
+            blobs,
         };
         let applied = database.replay()?;
         database.last_lsn = applied;

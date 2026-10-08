@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 
 mod batch;
+mod blob;
 mod builder;
 mod catalog;
 mod database;
@@ -31,6 +32,7 @@ pub use ruscadb_core::{
     Edge, EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError,
     ScalarMap, ScalarValue,
 };
+pub use ruscadb_multimodal::BlobHash;
 pub use ruscadb_storage::{PAGE_SIZE, Page, PageId};
 // Vocabulario transaccional / de manifiesto para consumidores de la fachada
 // (SPEC-0019): snapshots, versiones y el manifiesto versionado.

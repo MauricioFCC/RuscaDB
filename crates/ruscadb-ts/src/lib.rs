@@ -307,6 +307,116 @@ fn apply_agg(count: u64, sum: f64, min: f64, max: f64, agg: Agg) -> Option<f64> 
     Some(value)
 }
 
+/// Percentil con interpolación lineal sobre los valores de la serie.
+///
+/// Ordena los valores de forma ascendente (`f64::total_cmp`) y aplica
+/// `idx = (p / 100) * (n - 1)`, interpolando linealmente entre las
+/// posiciones `floor(idx)` y `ceil(idx)`. Complejidad O(n log n).
+///
+/// Args:
+///     points: Puntos de la serie (cualquier orden).
+///     p: Percentil deseado, en el rango `[0, 100]`.
+///
+/// Returns:
+///     El percentil, o `None` si la serie está vacía.
+///
+/// Raises:
+///     RuscaError::InvalidConfig: Si `p` no está en `[0, 100]` o no es finito.
+pub fn percentile(points: &[SeriesPoint], p: f64) -> Result<Option<f64>, RuscaError> {
+    if !p.is_finite() || !(0.0..=100.0).contains(&p) {
+        return Err(RuscaError::InvalidConfig(format!(
+            "p debe estar en [0, 100] (recibido {p}; revisa el percentil en percentile())"
+        )));
+    }
+    if points.is_empty() {
+        return Ok(None);
+    }
+    let mut values: Vec<f64> = points.iter().map(|point| point.value).collect();
+    values.sort_by(f64::total_cmp);
+    let rank = (p / 100.0) * (values.len() - 1) as f64;
+    let lower = rank.floor() as usize;
+    let upper = rank.ceil() as usize;
+    let fraction = rank - lower as f64;
+    Ok(Some(
+        values[lower] + (values[upper] - values[lower]) * fraction,
+    ))
+}
+
+/// Tasa de cambio por segundo entre puntos consecutivos.
+///
+/// Ordena los puntos por `ts_ms` (determinista) y calcula
+/// `(v2 - v1) / ((t2 - t1) / 1000)` para cada par adyacente. Los pares con
+/// `dt == 0` se omiten. La clave del resultado es `t2`.
+///
+/// Args:
+///     points: Puntos de la serie (cualquier orden).
+///
+/// Returns:
+///     Pares `(t2, tasa_por_segundo)`; vacío si hay menos de 2 puntos.
+pub fn rate(points: &[SeriesPoint]) -> Vec<(i64, f64)> {
+    let sorted = sorted_points(points);
+    let mut out = Vec::new();
+    for pair in sorted.windows(2) {
+        let previous = pair[0];
+        let current = pair[1];
+        let delta_ms = current.ts_ms.saturating_sub(previous.ts_ms);
+        if delta_ms == 0 {
+            continue;
+        }
+        let seconds = delta_ms as f64 / 1000.0;
+        out.push((current.ts_ms, (current.value - previous.value) / seconds));
+    }
+    out
+}
+
+/// Media móvil simple sobre ventanas de `window` puntos consecutivos.
+///
+/// Ordena los puntos por `ts_ms` y recorre todas las ventanas de `window`
+/// puntos. Si `window` supera el número de puntos, se usa `n` (una única
+/// ventana con todos los puntos) para no devolver un resultado vacío.
+/// Cada salida es `(ts_ms del último punto de la ventana, media)`.
+///
+/// Args:
+///     points: Puntos de la serie (cualquier orden).
+///     window: Número de puntos por ventana (debe ser > 0).
+///
+/// Returns:
+///     `n - window + 1` medias móviles (o una sola si `window >= n`); vacío si
+///     la serie está vacía.
+///
+/// Raises:
+///     RuscaError::InvalidConfig: Si `window == 0`.
+pub fn moving_average(
+    points: &[SeriesPoint],
+    window: usize,
+) -> Result<Vec<(i64, f64)>, RuscaError> {
+    if window == 0 {
+        return Err(RuscaError::InvalidConfig(format!(
+            "window debe ser > 0 (recibido {window}; revisa la ventana en moving_average())"
+        )));
+    }
+    let sorted = sorted_points(points);
+    let effective = window.min(sorted.len());
+    if effective == 0 {
+        return Ok(Vec::new());
+    }
+    if effective == 1 {
+        // Sin agregación: cada punto es su propia media (identidad exacta).
+        return Ok(sorted
+            .iter()
+            .map(|point| (point.ts_ms, point.value))
+            .collect());
+    }
+    let mut sum: f64 = sorted[..effective].iter().map(|point| point.value).sum();
+    let mut out = Vec::with_capacity(sorted.len() - effective + 1);
+    out.push((sorted[effective - 1].ts_ms, sum / effective as f64));
+    for (idx, current) in sorted.iter().enumerate().skip(effective) {
+        sum += current.value - sorted[idx - effective].value;
+        out.push((current.ts_ms, sum / effective as f64));
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -499,6 +609,137 @@ mod tests {
         }
     }
 
+    /// AC-0039-01 — percentil 50 (mediana) con interpolación lineal.
+    #[test]
+    fn test_ac_0039_01_percentile_interpolates() {
+        let points = vec![
+            point(0, 10.0),
+            point(1, 20.0),
+            point(2, 30.0),
+            point(3, 40.0),
+        ];
+        if let (Ok(median), Ok(zero), Ok(hundred), Ok(quarter)) = (
+            percentile(&points, 50.0),
+            percentile(&points, 0.0),
+            percentile(&points, 100.0),
+            percentile(&points, 25.0),
+        ) {
+            assert_eq!(median, Some(25.0));
+            assert_eq!(zero, Some(10.0));
+            assert_eq!(hundred, Some(40.0));
+            assert_eq!(quarter, Some(17.5));
+        } else {
+            panic!("percentiles válidos fueron rechazados");
+        }
+        // El percentil ordena por valor, no por instante temporal.
+        let shuffled = vec![
+            point(0, 40.0),
+            point(1, 10.0),
+            point(2, 30.0),
+            point(3, 20.0),
+        ];
+        if let Ok(median) = percentile(&shuffled, 50.0) {
+            assert_eq!(median, Some(25.0));
+        } else {
+            panic!("percentil válido fue rechazado");
+        }
+    }
+
+    /// AC-0039-02 — tasa por segundo entre puntos consecutivos.
+    #[test]
+    fn test_ac_0039_02_rate_per_second() {
+        let points = vec![point(0, 0.0), point(1000, 10.0), point(2000, 30.0)];
+        let expected = vec![(1000, 10.0), (2000, 20.0)];
+        assert_eq!(rate(&points), expected);
+        // El orden de entrada no altera el resultado.
+        let mut shuffled = points.clone();
+        shuffled.reverse();
+        assert_eq!(rate(&shuffled), expected);
+        // BVA dt == 0: el par simultáneo se omite.
+        let degenerate = vec![point(0, 0.0), point(0, 5.0), point(1000, 10.0)];
+        assert_eq!(rate(&degenerate), vec![(1000, 5.0)]);
+        // dt distinto de 1 s: distingue dividir de multiplicar por `seconds`.
+        assert_eq!(rate(&[point(0, 0.0), point(500, 10.0)]), vec![(500, 20.0)]);
+    }
+
+    /// AC-0039-03 — media móvil con longitud y valores correctos.
+    #[test]
+    fn test_ac_0039_03_moving_average() {
+        let points = vec![
+            point(0, 10.0),
+            point(1, 20.0),
+            point(2, 30.0),
+            point(3, 40.0),
+        ];
+        if let (Ok(two), Ok(three), Ok(four), Ok(oversized)) = (
+            moving_average(&points, 2),
+            moving_average(&points, 3),
+            moving_average(&points, 4),
+            moving_average(&points, 5),
+        ) {
+            assert_eq!(two, vec![(1, 15.0), (2, 25.0), (3, 35.0)]);
+            assert_eq!(three, vec![(2, 20.0), (3, 30.0)]);
+            assert_eq!(four, vec![(3, 25.0)]);
+            // window > n se satura a n: una única ventana con todo.
+            assert_eq!(oversized, vec![(3, 25.0)]);
+        } else {
+            panic!("medias móviles válidas fueron rechazadas");
+        }
+        // Orden de entrada irrelevante.
+        let mut shuffled = points.clone();
+        shuffled.reverse();
+        if let Ok(two) = moving_average(&shuffled, 2) {
+            assert_eq!(two, vec![(1, 15.0), (2, 25.0), (3, 35.0)]);
+        } else {
+            panic!("media móvil válida fue rechazada");
+        }
+    }
+
+    /// AC-0039-04 — entradas inválidas: error accionable, sin panics.
+    #[test]
+    fn test_ac_0039_04_invalid_inputs() {
+        let points = vec![point(0, 1.0), point(1, 2.0)];
+        assert!(percentile(&points, -1.0).is_err());
+        assert!(percentile(&points, 101.0).is_err());
+        assert!(percentile(&points, f64::NAN).is_err());
+        assert!(percentile(&points, f64::INFINITY).is_err());
+        assert!(moving_average(&points, 0).is_err());
+        // Fronteras válidas: sin error.
+        assert!(percentile(&points, 0.0).is_ok());
+        assert!(percentile(&points, 100.0).is_ok());
+        assert!(moving_average(&points, 1).is_ok());
+    }
+
+    /// AC-0039-05 — series vacías o de un solo punto, sin panics.
+    #[test]
+    fn test_ac_0039_05_boundary_series() {
+        if let (Ok(none), Ok(single_median), Ok(empty_average)) = (
+            percentile(&[], 50.0),
+            percentile(&[point(7, 42.0)], 90.0),
+            moving_average(&[], 3),
+        ) {
+            assert_eq!(none, None);
+            // Un único punto: el percentil es ese valor.
+            assert_eq!(single_median, Some(42.0));
+            assert_eq!(empty_average, Vec::<(i64, f64)>::new());
+        } else {
+            panic!("fronteras válidas fueron rechazadas");
+        }
+        // rate con menos de 2 puntos es vacío.
+        assert!(rate(&[]).is_empty());
+        assert!(rate(&[point(7, 42.0)]).is_empty());
+        // moving_average con un punto (o ventana saturada) devuelve ese punto.
+        if let (Ok(single), Ok(saturated)) = (
+            moving_average(&[point(7, 42.0)], 1),
+            moving_average(&[point(7, 42.0)], 5),
+        ) {
+            assert_eq!(single, vec![(7, 42.0)]);
+            assert_eq!(saturated, vec![(7, 42.0)]);
+        } else {
+            panic!("media móvil de un punto fue rechazada");
+        }
+    }
+
     proptest! {
         /// El bucket es idempotente: `bucket(bucket(x)) == bucket(x)`.
         #[test]
@@ -545,6 +786,53 @@ mod tests {
                 prop_assert_eq!(first, second);
             } else {
                 panic!("remuestreos válidos fueron rechazados");
+            }
+        }
+
+        /// El percentil es monótono no decreciente en `p`.
+        #[test]
+        fn percentile_is_monotonic_in_p(
+            raw in proptest::collection::vec(
+                (0i64..1000i64, -1_000_000.0f64..1_000_000.0f64),
+                1..20usize,
+            ),
+            p1 in 0.0f64..=100.0f64,
+            p2 in 0.0f64..=100.0f64,
+        ) {
+            let points: Vec<SeriesPoint> = raw
+                .iter()
+                .map(|(ts_ms, value)| point(*ts_ms, *value))
+                .collect();
+            let (low, high) = if p1 <= p2 { (p1, p2) } else { (p2, p1) };
+            if let (Ok(Some(low_value)), Ok(Some(high_value))) =
+                (percentile(&points, low), percentile(&points, high))
+            {
+                prop_assert!(low_value <= high_value);
+            } else {
+                panic!("percentiles válidos fueron rechazados");
+            }
+        }
+
+        /// La media móvil de ventana 1 reproduce los puntos ordenados.
+        #[test]
+        fn moving_average_window_one_is_identity(
+            raw in proptest::collection::vec(
+                (0i64..1000i64, -1000.0f64..1000.0f64),
+                0..20usize,
+            ),
+        ) {
+            let points: Vec<SeriesPoint> = raw
+                .iter()
+                .map(|(ts_ms, value)| point(*ts_ms, *value))
+                .collect();
+            let expected: Vec<(i64, f64)> = sorted_points(&points)
+                .iter()
+                .map(|sorted_point| (sorted_point.ts_ms, sorted_point.value))
+                .collect();
+            if let Ok(actual) = moving_average(&points, 1) {
+                prop_assert_eq!(actual, expected);
+            } else {
+                panic!("media móvil de ventana 1 fue rechazada");
             }
         }
     }

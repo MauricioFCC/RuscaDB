@@ -29,6 +29,8 @@ pub struct DatabaseBuilder {
     pool_capacity: usize,
     /// Cifrado en reposo (`None` = modo claro).
     encryption: Option<EncryptionConfig>,
+    /// Directorio raíz del blob store (`None` = sin blobs, SPEC-0038).
+    blob_path: Option<PathBuf>,
 }
 
 impl DatabaseBuilder {
@@ -41,6 +43,7 @@ impl DatabaseBuilder {
             data_path: None,
             pool_capacity: DEFAULT_POOL_CAPACITY,
             encryption: None,
+            blob_path: None,
         }
     }
 
@@ -80,6 +83,22 @@ impl DatabaseBuilder {
         self
     }
 
+    /// Fija el directorio raíz del blob store (SPEC-0038).
+    ///
+    /// Si se fija, [`DatabaseBuilder::open`] abre (o crea) el blob store y
+    /// habilita `put_blob`/`get_blob`/`gc_blobs`. El blob store se abre en modo
+    /// claro (el cifrado del blob store queda fuera de alcance).
+    ///
+    /// Args:
+    ///     path: Directorio raíz del blob store.
+    ///
+    /// Returns:
+    ///     El builder encadenable.
+    pub fn blob_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.blob_path = Some(path.into());
+        self
+    }
+
     /// Construye el [`DbConfig`] equivalente y abre la base.
     ///
     /// Returns:
@@ -97,6 +116,7 @@ impl DatabaseBuilder {
         };
         let mut config = DbConfig::new(data_path, self.pool_capacity);
         config.encryption = self.encryption;
+        config.blob_path = self.blob_path;
         Database::open(config)
     }
 }
