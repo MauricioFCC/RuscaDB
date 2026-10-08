@@ -63,6 +63,7 @@ ALLOWED: dict[str, set[str]] = {
     },
     "ruscadb-testkit": {"ruscadb-core"},
     "ruscadb-crypto": {"ruscadb-core"},
+    "ruscadb-ts": {"ruscadb-core"},
     "xtask": set(),
 }
 

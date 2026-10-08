@@ -118,6 +118,105 @@ pub fn heap_update(
     database.write_page(&repacked)
 }
 
+/// Elimina físicamente la fila del localizador, reempaquetando la página.
+///
+/// Conserva el orden relativo de los slots supervivientes (sus índices pueden
+/// desplazarse: el llamador debe reconstruir el índice primario). La página
+/// queda sucia en el pool; el llamador confirma con `catalog.save`.
+///
+/// Args:
+///     database: Base abierta.
+///     locator: Localizador `(PageId, slot)` de la fila a eliminar.
+///
+/// Returns:
+///     El registro eliminado.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si el slot no existe o el heap es inválido.
+pub fn heap_remove(database: &mut Database, locator: RowLocator) -> Result<Record, RuscaError> {
+    let page = database.read_page(locator.0)?;
+    let slots = parse_slots(page.data())?;
+    let target = locator.1 as usize;
+    if target >= slots.len() {
+        return Err(corrupt_heap(&format!(
+            "slot {} inexistente en la página {}",
+            locator.1, locator.0.0
+        )));
+    }
+    let removed = decode_row(page.data(), slots[target].0, slots[target].1)?;
+    let rebuilt = rebuild_without(page.data(), &slots, locator.0, target)?;
+    database.write_page(&rebuilt)?;
+    Ok(removed)
+}
+
+/// Reconstruye la página sin el slot `target`, reempaquetando desde el final.
+///
+/// Args:
+///     data: Bytes actuales de la página.
+///     slots: Directorio de slots validado.
+///     id: Página reconstruida.
+///     target: Índice del slot eliminado.
+///
+/// Returns:
+///     La página con los supervivientes en su orden relativo.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si un slot apunta fuera de la página.
+fn rebuild_without(
+    data: &[u8],
+    slots: &[(u16, u16)],
+    id: PageId,
+    target: usize,
+) -> Result<Page, RuscaError> {
+    let mut page = Page::new(id);
+    let mut cursor = PAGE_SIZE;
+    let mut written: usize = 0;
+    let out = page.data_mut();
+    for (index, (offset, length)) in slots.iter().enumerate() {
+        if index == target {
+            continue;
+        }
+        let row = slot_bytes(data, *offset, *length)?;
+        cursor -= row.len();
+        out[cursor..cursor + row.len()].copy_from_slice(row);
+        write_slot(out, written, cursor, row.len());
+        written += 1;
+    }
+    set_slot_count(out, written as u16);
+    Ok(page)
+}
+
+/// Extrae los bytes de un slot validando sus límites.
+///
+/// Args:
+///     data: Bytes de la página.
+///     offset: Inicio de la fila.
+///     length: Longitud de la fila.
+///
+/// Returns:
+///     Los bytes de la fila.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si el rango queda fuera de la página.
+fn slot_bytes(data: &[u8], offset: u16, length: u16) -> Result<&[u8], RuscaError> {
+    let (start, end) = (offset as usize, offset as usize + length as usize);
+    data.get(start..end)
+        .ok_or_else(|| corrupt_heap("un slot apunta fuera de la página"))
+}
+
+/// Escribe una entrada del directorio de slots.
+///
+/// Args:
+///     out: Bytes de la página en construcción.
+///     slot: Índice del slot a escribir.
+///     offset: Inicio de la fila.
+///     length: Longitud de la fila.
+fn write_slot(out: &mut [u8], slot: usize, offset: usize, length: usize) {
+    let at = COUNT_SIZE + slot * SLOT_SIZE;
+    out[at..at + COUNT_SIZE].copy_from_slice(&(offset as u16).to_le_bytes());
+    out[at + COUNT_SIZE..at + SLOT_SIZE].copy_from_slice(&(length as u16).to_le_bytes());
+}
+
 /// Serializa una fila validando la cabida en una página de 4 KiB.
 ///
 /// Args:

@@ -9,15 +9,19 @@
 #![forbid(unsafe_code)]
 
 mod batch;
+mod builder;
 mod catalog;
 mod database;
 mod delete;
 mod encryption;
 mod executor;
+mod gc;
 mod heap;
 mod index;
 mod indexes;
 mod table_api;
+
+pub use builder::DatabaseBuilder;
 
 pub use catalog::{
     CATALOG_MAGIC, CATALOG_VERSION, Catalog, ColumnDef, ColumnType, IndexDef, TableDef,
@@ -27,7 +31,7 @@ pub use encryption::EncryptionConfig;
 pub use executor::{
     Plan, Row, execute_select, execute_select_at, execute_with_plan, execute_with_plan_at, plan_for,
 };
-pub use heap::{RowLocator, heap_insert, heap_read, heap_scan, heap_update};
+pub use heap::{RowLocator, heap_insert, heap_read, heap_remove, heap_scan, heap_update};
 pub use index::{canonical_key, index_build, index_insert, index_lookup_eq, index_remove};
 pub use ruscadb_core::{
     Edge, EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError,

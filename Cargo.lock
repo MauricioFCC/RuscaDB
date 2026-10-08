@@ -871,6 +871,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruscadb-ts"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "proptest",
+ "rstest",
+ "ruscadb-core",
+ "serde",
+]
+
+[[package]]
 name = "ruscadb-txn"
 version = "0.1.0"
 dependencies = [

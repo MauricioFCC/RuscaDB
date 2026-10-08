@@ -23,6 +23,7 @@ members = [
     "crates/ruscadb-py",
     "crates/ruscadb-node",
     "crates/ruscadb-wasm",
+    "crates/ruscadb-ts",
     "crates/ruscadb",
     "crates/ruscadb-testkit",
     "crates/ruscadb-crypto",
@@ -54,6 +55,7 @@ ruscadb-wal = { path = "crates/ruscadb-wal" }
 ruscadb-ffi = { path = "crates/ruscadb-ffi" }
 ruscadb-testkit = { path = "crates/ruscadb-testkit" }
 ruscadb-crypto = { path = "crates/ruscadb-crypto" }
+ruscadb-ts = { path = "crates/ruscadb-ts" }
 ruscadb = { path = "crates/ruscadb" }
 
 # Dependencias externas (versiones estables verificadas 2026-10-06).

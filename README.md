@@ -118,6 +118,7 @@ facade and filters by MVCC snapshot visibility.
 | `ruscadb-fts` | Inverted index + BM25. |
 | `ruscadb-btree` | Ordered B+tree. |
 | `ruscadb-txn` | MVCC snapshot isolation + versioned manifest. |
+| `ruscadb-ts` | Time-series: bucketing, windows, resampling. |
 | `ruscadb-multimodal` | Content-addressed blob store. |
 | `ruscadb-ai` | Local embeddings. |
 | `ruscadb-crypto` | XChaCha20-Poly1305 + Argon2id. |
