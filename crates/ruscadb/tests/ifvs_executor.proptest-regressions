@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 83b8232b76a0cb7d629bd39470acee0dde07cc544b63e32ce380cfb34ed5494a # shrinks to raw_vectors = [[0, 0], [0, 1], [0, 2], [0, 5]], raw_query = [0, 2], cutoff_percent = 40, k = 1
+cc 50e5e5ed4ccd8520aeaeef1352aeae09d32c7d0449c1873e9e03745d9d0ac371 # shrinks to raw_vectors = [[0, 0], [0, 1], [0, 2], [0, 3], [783, 0]], raw_query = [0, 3], cutoff_percent = 80, k = 1

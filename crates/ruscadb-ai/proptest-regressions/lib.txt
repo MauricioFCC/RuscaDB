@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc df5e09ff9907f068d1d692a10c003ae6562d9f350f5cefefb2f2e685c2c39656 # shrinks to dim = 1
+cc 236640c2c3e91ab44e8246dec3ff12ac956889a2d7874e2491aff016db15f600 # shrinks to word = "a"
+cc c5e55fe4f58d7258e90ba1da543ac9326701c9a4712b91b9f50429e19ea5be8d # shrinks to docs = ["l ", ""], query = "l ", dim = 1
+cc 95bda85d9acb2b1c3ab320d44d546442c7c7192881086cc15376ffae102c17d3 # shrinks to docs = ["g ", ""], query = "g g", dim = 1
+cc f5f4ec5e4a385afeea62d42cfa83893071d6c4cfd4fe1044b505592c50d94246 # shrinks to docs = ["k ", "o "], query = "o k", dim = 2

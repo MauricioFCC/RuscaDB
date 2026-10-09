@@ -15,9 +15,11 @@ RuscaDB runs **in-process** (no server, no network, no daemon) and stores
 relational, document, graph, vector and time-series data plus multimodal blobs in
 a single database directory, queried through **one extended-SQL language (RQL)**.
 
-> **Status: early development (`0.1.0`).** The engine is under active
-> construction; public APIs may change. Design source of truth:
-> [`docs/RuscaDB-roadmap.md`](docs/RuscaDB-roadmap.md).
+> **Status: early development (`0.1.0`, unreleased).** The workspace spans
+> **21 crates** with **441 tests** (`cargo test --workspace`). The engine is
+> under active construction; public APIs may change. Design source of truth:
+> [`docs/RuscaDB-roadmap.md`](docs/RuscaDB-roadmap.md) (see the *Estado de
+> implementación* section) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Highlights
 
@@ -90,15 +92,23 @@ db.execute("EXPLAIN SELECT * FROM docs WHERE score > 0.5")?;
 
 ## Query language (RQL)
 
-A small, typed, hand-written SQL dialect (no external parser):
+A small, typed, hand-written SQL dialect (no external parser, no DataFusion
+dependency — see the roadmap's *Estado de implementación*):
 
 ```sql
 SELECT * FROM docs                                  -- projection + scan
 SELECT a, b FROM t WHERE a > 1 AND b = 'x' LIMIT 10 -- filter + projection + limit
+SELECT * FROM t ORDER BY score DESC LIMIT 10        -- ordering + limit
+SELECT a, COUNT(*) FROM t GROUP BY a                -- group by + aggregates
+SELECT * FROM t WHERE doc -> 'meta.tag' = 'ai'      -- document extraction
+SELECT * FROM t WHERE doc @> '{"tags":["ai"]}'      -- document containment
 SELECT * FROM t WHERE MATCH(title, 'fox')           -- full-text (BM25)
 SELECT * FROM t KNN embedding <|5|> [0.1, 0.2, 0.3] -- ANN vector search
 SELECT * FROM t TRAVERSE edges DEPTH 3              -- graph traversal
 EXPLAIN SELECT * FROM t WHERE a = 1                 -- plan inspection
+INSERT INTO t (a, b) VALUES (1, 'x'), (2, 'y')      -- DML: affected rows
+UPDATE t SET b = 'z' WHERE a = 1                    -- DML: update
+DELETE FROM t WHERE a = 2                           -- DML: logical delete
 ```
 
 The IR, parser and grammar live in `ruscadb-query`; the executor lives in the

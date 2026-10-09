@@ -752,6 +752,27 @@ actualizada.
 
 ---
 
+## Estado de implementación
+
+> Actualizado con SPEC-0050. Convención: ✅ implementado y trazado; ⏳ pendiente
+> o desviado. La columna «Evidencia» apunta a las specs SDD cuyos AC están
+> cubiertos por tests `test_ac_*` y verificados por `cargo xtask trace`.
+
+| Área | Estado | Evidencia (specs) |
+|---|---|---|
+| F0 — Fundación (workspace, gates T1/T3, `unsafe`, supply chain) | ✅ | SPEC-0016, SPEC-0033, SPEC-0046 |
+| F1 — Storage/WAL/MVCC (dominio, buffer pool, WAL, snapshot isolation) | ✅ | SPEC-0001, SPEC-0002, SPEC-0003, SPEC-0004, SPEC-0018, SPEC-0019, SPEC-0022, SPEC-0025, SPEC-0027 |
+| F2 — Query engine / RQL (parser, IR, DML, analítica) | ✅ | SPEC-0005, SPEC-0012, SPEC-0015, SPEC-0017, SPEC-0036, SPEC-0040, SPEC-0043, SPEC-0044 |
+| F3 — Índices y grafos (HNSW, FVS/iFVS, CSR, BM25, B+tree) | ✅ | SPEC-0006, SPEC-0007, SPEC-0014, SPEC-0020, SPEC-0021, SPEC-0024, SPEC-0034, SPEC-0037, SPEC-0041, SPEC-0047, SPEC-0048 |
+| F4 — Multimodal / IA / time-series | ✅ | SPEC-0008, SPEC-0009, SPEC-0029, SPEC-0032, SPEC-0035, SPEC-0038, SPEC-0039, SPEC-0049 |
+| F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026 |
+| F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045 |
+| Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
+| Documentación de estado y release | ✅ | SPEC-0050 |
+| **Motor SQL DataFusion (ADR-001)** | ⏳ | **Desviado**: el parser y el executor de RQL son propios y hand-written (`ruscadb-query`), en lugar de extender **DataFusion** como preveía ADR-001. Se mantiene como decisión de diseño pendiente de revisión (revalidar ADR-001 antes de escalar el planner). |
+
+---
+
 ## 9. Registro de riesgos técnicos
 
 | ID | Riesgo | Prob | Impacto | Mitigación | Gate |

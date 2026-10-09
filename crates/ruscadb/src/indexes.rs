@@ -19,7 +19,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use ruscadb_btree::BPlusTree;
 use ruscadb_core::{Metric, Record, RecordId, RuscaError, ScalarValue};
 use ruscadb_fts::InvertedIndex;
-use ruscadb_fvs::{FvsStrategy, VectorSet, choose_strategy, search_filtered, selectivity};
+use ruscadb_fvs::{
+    FvsStrategy, VectorSet, choose_strategy, search_auto_indexed, search_filtered, selectivity,
+};
 use ruscadb_graph::{CsrGraph, Direction, NodeId};
 use ruscadb_vector::{HnswIndex, HnswParams};
 
@@ -125,6 +127,88 @@ impl TableIndexes {
                     .map(|id| (id, distance))
             })
             .collect())
+    }
+
+    /// Busca el top-k restringido a `allowed` con iFVS sobre el índice HNSW.
+    ///
+    /// Cablea `ruscadb_fvs::search_auto_indexed` (SPEC-0047) sobre el
+    /// `HnswIndex` real de la tabla (SPEC-0048). La estrategia se elige por
+    /// selectividad `s = |allowed| / total`:
+    ///
+    /// - `PreFilter` (`s < 0.05`): fuerza bruta restringida; exacta.
+    /// - `InFilter` (`0.05 <= s < 0.6`): iFVS (in-filter vector search,
+    ///   arXiv:2607.22922) sobre el grafo; exacta cuando la amplitud de
+    ///   búsqueda cubre el corpus (corpus pequeños/tests).
+    /// - `PostFilter` (`s >= 0.6`): top-sobre-muestreado y filtro; sonora.
+    ///
+    /// En cualquier estrategia, si el resultado no alcanza `min(k, |allowed|)`
+    /// (el vecindario cercano quedó fuera del filtro) se recalcula de forma
+    /// exacta; si sí lo alcanza, el resultado es ya el top-k permitido exacto.
+    ///
+    /// Args:
+    ///     query: Vector de consulta (misma dimensión que el índice).
+    ///     k: Número máximo de resultados.
+    ///     allowed: `RecordId` que sobreviven al filtro `WHERE`.
+    ///
+    /// Returns:
+    ///     Hasta `k` pares `(RecordId, distancia)` ordenados por distancia
+    ///     ascendente; solo ids en `allowed`.
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si `query` no coincide con la
+    ///     dimensión del índice.
+    pub(crate) fn ifvs_vector_search(
+        &self,
+        query: &[f32],
+        k: usize,
+        allowed: &BTreeSet<RecordId>,
+    ) -> Result<Vec<(RecordId, f32)>, RuscaError> {
+        let Some(index) = self.vector.index.as_ref() else {
+            return Ok(Vec::new());
+        };
+        if k == 0 || allowed.is_empty() {
+            return Ok(Vec::new());
+        }
+        let node_of = self.node_map();
+        let allowed_nodes: BTreeSet<u64> = allowed
+            .iter()
+            .filter_map(|id| node_of.get(id).copied())
+            .collect();
+        let total = index.len();
+        let mut hits = search_auto_indexed(index, query, k, &allowed_nodes, total)?;
+        // Si `search_auto_indexed` no alcanza `min(k, |allowed|)`, su resultado
+        // no cubre el top-k permitido (el vecindario cercano quedó filtrado):
+        // se recalcula de forma exacta. Alcanzarlo implica exactitud, porque el
+        // top-`4k` global contiene los `k` permitidos más cercanos.
+        let target = k.min(allowed_nodes.len());
+        if hits.len() < target {
+            hits = exact_indexed_top_k(index, query, k, &allowed_nodes)?;
+        } else {
+            hits.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        }
+        Ok(hits
+            .into_iter()
+            .filter_map(|(node, distance)| {
+                self.vector
+                    .ids
+                    .get(node as usize)
+                    .copied()
+                    .map(|id| (id, distance))
+            })
+            .collect())
+    }
+
+    /// Mapa `RecordId -> id de nodo HNSW` (orden de inserción).
+    ///
+    /// Returns:
+    ///     Un mapa de cada `RecordId` indexado a su id de nodo HNSW.
+    fn node_map(&self) -> BTreeMap<RecordId, u64> {
+        self.vector
+            .ids
+            .iter()
+            .enumerate()
+            .map(|(node, id)| (*id, node as u64))
+            .collect()
     }
 
     /// Construye el corpus FVS de la tabla, omitiendo las entradas borradas.
@@ -365,6 +449,47 @@ impl GraphIndex {
         self.to_node.insert(id, node);
         node
     }
+}
+
+/// Top-k exacto restringido al filtro sobre el índice HNSW (fallback de post).
+///
+/// Recupera el corpus completo del índice (`k = ef = n`) y conserva solo los
+/// nodos permitidos; equivale a la estrategia `PreFilter` exacta sobre el
+/// índice (SPEC-0047) y evita que `PostFilter` pierda vecinos válidos.
+///
+/// Args:
+///     index: Índice HNSW a recorrer.
+///     query: Vector de consulta (misma dimensión que el índice).
+///     k: Número máximo de resultados.
+///     allowed: Ids de nodo permitidos por el filtro `WHERE`.
+///
+/// Returns:
+///     Hasta `k` pares `(id, distancia)` exactos y sonoros.
+///
+/// Errors:
+///     [`RuscaError::DimensionMismatch`] si `query` no coincide con la
+///     dimensión del índice.
+fn exact_indexed_top_k(
+    index: &HnswIndex,
+    query: &[f32],
+    k: usize,
+    allowed: &BTreeSet<u64>,
+) -> Result<Vec<(u64, f32)>, RuscaError> {
+    let total = index.len();
+    if total == 0 {
+        return Ok(Vec::new());
+    }
+    let candidates = index.search(query, total, total)?;
+    let mut hits: Vec<(u64, f32)> = candidates
+        .into_iter()
+        .filter(|(id, _)| allowed.contains(&(*id as u64)))
+        .map(|(id, distance)| (id as u64, distance))
+        .collect();
+    // Desempate estable por id de nodo (mismo criterio que FVS plano); HNSW
+    // devuelve las distancias ordenadas pero no fija el orden de los empates.
+    hits.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+    hits.truncate(k);
+    Ok(hits)
 }
 
 /// Top-k exacto restringido al filtro con FVS (SPEC-0024).

@@ -141,9 +141,11 @@ fn walk(dir: &Path, visit: &mut impl FnMut(&Path)) {
 mod tests {
     //! Tests de aceptación de SPEC-0016 (endurecimiento de CI T3 y supply
     //! chain), SPEC-0033 (CI cross-platform + sanitizers), SPEC-0042 (fuzzing
-    //! continuo del parser RQL) y SPEC-0046 (matriz rápida + macOS en nightly).
-    //! Solo `std`: leen los artefactos de configuración/corpus como texto y
-    //! verifican estructura/secciones (el gate canónico es
+    //! continuo del parser RQL), SPEC-0046 (matriz rápida + macOS en nightly) y
+    //! SPEC-0050 (documentación de estado y release: `CHANGELOG.md`, estado del
+    //! roadmap y `docs/MVP.md`). Solo `std`: leen los artefactos de
+    //! configuración/corpus/documentación como texto y verifican
+    //! estructura/secciones (el gate canónico de CI es
     //! `scripts/check_ci_config.py`).
 
     use super::workspace_root;
@@ -427,6 +429,76 @@ mod tests {
             assert!(
                 script.contains(needle),
                 "check_ci_config.py no valida '{needle}'"
+            );
+        }
+    }
+
+    /// AC-0050-01: `CHANGELOG.md` existe en la raíz, sigue el formato Keep a
+    /// Changelog (`[Unreleased]` + Added/Changed/Fixed), lista las fases F0–F6
+    /// y las specs, y no inventa releases publicadas (`[0.1.0] - no publicado`).
+    #[test]
+    fn test_ac_0050_01_changelog_exists() {
+        let changelog = read_root_file("CHANGELOG.md");
+        assert!(
+            changelog.contains("Keep a Changelog"),
+            "CHANGELOG.md debe declarar el formato Keep a Changelog"
+        );
+        for section in ["## [Unreleased]", "### Added", "### Changed", "### Fixed"] {
+            assert!(
+                changelog.contains(section),
+                "CHANGELOG.md sin la sección '{section}'"
+            );
+        }
+        assert!(
+            changelog.contains("[0.1.0] - no publicado"),
+            "CHANGELOG.md debe declarar [0.1.0] - no publicado (sin inventar releases)"
+        );
+        for phase in ["F0", "F1", "F2", "F3", "F4", "F5", "F6"] {
+            assert!(
+                changelog.contains(phase),
+                "CHANGELOG.md no menciona la fase '{phase}'"
+            );
+        }
+        assert!(
+            changelog.contains("SPEC-"),
+            "CHANGELOG.md debe listar las specs implementadas"
+        );
+    }
+
+    /// AC-0050-02: el roadmap incluye la sección 'Estado de implementación' con
+    /// una tabla área/estado/evidencia y documenta el desvío de DataFusion
+    /// (ADR-001) como pendiente.
+    #[test]
+    fn test_ac_0050_02_roadmap_status() {
+        let roadmap = read_root_file("docs/RuscaDB-roadmap.md");
+        assert!(
+            roadmap.contains("## Estado de implementación"),
+            "el roadmap no incluye la sección 'Estado de implementación'"
+        );
+        assert!(
+            roadmap.contains("| Área | Estado | Evidencia"),
+            "la sección de estado debe ser una tabla área/estado/evidencia"
+        );
+        assert!(
+            roadmap.contains("DataFusion") && roadmap.contains("ADR-001"),
+            "la sección de estado debe documentar el desvío de DataFusion (ADR-001)"
+        );
+        assert!(
+            roadmap.contains("⏳"),
+            "la sección de estado debe marcar lo pendiente con ⏳"
+        );
+    }
+
+    /// AC-0050-03: `docs/MVP.md` documenta las capacidades y límites
+    /// actualizados: DML (`INSERT`/`UPDATE`/`DELETE`), `GROUP BY`, `ORDER BY` y
+    /// blobs integrados.
+    #[test]
+    fn test_ac_0050_03_mvp_updated() {
+        let mvp = read_root_file("docs/MVP.md");
+        for capability in ["INSERT", "UPDATE", "DELETE", "GROUP BY", "ORDER BY", "blob"] {
+            assert!(
+                mvp.contains(capability),
+                "docs/MVP.md no menciona la capacidad '{capability}'"
             );
         }
     }

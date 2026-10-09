@@ -188,7 +188,7 @@ pub(crate) fn execute_with_plan_at(
         records = apply_matches(database, &table, &matches, records)?;
     }
     if let Some(knn) = &select.knn {
-        records = apply_knn(database, &table, knn, records)?;
+        records = apply_knn(database, &table, knn, records, select.filter.is_some())?;
     }
     if let Some(traverse) = &select.traverse {
         records = apply_traverse(database, &table, traverse, records)?;
@@ -332,19 +332,38 @@ fn apply_matches(
         .collect())
 }
 
-/// Aplica `KNN`: top-k exacto restringido al filtro `WHERE` mediante FVS.
+/// Aplica `KNN`: top-k restringido al filtro `WHERE` mediante FVS.
 ///
 /// `records` ya viene filtrado por visibilidad MVCC y por el `WHERE` escalar,
-/// de modo que sus ids son el conjunto `allowed`. La búsqueda delega en
-/// [`TableIndexes::filtered_vector_search`], que elige la estrategia FVS
-/// (pre/in/post) por selectividad y garantiza el top-k exacto restringido al
-/// filtro (SPEC-0024, NF-0024-01). Sin `WHERE` el conjunto es todo el corpus y
-/// el resultado coincide con el KNN clásico.
+/// de modo que sus ids son el conjunto `allowed`.
+///
+/// - **Con `WHERE`** (`has_filter`): delega en `ifvs_vector_search`, que cablea
+///   `ruscadb_fvs::search_auto_indexed` sobre el `HnswIndex` real de la tabla y
+///   elige la estrategia (pre/in/post) por selectividad (SPEC-0048). `pre` e
+///   `in` son exactos; `post` es sonoro y recalcula exacto si no cubre `k`.
+/// - **Sin `WHERE`**: conserva el comportamiento previo
+///   (`filtered_vector_search`), equivalente al KNN clásico.
+///
+/// Args:
+///     database: Base abierta.
+///     table: Definición de la tabla.
+///     knn: Cláusula `KNN` (columna, `k` y vector de consulta).
+///     records: Candidatos visibles y filtrados por `WHERE` (conjunto `allowed`).
+///     has_filter: `true` si la consulta lleva `WHERE` (filtro escalar).
+///
+/// Returns:
+///     Los registros del top-k filtrado, en orden de distancia ascendente.
+///
+/// Errors:
+///     [`RuscaError::MissingVector`] si la tabla no tiene índice vectorial;
+///     [`RuscaError::DimensionMismatch`] si la dimensión de la consulta no
+///     coincide con el índice.
 fn apply_knn(
     database: &Database,
     table: &TableDef,
     knn: &KnnClause,
     records: Vec<Record>,
+    has_filter: bool,
 ) -> Result<Vec<Record>, RuscaError> {
     let index = database
         .table_indexes(&table.name)
@@ -363,7 +382,11 @@ fn apply_knn(
     }
     let query: Vec<f32> = knn.query.iter().map(|value| *value as f32).collect();
     let allowed: BTreeSet<RecordId> = records.iter().map(|record| record.id).collect();
-    let ranked = index.filtered_vector_search(&query, knn.k as usize, &allowed)?;
+    let ranked = if has_filter {
+        index.ifvs_vector_search(&query, knn.k as usize, &allowed)?
+    } else {
+        index.filtered_vector_search(&query, knn.k as usize, &allowed)?
+    };
     let mut by_id: BTreeMap<RecordId, Record> = records
         .into_iter()
         .map(|record| (record.id, record))

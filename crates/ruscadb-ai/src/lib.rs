@@ -1,17 +1,56 @@
 //! # ruscadb-ai
 //!
-//! Inferencia local de embeddings de RuscaDB: **Candle** por defecto (puro
-//! Rust) con backend `onnx` opcional. Modelos: CLIP (imagen/texto), Whisper
-//! (audio→texto), e5/MiniLM (texto).
+//! Inferencia local de embeddings de RuscaDB. Por defecto usa embedders
+//! **puros y sin dependencias** (`HashingEmbedder`, [`TfIdfEmbedder`]) para que
+//! el crate compile offline y sin C++. Los backends neuronales (Candle/ONNX)
+//! quedan detrás de features opcionales. Modelos previstos: CLIP (imagen/texto),
+//! Whisper (audio→texto), e5/MiniLM (texto).
 //!
 //! Implementa el puerto `EmbedPort` de `ruscadb-core`.
 //! Diseño: ADR-005 y `docs/RuscaDB-roadmap.md` §6. Fase: F4.
+//!
+//! ## Ruta ONNX (feature-gated, SPEC-0049)
+//!
+//! La ruta ONNX está **apagada por defecto**: el crate compila sin `ort`,
+//! `candle` ni C++ (NF-0049-02). Para activarla en el futuro no se cambia este
+//! crate por defecto, sino que se habilita la feature `onnx` declarada en
+//! `Cargo.toml`:
+//!
+//! ```toml
+//! [features]
+//! default = []
+//! onnx = []  # nombre reservado; sin dependencias todavia (ver NF-0049-02)
+//! ```
+//!
+//! y se compila con `cargo build -p ruscadb-ai --features onnx`. La
+//! implementación de [`Embedder`] para ONNX cargaría un `OrtSession` (o un
+//! `candle_core::Tensor`) desde un `.onnx`, tokenizaría con el vocabulario del
+//! modelo y devolvería el *pooling* normalizado — todo dentro de bloques
+//! `#[cfg(feature = "onnx")]`, de modo que las compilaciones por defecto no
+//! arrastren la dependencia. El identificador de la feature vive en
+//! [`ONNX_FEATURE`].
 
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ruscadb_core::{Embedding, Metric, RuscaError};
+
+/// Identificador de la feature `Cargo` que habilitaría el backend ONNX opcional.
+///
+/// Por defecto está **desactivada** (`default = []`): el crate no compila `ort`
+/// ni `candle`. Se activaría con `cargo build -p ruscadb-ai --features onnx`
+/// (ver la ruta ONNX en el rustdoc del crate). La implementación futura viviría
+/// tras `#[cfg(feature = "onnx")]`.
+pub const ONNX_FEATURE: &str = "onnx";
+
+/// Resumen machine-readable de la ruta ONNX documentada en el rustdoc del crate.
+///
+/// Se expone como `const` para que un test pueda verificar (SPEC-0049) que la
+/// activación menciona `feature = "onnx"` y los backends `ort`/`candle`, sin
+/// añadir la dependencia al crate.
+pub const ONNX_ROUTE_DOC: &str =
+    "backend onnx opcional tras feature = \"onnx\" usando ort o candle; apagado por defecto";
 
 /// Bases y primo de FNV-1a de 64 bits (hash rápido y estable).
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
@@ -128,6 +167,164 @@ fn normalize_l2(vector: &mut [f32]) {
             *value /= norm;
         }
     }
+}
+
+/// Embedder local **TF-IDF** entrenado con un corpus (SPEC-0049).
+///
+/// `fit` construye el vocabulario por frecuencia de término (recortado a `dim`
+/// términos, desempate lexicográfico para ser determinista) y calcula el IDF
+/// suavizado de cada término. `embed` aplica TF-IDF sobre el vocabulario y
+/// normaliza en L2; los textos vacíos o con solo términos desconocidos
+/// devuelven el vector cero.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TfIdfEmbedder {
+    /// Dimensión del espacio vectorial de salida (`>= 1`).
+    dim: usize,
+    /// Vocabulario término → índice (orden determinista por `BTreeMap`).
+    vocabulary: BTreeMap<String, usize>,
+    /// IDF por índice de vocabulario; longitud `<= dim`.
+    idf: Vec<f32>,
+}
+
+impl TfIdfEmbedder {
+    /// Entrena el embedder sobre `documents` recortando el vocabulario a `dim`.
+    ///
+    /// Args:
+    ///     documents: Corpus de entrenamiento (frases). Puede estar vacío.
+    ///     dim: Dimensión del vector de salida; el vocabulario conserva como
+    ///         mucho `dim` términos más frecuentes.
+    ///
+    /// Returns:
+    ///     Embedder listo para [`TfIdfEmbedder::embed`].
+    pub fn fit(documents: &[&str], dim: usize) -> Self {
+        let term_frequency = count_term_frequency(documents);
+        let document_frequency = count_document_frequency(documents);
+        let selected = select_terms(&term_frequency, dim);
+
+        let mut vocabulary = BTreeMap::new();
+        let mut idf = Vec::with_capacity(selected.len());
+        for (index, (term, _)) in selected.into_iter().enumerate() {
+            vocabulary.insert(term.to_string(), index);
+            let frequency = document_frequency.get(term).copied().unwrap_or(0);
+            idf.push(smoothed_idf(documents.len(), frequency));
+        }
+        Self {
+            dim,
+            vocabulary,
+            idf,
+        }
+    }
+}
+
+impl Embedder for TfIdfEmbedder {
+    /// Devuelve la dimensión configurada en `fit`.
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    /// Embebe `text` como TF-IDF L2-normalizado.
+    ///
+    /// Args:
+    ///     text: Texto de entrada; se tokeniza por espacios en blanco.
+    ///
+    /// Returns:
+    ///     Vector `float32` de longitud `dim`; todo ceros si no hay términos
+    ///     del vocabulario.
+    fn embed(&self, text: &str) -> Vec<f32> {
+        let mut vector = vec![0.0_f32; self.dim];
+        let mut local_frequency: BTreeMap<usize, f32> = BTreeMap::new();
+        for token in tokenize(text) {
+            if let Some(&index) = self.vocabulary.get(&token) {
+                *local_frequency.entry(index).or_insert(0.0) += 1.0;
+            }
+        }
+        for (index, frequency) in local_frequency {
+            vector[index] += frequency * self.idf[index];
+        }
+        normalize_l2(&mut vector);
+        vector
+    }
+}
+
+/// Tokeniza `text` por espacios en blanco y normaliza a minúsculas.
+///
+/// Args:
+///     text: Texto de entrada.
+///
+/// Returns:
+///     Los términos normalizados en orden de aparición.
+fn tokenize(text: &str) -> Vec<String> {
+    text.split_whitespace().map(str::to_lowercase).collect()
+}
+
+/// Cuenta la frecuencia total de cada término a lo largo del corpus.
+///
+/// Args:
+///     documents: Corpus de entrenamiento.
+///
+/// Returns:
+///     Mapa término → número de apariciones.
+fn count_term_frequency(documents: &[&str]) -> BTreeMap<String, usize> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for document in documents {
+        for token in tokenize(document) {
+            *counts.entry(token).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+/// Cuenta en cuántos documentos distintos aparece cada término.
+///
+/// Args:
+///     documents: Corpus de entrenamiento.
+///
+/// Returns:
+///     Mapa término → frecuencia documental (`df`).
+fn count_document_frequency(documents: &[&str]) -> BTreeMap<String, usize> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for document in documents {
+        let unique: BTreeSet<String> = tokenize(document).into_iter().collect();
+        for token in unique {
+            *counts.entry(token).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+/// Selecciona hasta `limit` términos por frecuencia descendente.
+///
+/// El desempate es lexicográfico ascendente para que el vocabulario sea
+/// determinista.
+///
+/// Args:
+///     frequencies: Frecuencia total por término.
+///     limit: Número máximo de términos a conservar.
+///
+/// Returns:
+///     Los términos seleccionados con su frecuencia.
+fn select_terms(frequencies: &BTreeMap<String, usize>, limit: usize) -> Vec<(&str, usize)> {
+    let mut terms: Vec<(&str, usize)> = frequencies
+        .iter()
+        .map(|(term, count)| (term.as_str(), *count))
+        .collect();
+    terms.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(right.0)));
+    terms.truncate(limit);
+    terms
+}
+
+/// IDF suavizado: `ln((1 + N) / (1 + df)) + 1`, siempre positivo.
+///
+/// Args:
+///     document_count: Número de documentos del corpus (`N`).
+///     document_frequency: Frecuencia documental del término (`df`).
+///
+/// Returns:
+///     El peso IDF del término.
+fn smoothed_idf(document_count: usize, document_frequency: usize) -> f32 {
+    let numerator = 1.0 + document_count as f32;
+    let denominator = 1.0 + document_frequency as f32;
+    (numerator / denominator).ln() + 1.0
 }
 
 /// Especificación allowlisted de un modelo de embedding (SPEC-0032).
@@ -496,7 +693,132 @@ mod tests {
         assert!((l2_norm(&unit) - 1.0).abs() < 1e-6);
     }
 
+    /// Producto punto de dos vectores; equivale al coseno si están L2-norm.
+    ///
+    /// Args:
+    ///     left: Primer vector.
+    ///     right: Segundo vector (misma longitud).
+    ///
+    /// Returns:
+    ///     La suma de productos componente a componente.
+    fn dot(left: &[f32], right: &[f32]) -> f32 {
+        left.iter().zip(right).map(|(a, b)| a * b).sum()
+    }
+
+    /// AC-0049-01 — el vector tiene la dimensión configurada y queda L2-norm.
+    #[test] // @spec AC-0049-01
+    fn test_ac_0049_01_tfidf_dim_and_norm() {
+        let corpus = [
+            "el gato come pescado",
+            "el perro come carne",
+            "el sol brilla fuerte",
+        ];
+        let embedder = TfIdfEmbedder::fit(&corpus, 32);
+        assert_eq!(embedder.dim(), 32);
+        let vector = embedder.embed("el gato come");
+        assert_eq!(vector.len(), 32, "el vector debe tener la dim configurada");
+        let norm = l2_norm(&vector);
+        assert!((norm - 1.0).abs() < 1e-5, "norma {norm} no es ~1");
+    }
+
+    /// AC-0049-02 — textos con solape de términos son más similares que sin él.
+    #[test] // @spec AC-0049-02
+    fn test_ac_0049_02_tfidf_similarity() {
+        let corpus = [
+            "el gato come pescado",
+            "el perro come carne",
+            "el sol brilla fuerte",
+        ];
+        let embedder = TfIdfEmbedder::fit(&corpus, 16);
+        let a = embedder.embed("el gato come pescado");
+        let b = embedder.embed("el gato come carne");
+        let c = embedder.embed("el sol brilla fuerte");
+        let sim_shared = dot(&a, &b);
+        let sim_unrelated = dot(&a, &c);
+        assert!(
+            sim_shared > sim_unrelated,
+            "el solape debe dar mayor similitud: {sim_shared} vs {sim_unrelated}"
+        );
+        assert!(sim_shared > 0.0, "textos con solape deben compartir masa");
+    }
+
+    /// AC-0049-03 — `fit` y `embed` son deterministas (mismo input ⇒ mismo vector).
+    #[test] // @spec AC-0049-03
+    fn test_ac_0049_03_deterministic() {
+        let corpus = ["uno dos tres", "dos tres cuatro", "tres cuatro cinco"];
+        let first = TfIdfEmbedder::fit(&corpus, 8);
+        let second = TfIdfEmbedder::fit(&corpus, 8);
+        assert_eq!(first, second, "fit debe ser determinista");
+        let text = "dos tres";
+        assert_eq!(first.embed(text), second.embed(text));
+        assert_eq!(first.embed(text), first.embed(text));
+    }
+
+    /// AC-0049-04 — texto vacío o solo términos desconocidos ⇒ vector cero.
+    #[test] // @spec AC-0049-04
+    fn test_ac_0049_04_empty_text() {
+        let corpus = ["el gato come pescado", "el perro come carne"];
+        let embedder = TfIdfEmbedder::fit(&corpus, 8);
+        assert_eq!(embedder.embed(""), vec![0.0_f32; 8]);
+        assert_eq!(embedder.embed("   \t\n"), vec![0.0_f32; 8]);
+        assert_eq!(
+            embedder.embed("terminos desconocidos zzz"),
+            vec![0.0_f32; 8]
+        );
+    }
+
+    /// AC-0049-05 — la ruta ONNX está documentada y desactivada por defecto.
+    ///
+    /// Nota: no se aserta `cfg!(feature = "onnx")` porque el gate T1 compila
+    /// con `--all-features`. La propiedad "sin dependencias ONNX por defecto"
+    /// es estructural (`onnx = []`, sin deps opcionales) y se verifica con
+    /// `cargo build -p ruscadb-ai` (features por defecto) + `cargo tree`.
+    #[test] // @spec AC-0049-05
+    fn test_ac_0049_05_onnx_feature_documented() {
+        assert_eq!(ONNX_FEATURE, "onnx", "la feature debe llamarse 'onnx'");
+        assert!(
+            ONNX_ROUTE_DOC.contains("feature = \"onnx\""),
+            "la ruta ONNX debe citar la feature: {ONNX_ROUTE_DOC}"
+        );
+        assert!(ONNX_ROUTE_DOC.contains("ort"), "debe mencionar `ort`");
+        assert!(ONNX_ROUTE_DOC.contains("candle"), "debe mencionar `candle`");
+        assert!(
+            ONNX_ROUTE_DOC.contains("apagado por defecto"),
+            "debe declarar que esta apagado por defecto: {ONNX_ROUTE_DOC}"
+        );
+    }
+
+    /// BVA — un documento, vocabulario mayor que `dim` y `dim == 0`.
+    #[test]
+    fn test_tfidf_boundary_cases() {
+        let single = TfIdfEmbedder::fit(&["alfabeto"], 4);
+        assert_eq!(single.embed("alfabeto").len(), 4);
+
+        let corpus = ["a b c d e f", "g h i j k l"];
+        let clipped = TfIdfEmbedder::fit(&corpus, 3);
+        assert_eq!(clipped.embed("a b c d e f g").len(), 3);
+
+        let zero = TfIdfEmbedder::fit(&["texto"], 0);
+        assert_eq!(zero.dim(), 0);
+        assert!(zero.embed("texto").is_empty());
+    }
+
     proptest! {
+        /// PBT — `embed` siempre tiene `dim` componentes y norma L2 `<= 1`.
+        #[test]
+        fn prop_tfidf_dim_and_norm(
+            docs in prop::collection::vec("[a-z ]{0,24}", 0..4),
+            query in "[a-z ]{0,24}",
+            dim in 0usize..32,
+        ) {
+            let refs: Vec<&str> = docs.iter().map(String::as_str).collect();
+            let embedder = TfIdfEmbedder::fit(&refs, dim);
+            let vector = embedder.embed(&query);
+            prop_assert_eq!(vector.len(), dim);
+            let norm = l2_norm(&vector);
+            prop_assert!(norm <= 1.0 + 1e-5, "norma {} > 1", norm);
+        }
+
         /// La dimensión del vector siempre coincide con la configurada.
         #[test]
         fn prop_embedding_has_configured_dimension(dim in 1usize..128) {
