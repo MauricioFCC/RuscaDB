@@ -68,7 +68,7 @@ bidireccional máquina-verificable (`contract`) + juez determinista v0 sobre el
 diff (`judge`) con rúbricas precisas y veredicto. El backend LLM queda
 documentado como futuro (mismo patrón que ONNX: declarado, no cableado); lo
 que sí se implementa hoy es el marco de validación del juez (κ + false-pass /
-false-fail, curso AI Evals W2) para cuando exista.
+false-fail, literatura de validación de jueces) para cuando exista.
 
 ## Criterios de aceptación
 

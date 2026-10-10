@@ -1,6 +1,7 @@
 # Registro de mutantes supervivientes (proceso MutGen)
 
-Proceso adversarial (roadmap §2.2, curso AI Evals W1 *flywheel*): cada corrida
+Proceso adversarial (roadmap §2.2, patrón *flywheel* de la literatura de
+evaluación de sistemas de IA): cada corrida
 acotada de `cargo mutants` clasifica a los supervivientes en una de estas
 clases; toda clase salvo `EQUIVALENTE` genera tests que matan al mutante y se
 re-mide hasta MS ≥ 70 % (merge) con objetivo ≥ 85 % (nightly):

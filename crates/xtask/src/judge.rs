@@ -9,7 +9,7 @@
 //!   `unwrap`/`expect` añadidos en `src/` → warn, nunca fail).
 //!
 //! Más validación del juez (κ + false-pass/false-fail) para calibrar el futuro
-//! backend LLM (curso AI Evals W2). Solo `std`.
+//! backend LLM (validación por acuerdo juez-humano según la literatura). Solo `std`.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -343,8 +343,8 @@ pub fn judge_diff(diff: &str) -> Verdict {
 
 /// Matriz de acuerdo juez-vs-humano para κ y tasas de error.
 ///
-/// API de calibración del futuro backend LLM (curso AI Evals W2): hoy solo la
-/// usan los tests; el wiring con juicios versionados llegará con el backend.
+/// API de calibración del futuro backend LLM (métricas de acuerdo de la
+/// literatura de evaluación): hoy solo la usan los tests; el wiring con juicios versionados llegará con el backend.
 /// Se permite dead_code hasta entonces para no ensuciar el build normal.
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]

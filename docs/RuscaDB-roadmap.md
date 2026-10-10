@@ -770,7 +770,7 @@ actualizada.
 | F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026 |
 | F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ⏳ | SPEC-0054 (límites del planner), SPEC-0057 (TS en fachada), SPEC-0059 (benches criterion), SPEC-0060 (revalidación ADR-001) |
-| Líneas futuras (investigación ByteByteGo Live, sin spec aún) | ⏳ | hardening operativo + shadow reads, retrieval híbrido con rerank, gates de ingesta + registry, caché semántico + coste por query, audit + RBAC, pipeline de blobs, MCP server |
+| Líneas futuras (inspiradas en la literatura y cursos del sector sobre IA en producción; sin spec aún) | ⏳ | hardening operativo + shadow reads, retrieval híbrido con rerank, gates de ingesta + registry, caché semántico + coste por query, audit + RBAC, pipeline de blobs, MCP server |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |
 | **Motor SQL DataFusion (ADR-001)** | ⏳ | **Desviado**: el parser y el executor de RQL son propios y hand-written (`ruscadb-query`), en lugar de extender **DataFusion** como preveía ADR-001. Se mantiene como decisión de diseño pendiente de revisión (revalidar ADR-001 antes de escalar el planner). |

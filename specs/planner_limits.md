@@ -9,7 +9,7 @@ boundaries:
   out_of_scope: [optimizador de joins, estadísticas de tablas, paralelismo]
 fr:
   - { id: FR-0054-01, desc: "budget de complejidad 100000 unidades; el planner rechaza la query antes de ejecutar" }
-  - { id: FR-0054-02, desc: "profundidad AST maxima 64 (guard clause, sin recursion descontrolada)" }
+  - { id: FR-0054-02, desc: "profundidad AST maxima 64 (guard clause en el parseo; las cadenas AND largas anidan el arbol)" }
   - { id: FR-0054-03, desc: "LIMIT implicito 1000 inyectado por el planner si falta" }
   - { id: FR-0054-04, desc: "timeout cooperativo 5000 ms con cancel token" }
   - { id: FR-0054-05, desc: "EXPLAIN advierte full-scan sobre umbral (R9)" }
@@ -23,10 +23,10 @@ acceptance_criteria:
     then: ParseError accionable mencionando el limite
     test: test_ac_0054_01_deep_nesting_rejected
   - id: AC-0054-02
-    given: un WHERE con cadena OR que supera el budget
+    given: un WHERE con cadena AND que supera el budget (RQL no tiene OR)
     when: se planifica
     then: rechazo pre-ejecucion mencionando el budget
-    test: test_ac_0054_02_or_chain_over_budget_rejected
+    test: test_ac_0054_02_long_chain_over_budget_rejected
   - id: AC-0054-03
     given: un SELECT sin LIMIT sobre tabla con > 1000 filas
     when: se ejecuta
