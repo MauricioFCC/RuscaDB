@@ -360,6 +360,40 @@ def check_mutation_diff_job(errors: list[str]) -> None:
             errors.append(f"ci.yml: {why} (chequeo textual)")
 
 
+def check_coverage_job(errors: list[str]) -> None:
+    """Valida el job `coverage` de ``ci.yml`` (SLO merge, SPEC-0061).
+
+    El job debe existir, usar `cargo llvm-cov` con salida lcov y aplicar el
+    gate `scripts/coverage_gate.py` con `--min-line 80 --min-branch 70` sobre
+    el scope del core.
+    """
+    if not CI.exists():
+        errors.append(f"no existe {CI.relative_to(ROOT)}")
+        return
+    text = CI.read_text(encoding="utf-8")
+    for needle, why in [
+        ("coverage:", "falta el job 'coverage' (SPEC-0061)"),
+        (
+            "cargo llvm-cov",
+            "el job 'coverage' debe medir con cargo llvm-cov",
+        ),
+        (
+            "--lcov",
+            "el job 'coverage' debe exportar lcov",
+        ),
+        (
+            "coverage_gate.py",
+            "el job 'coverage' debe aplicar scripts/coverage_gate.py",
+        ),
+        (
+            "--min-line 80 --min-branch 70",
+            "el gate de cobertura debe exigir el SLO del core (80/70)",
+        ),
+    ]:
+        if needle not in text:
+            errors.append(f"ci.yml: {why} (chequeo textual)")
+
+
 def main() -> int:
     """Ejecuta todas las validaciones y devuelve el exit code."""
     errors: list[str] = []
@@ -369,6 +403,7 @@ def main() -> int:
     check_deny(errors)
     check_publish_flags(errors)
     check_mutation_diff_job(errors)
+    check_coverage_job(errors)
 
     if errors:
         print("[FAIL] check_ci_config: configuración de CI/supply chain inválida:")

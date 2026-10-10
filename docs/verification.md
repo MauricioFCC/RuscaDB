@@ -109,6 +109,21 @@ bajo el umbral falla con el conteo (matados/totales). `check_ci_config.py`
 valida el cableado del job. Puerta solo-PR: en push a `main` no hay base
 contra la que medirse.
 
+### Cobertura del core (bloquea merge, SPEC-0061)
+
+El job `coverage` de `ci.yml` corre la suite instrumentada con
+`cargo llvm-cov` en ubuntu y aplica `scripts/coverage_gate.py` sobre el
+`lcov.info` con el SLO del roadmap (core: línea ≥ 80 %, rama ≥ 70 %):
+
+```bash
+cargo llvm-cov --workspace --all-features --locked --lcov --output-path lcov.info
+python scripts/coverage_gate.py lcov.info --scope ruscadb-core/ --min-line 80 --min-branch 70
+```
+
+Medición de referencia (2026-10-10, suite completa): workspace línea 93.5 % /
+rama 93.9 %; core línea 96.4 % (rama n/a: sin BRDA en el core). Sin datos del
+scope o lcov ausente el gate falla ruidoso (exit 2), nunca verde silencioso.
+
 ---
 
 ## T3 — regression nightly (alert-only, < 60 min)

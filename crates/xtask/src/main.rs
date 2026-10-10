@@ -654,4 +654,34 @@ mod tests {
             "mutation_diff_gate.py sin umbral configurable"
         );
     }
+
+    /// AC-0061-06: `ci.yml` declara el job `coverage` (llvm-cov + lcov +
+    /// gate 80/70 del core) y `check_ci_config.py` lo valida (FR-0061-06).
+    #[test]
+    // @spec AC-0061-06
+    fn test_ac_0061_06_coverage_job() {
+        let ci = read_root_file(".github/workflows/ci.yml");
+        for needle in [
+            "coverage:",
+            "cargo llvm-cov",
+            "--lcov",
+            "coverage_gate.py",
+            "--min-line 80 --min-branch 70",
+        ] {
+            assert!(
+                ci.contains(needle),
+                "ci.yml sin el cableado coverage ('{needle}')"
+            );
+        }
+        let guard = read_root_file("scripts/check_ci_config.py");
+        assert!(
+            guard.contains("check_coverage_job"),
+            "check_ci_config.py no valida el job coverage"
+        );
+        let script = read_root_file("scripts/coverage_gate.py");
+        assert!(
+            script.contains("min-line") && script.contains("min_line"),
+            "coverage_gate.py sin umbrales configurables"
+        );
+    }
 }

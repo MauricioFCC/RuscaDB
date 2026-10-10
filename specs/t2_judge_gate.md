@@ -13,6 +13,7 @@ fr:
   - { id: FR-0061-03, desc: "cargo xtask judge: rubricas deterministicas sobre el diff (unwrap, markers, unsafe) con veredicto pass/warn/fail" }
   - { id: FR-0061-04, desc: "kappa de Cohen + tasas false-pass/false-fail sobre juicios versionados (humano vs juez)" }
   - { id: FR-0061-05, desc: "job mutation-diff en ci.yml (solo PR): muta el diff y exige MS_diff >= 70 via scripts/mutation_diff_gate.py, validado por check_ci_config" }
+  - { id: FR-0061-06, desc: "job coverage en ci.yml: llvm-cov workspace + scripts/coverage_gate.py con el SLO del core (linea 80 / rama 70), validado por check_ci_config" }
 nf:
   - { id: NF-0061-01, desc: "cero falsos-fail: las rubricas heuriticas solo avisan (warn), nunca fallan" }
   - { id: NF-0061-02, desc: "solo std, sin dependencias nuevas, < 5 s en local" }
@@ -42,6 +43,11 @@ acceptance_criteria:
     when: se inspeccionan
     then: existe el job mutation-diff (solo PR, --in-diff, gate 70) y el guard lo valida
     test: test_ac_0061_05_mutation_diff_job
+  - id: AC-0061-06
+    given: ci.yml, coverage_gate.py y check_ci_config.py
+    when: se inspeccionan
+    then: existe el job coverage (llvm-cov + lcov + gate 80/70 del core) y el guard lo valida
+    test: test_ac_0061_06_coverage_job
 exit_criteria:
   - cargo test -p xtask -- test_ac_0061
   - cargo xtask contract verde en el workspace
