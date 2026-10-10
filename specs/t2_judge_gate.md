@@ -12,6 +12,7 @@ fr:
   - { id: FR-0061-02, desc: "toda spec implemented tiene sus AC trazados (consistencia de estado)" }
   - { id: FR-0061-03, desc: "cargo xtask judge: rubricas deterministicas sobre el diff (unwrap, markers, unsafe) con veredicto pass/warn/fail" }
   - { id: FR-0061-04, desc: "kappa de Cohen + tasas false-pass/false-fail sobre juicios versionados (humano vs juez)" }
+  - { id: FR-0061-05, desc: "job mutation-diff en ci.yml (solo PR): muta el diff y exige MS_diff >= 70 via scripts/mutation_diff_gate.py, validado por check_ci_config" }
 nf:
   - { id: NF-0061-01, desc: "cero falsos-fail: las rubricas heuriticas solo avisan (warn), nunca fallan" }
   - { id: NF-0061-02, desc: "solo std, sin dependencias nuevas, < 5 s en local" }
@@ -36,6 +37,11 @@ acceptance_criteria:
     when: se calcula kappa y las tasas
     then: coinciden con los valores esperados (epsilon 1e-9)
     test: test_ac_0061_04_kappa_fixture
+  - id: AC-0061-05
+    given: ci.yml y check_ci_config.py
+    when: se inspeccionan
+    then: existe el job mutation-diff (solo PR, --in-diff, gate 70) y el guard lo valida
+    test: test_ac_0061_05_mutation_diff_job
 exit_criteria:
   - cargo test -p xtask -- test_ac_0061
   - cargo xtask contract verde en el workspace

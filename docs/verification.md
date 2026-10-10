@@ -9,6 +9,7 @@ Regla de oro: nada entra a `main` sin **T1 verde ∧ T2 verde ∧ spec trazada**
 ```
 T1  determinista   < 90 s    bloquea merge   .github/workflows/ci.yml
 T2  LLM-judge      < 10 min  bloquea merge   local + revisión
+T2m mutación-diff  variable  bloquea merge   ci.yml (job mutation-diff, solo PR)
 T3  regression     < 60 min  alert-only      .github/workflows/nightly.yml
 ```
 
@@ -90,6 +91,23 @@ cargo mutants --in-diff pr.diff --in-place --baseline=skip
 ```
 
 - **Judge** `repeat:3`, `temperature=0`, mayoría ≥ 2/3 (ver SPEC del LLM-judge).
+
+### T2m — mutación sobre el diff (bloquea merge, SPEC-0061)
+
+Parte determinista y bloqueante de T2: el job `mutation-diff` de `ci.yml`
+(solo `pull_request`) muta únicamente el diff contra la base y exige
+`MS_diff >= 70 %` vía `scripts/mutation_diff_gate.py`:
+
+```bash
+git diff origin/main...HEAD > pr.diff
+cargo mutants --in-diff pr.diff --in-place --baseline=skip -o mutants.out
+python scripts/mutation_diff_gate.py mutants.out/outcomes.json --min-score 70
+```
+
+Sin mutantes puntuables en el diff (p. ej. solo docs) el gate pasa con nota;
+bajo el umbral falla con el conteo (matados/totales). `check_ci_config.py`
+valida el cableado del job. Puerta solo-PR: en push a `main` no hay base
+contra la que medirse.
 
 ---
 

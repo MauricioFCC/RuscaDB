@@ -326,6 +326,40 @@ def check_publish_flags(errors: list[str]) -> None:
             )
 
 
+def check_mutation_diff_job(errors: list[str]) -> None:
+    """Valida el job `mutation-diff` de ``ci.yml`` (T2 bloqueante, SPEC-0061).
+
+    El job debe existir, correr solo en `pull_request`, mutar con
+    `--in-diff` y aplicar el gate `scripts/mutation_diff_gate.py` con
+    `--min-score 70`.
+    """
+    if not CI.exists():
+        errors.append(f"no existe {CI.relative_to(ROOT)}")
+        return
+    text = CI.read_text(encoding="utf-8")
+    for needle, why in [
+        ("mutation-diff:", "falta el job 'mutation-diff' (SPEC-0061)"),
+        (
+            "github.event_name == 'pull_request'",
+            "el job 'mutation-diff' debe correr solo en pull_request",
+        ),
+        (
+            "--in-diff",
+            "el job 'mutation-diff' debe mutar con --in-diff (solo el diff)",
+        ),
+        (
+            "mutation_diff_gate.py",
+            "el job 'mutation-diff' debe aplicar scripts/mutation_diff_gate.py",
+        ),
+        (
+            "--min-score 70",
+            "el gate de mutación debe exigir --min-score 70",
+        ),
+    ]:
+        if needle not in text:
+            errors.append(f"ci.yml: {why} (chequeo textual)")
+
+
 def main() -> int:
     """Ejecuta todas las validaciones y devuelve el exit code."""
     errors: list[str] = []
@@ -334,6 +368,7 @@ def main() -> int:
     check_mutants(errors)
     check_deny(errors)
     check_publish_flags(errors)
+    check_mutation_diff_job(errors)
 
     if errors:
         print("[FAIL] check_ci_config: configuración de CI/supply chain inválida:")
@@ -342,7 +377,8 @@ def main() -> int:
         return 1
 
     print(
-        "[OK] check_ci_config: ci.yml (matriz rápida ubuntu/windows), "
+        "[OK] check_ci_config: ci.yml (matriz rápida ubuntu/windows + "
+        "mutation-diff MS>=70 en PR), "
         "nightly.yml (mutation/fuzz/miri/sanitizers + test-macos, alert-only; "
         "fuzz con query_parse/wal_recover + dictionary), "
         "mutants.toml y deny.toml (4 secciones) válidos."

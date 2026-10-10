@@ -11,8 +11,10 @@
 # valida en `.github/workflows/nightly.yml` (job `test-macos`, schedule) por la
 # cola de runners, que no debe bloquear el PR.
 #
-# T2 (LLM-judge) corre sobre el diff del PR. T3 (regresión nightly: mutation
-# full sharded, fuzz, miri, sanitizers ASan, crash-recovery) es alert-only y
+# T2 (LLM-judge) corre sobre el diff del PR. El job `mutation-diff` (MS_diff >=
+# 70 %, SPEC-0061) es la parte determinista y bloqueante de T2: muta solo el
+# diff del PR y falla bajo el umbral. T3 (regresión nightly: mutation full
+# sharded, fuzz, miri, sanitizers ASan, crash-recovery) es alert-only y
 # vive en `.github/workflows/nightly.yml` (SPEC-0016/SPEC-0033). Ver
 # docs/verification.md.
 
@@ -131,5 +133,40 @@ jobs:
         with:
           name: sbom-cyclonedx
           path: "**/bom.json"
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Mutación sobre el diff del PR (parte determinista y bloqueante de T2,
+  # SPEC-0061). Muta solo lo tocado por el PR y exige MS_diff >= 70 % vía
+  # scripts/mutation_diff_gate.py. Solo corre en pull_request (necesita la
+  # rama base); en push a main no hay diff contra el que medirse.
+  mutation-diff:
+    name: Mutation diff (MS>=70%)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Fetch base branch
+        run: git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+      - name: Diff vs base
+        run: git diff origin/${{ github.base_ref }}...HEAD > pr.diff
+      - name: Mutants in diff
+        run: cargo mutants --in-diff pr.diff --in-place --baseline=skip -o mutants.out
+      - name: Gate MS_diff >= 70
+        run: python scripts/mutation_diff_gate.py mutants.out/outcomes.json --min-score 70
+      - name: Upload mutants outcomes
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mutants-diff-outcomes
+          path: mutants.out/outcomes.json
           if-no-files-found: warn
           retention-days: 30

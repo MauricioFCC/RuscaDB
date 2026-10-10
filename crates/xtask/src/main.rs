@@ -623,4 +623,35 @@ mod tests {
             "specs implemented sin trazar: {state_errors:?}"
         );
     }
+
+    /// AC-0061-05: `ci.yml` declara el job `mutation-diff` (solo PR,
+    /// `--in-diff`, gate con `--min-score 70`) y `check_ci_config.py` lo
+    /// valida (FR-0061-05).
+    #[test]
+    // @spec AC-0061-05
+    fn test_ac_0061_05_mutation_diff_job() {
+        let ci = read_root_file(".github/workflows/ci.yml");
+        for needle in [
+            "mutation-diff:",
+            "github.event_name == 'pull_request'",
+            "--in-diff",
+            "mutation_diff_gate.py",
+            "--min-score 70",
+        ] {
+            assert!(
+                ci.contains(needle),
+                "ci.yml sin el cableado mutation-diff ('{needle}')"
+            );
+        }
+        let guard = read_root_file("scripts/check_ci_config.py");
+        assert!(
+            guard.contains("check_mutation_diff_job"),
+            "check_ci_config.py no valida el job mutation-diff"
+        );
+        let script = read_root_file("scripts/mutation_diff_gate.py");
+        assert!(
+            script.contains("min-score") && script.contains("min_score"),
+            "mutation_diff_gate.py sin umbral configurable"
+        );
+    }
 }
