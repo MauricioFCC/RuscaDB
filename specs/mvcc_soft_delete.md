@@ -42,6 +42,21 @@ acceptance_criteria:
     when: se ejecuta KNN/MATCH/TRAVERSE
     then: la fila borrada no aparece en ningun resultado
     test: test_ac_0022_05_deleted_row_excluded_from_indexes
+  - id: AC-0022-06
+    given: una fila indexada que se borra
+    when: se busca por el índice secundario
+    then: la entrada de la víctima desaparece y la viva permanece
+    test: test_ac_0022_06_secondary_index_entry_removed
+  - id: AC-0022-07
+    given: dos filas vivas con la misma clave indexada
+    when: se borra una
+    then: solo se retira su entrada; el duplicado vivo sigue indexado
+    test: test_ac_0022_07_secondary_index_duplicate_keys
+  - id: AC-0022-08
+    given: una fila con NULL en la columna indexada
+    when: se borra
+    then: es un no-op seguro del índice (sin panics) y la fila desaparece
+    test: test_ac_0022_08_secondary_index_null_value_is_noop
 exit_criteria:
   - cargo test -p ruscadb -- test_ac_0022
   - cargo mutants -p ruscadb mutation score >= 70%

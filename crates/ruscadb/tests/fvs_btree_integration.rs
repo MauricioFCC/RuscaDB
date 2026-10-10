@@ -122,6 +122,7 @@ fn brute_force_filtered(
 /// AC-0024-01 — un `KNN` con filtro `WHERE` usa FVS y devuelve el top-k exacto
 /// restringido al filtro para selectividades baja, media y alta.
 #[test]
+// @spec AC-0024-01
 fn test_ac_0024_01_knn_with_filter_uses_fvs() {
     let (_dir, mut database) = open_test_db("ac24_01");
     create_items(&mut database, "items");
@@ -188,6 +189,7 @@ fn test_fvs_post_filter_under_return_falls_back_exact() {
 /// AC-0024-02 — el borrado localiza la fila por el índice primario y mantiene
 /// coherente la estructura `RecordId -> locator`.
 #[test]
+// @spec AC-0024-02
 fn test_ac_0024_02_primary_index_point_delete() {
     let (_dir, mut database) = open_test_db("ac24_02");
     create_items(&mut database, "items");
@@ -240,6 +242,7 @@ fn test_ac_0024_02_primary_index_point_delete() {
 /// AC-0024-03 — el índice primario se reconstruye al reabrir y el point lookup
 /// sigue funcionando.
 #[test]
+// @spec AC-0024-03
 fn test_ac_0024_03_primary_index_survives_reopen() {
     let dir = tempfile::tempdir().expect("directorio temporal");
     let path = dir.path().join("ac24_03.data");
@@ -285,6 +288,7 @@ fn test_ac_0024_03_primary_index_survives_reopen() {
 /// AC-0024-04 — tras el borrado el point lookup no ve la fila; reinsertar el
 /// mismo id la vuelve a registrar.
 #[test]
+// @spec AC-0024-04
 fn test_ac_0024_04_delete_then_reinsert_same_id() {
     let (_dir, mut database) = open_test_db("ac24_04");
     create_items(&mut database, "items");
@@ -340,6 +344,7 @@ fn test_ac_0024_04_delete_then_reinsert_same_id() {
 /// AC-0024-05 — fronteras: índice vacío, filtro vacío, filtro total, `k = 0` e
 /// id ausente se manejan sin pánicos.
 #[test]
+// @spec AC-0024-05
 fn test_ac_0024_05_index_edge_cases() {
     let (_dir, mut database) = open_test_db("ac24_05");
     create_items(&mut database, "items");

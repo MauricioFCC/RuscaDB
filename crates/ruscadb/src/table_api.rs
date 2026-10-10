@@ -458,6 +458,7 @@ mod tests {
 
     /// AC-0012-01 — crear → insertar 3 filas → `SELECT *` las devuelve.
     #[test]
+    // @spec AC-0012-01
     fn test_ac_0012_01_create_insert_select_all() {
         let (_dir, mut database) = open_test_db("ac01");
         seed_table(&mut database);
@@ -475,6 +476,7 @@ mod tests {
 
     /// AC-0012-02 — filtro con `AND`, proyección y `LIMIT`.
     #[test]
+    // @spec AC-0012-02
     fn test_ac_0012_02_where_projection_limit() {
         let (_dir, mut database) = open_test_db("ac02");
         seed_table(&mut database);
@@ -489,6 +491,7 @@ mod tests {
 
     /// AC-0012-03 — el plan usa el índice y coincide con el full scan.
     #[test]
+    // @spec AC-0012-03
     fn test_ac_0012_03_index_scan_matches_full_scan() {
         let (_dir, mut database) = open_test_db("ac03");
         seed_table(&mut database);
@@ -517,6 +520,7 @@ mod tests {
 
     /// AC-0012-04 — catálogo, filas e índice sobreviven a cerrar y reabrir.
     #[test]
+    // @spec AC-0012-04
     fn test_ac_0012_04_catalog_survives_reopen() {
         let dir = tempfile::tempdir().expect("directorio temporal");
         let path = dir.path().join("reopen.db");
@@ -541,6 +545,7 @@ mod tests {
 
     /// AC-0012-05 — tabla inexistente y tipo incompatible dan errores accionables.
     #[test]
+    // @spec AC-0012-05
     fn test_ac_0012_05_schema_errors_are_actionable() {
         let (_dir, mut database) = open_test_db("ac05");
         seed_table(&mut database);

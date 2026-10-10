@@ -524,6 +524,7 @@ mod tests {
     #[case(0.05, FvsStrategy::InFilter)]
     #[case(0.049, FvsStrategy::PreFilter)]
     #[case(0.0, FvsStrategy::PreFilter)]
+    // @spec AC-0021-01
     fn test_ac_0021_01_strategy_by_selectivity(
         #[case] selectivity: f32,
         #[case] expected: FvsStrategy,
@@ -533,6 +534,7 @@ mod tests {
 
     /// AC-0021-01 — la selectividad es `|filtro| / total` y `0.0` sin corpus.
     #[test]
+    // @spec AC-0021-01
     fn test_ac_0021_01_selectivity_ratio() {
         assert_eq!(selectivity(0, 0), 0.0);
         assert!((selectivity(3, 10) - 0.3).abs() < 1e-6);
@@ -542,6 +544,7 @@ mod tests {
 
     /// AC-0021-02 — el pre-filtering es el top-k exacto restringido al filtro.
     #[test]
+    // @spec AC-0021-02
     fn test_ac_0021_02_pre_filter_is_exact() {
         let entries = sample_entries();
         let set = build(Metric::L2, &entries);
@@ -576,6 +579,7 @@ mod tests {
 
     /// AC-0021-03 — el post-filtering nunca devuelve ids fuera del filtro.
     #[test]
+    // @spec AC-0021-03
     fn test_ac_0021_03_post_filter_is_sound() {
         // Los vecinos más cercanos NO están permitidos.
         let entries = vec![
@@ -622,6 +626,7 @@ mod tests {
 
     /// AC-0021-04 — iFVS coincide con el pre-filtering (exacto).
     #[test]
+    // @spec AC-0021-04
     fn test_ac_0021_04_ifvs_matches_pre_filter() {
         let entries = sample_entries();
         let set = build(Metric::Cosine, &entries);
@@ -638,6 +643,7 @@ mod tests {
 
     /// AC-0021-05 — fronteras: filtro vacío, filtro total, k=0 y k>N.
     #[test]
+    // @spec AC-0021-05
     fn test_ac_0021_05_boundary_filters() {
         let entries = vec![(1, vec![0.0]), (2, vec![1.0]), (3, vec![2.0])];
         let set = build(Metric::L2, &entries);
@@ -891,6 +897,7 @@ mod tests {
 
     /// AC-0047-01 — iFVS es sonido: todos los ids pertenecen a `allowed`.
     #[test]
+    // @spec AC-0047-01
     fn test_ac_0047_01_ifvs_is_sound() {
         let vectors = ifvs_vectors(200, 8, 0x0047_0001);
         let index = build_hnsw(&vectors, Metric::L2);
@@ -908,6 +915,7 @@ mod tests {
 
     /// AC-0047-02 — recall@10 de iFVS vs fuerza bruta filtrada >= 0.90.
     #[test]
+    // @spec AC-0047-02
     fn test_ac_0047_02_ifvs_recall() {
         let vectors = ifvs_vectors(IFVS_N_VECTORS, IFVS_DIM, IFVS_CORPUS_SEED);
         let queries = ifvs_vectors(IFVS_N_QUERIES, IFVS_DIM, IFVS_CORPUS_SEED ^ 0xDEAD_BEEF);
@@ -946,6 +954,7 @@ mod tests {
 
     /// AC-0047-03 — fronteras: filtro vacío, k=0, filtro total y s=0.6/0.05.
     #[test]
+    // @spec AC-0047-03
     fn test_ac_0047_03_ifvs_boundaries() {
         let vectors = ifvs_vectors(32, 4, 0x0047_0003);
         let index = build_hnsw(&vectors, Metric::L2);
@@ -978,6 +987,7 @@ mod tests {
 
     /// AC-0047-04 — `search_auto_indexed` elige Pre/In/Post por selectividad.
     #[test]
+    // @spec AC-0047-04
     fn test_ac_0047_04_ifvs_strategy_selection() {
         let vectors = ifvs_vectors(100, 8, 0x0047_0005);
         let index = build_hnsw(&vectors, Metric::L2);
@@ -1021,6 +1031,7 @@ mod tests {
 
     /// AC-0047-05 — iFVS y `search_auto_indexed` son deterministas.
     #[test]
+    // @spec AC-0047-05
     fn test_ac_0047_05_ifvs_deterministic() {
         let vectors = ifvs_vectors(256, 12, 0x0047_0007);
         let index = build_hnsw(&vectors, Metric::L2);

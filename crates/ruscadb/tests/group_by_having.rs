@@ -76,6 +76,7 @@ fn row_count(row: &BTreeMap<String, ScalarValue>) -> i64 {
 /// When: se ejecuta `GROUP BY b, c` con `COUNT`.
 /// Then: cada combinación (b, c) forma un grupo con su conteo.
 #[test]
+// @spec AC-0051-01
 fn test_ac_0051_01_multi_key_groups() {
     let (_dir, mut database) = open_test_db("ac0051_01");
     create_abc_table(&mut database);
@@ -116,6 +117,7 @@ fn test_ac_0051_01_multi_key_groups() {
 /// When: se ejecuta `GROUP BY b HAVING COUNT(*) > 1`.
 /// Then: solo los grupos con más de una fila sobreviven.
 #[test]
+// @spec AC-0051-02
 fn test_ac_0051_02_having_filters_groups() {
     let (_dir, mut database) = open_test_db("ac0051_02");
     create_abc_table(&mut database);
@@ -138,6 +140,7 @@ fn test_ac_0051_02_having_filters_groups() {
 /// When: se parsea/ejecuta.
 /// Then: devuelve error de parseo accionable.
 #[test]
+// @spec AC-0051-03
 fn test_ac_0051_03_having_without_group_by_errors() {
     let (_dir, mut database) = open_test_db("ac0051_03");
     create_abc_table(&mut database);
@@ -161,6 +164,7 @@ fn test_ac_0051_03_having_without_group_by_errors() {
 /// When: se ejecuta `GROUP BY` con `HAVING`.
 /// Then: devuelve 0 filas sin panics.
 #[test]
+// @spec AC-0051-04
 fn test_ac_0051_04_empty_table() {
     let (_dir, mut database) = open_test_db("ac0051_04");
     create_abc_table(&mut database);
@@ -182,6 +186,7 @@ fn test_ac_0051_04_empty_table() {
 /// When: se ejecuta.
 /// Then: sin regresión.
 #[test]
+// @spec AC-0051-05
 fn test_ac_0051_05_single_key_unchanged() {
     let (_dir, mut database) = open_test_db("ac0051_05");
     create_abc_table(&mut database);

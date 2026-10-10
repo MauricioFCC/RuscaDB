@@ -124,6 +124,7 @@ fn l2(left: &[f64], right: &[f64]) -> f32 {
 
 /// AC-0017-01 — `MATCH` full-text end-to-end ordenado por BM25.
 #[test]
+// @spec AC-0017-01
 fn test_ac_0017_01_match_full_text_end_to_end() {
     let (_dir, mut database) = open_test_db("ac17_01");
     database
@@ -174,6 +175,7 @@ fn test_ac_0017_01_match_full_text_end_to_end() {
 
 /// AC-0017-02 — `KNN` vectorial end-to-end por el índice HNSW.
 #[test]
+// @spec AC-0017-02
 fn test_ac_0017_02_knn_vector_end_to_end() {
     let (_dir, mut database) = open_test_db("ac17_02");
     create_items(&mut database, "items");
@@ -212,6 +214,7 @@ fn test_ac_0017_02_knn_vector_end_to_end() {
 
 /// AC-0017-03 — `TRAVERSE` de grafo end-to-end respetando `DEPTH`.
 #[test]
+// @spec AC-0017-03
 fn test_ac_0017_03_traverse_graph_end_to_end() {
     let (_dir, mut database) = open_test_db("ac17_03");
     create_items(&mut database, "nodes");
@@ -250,6 +253,7 @@ fn test_ac_0017_03_traverse_graph_end_to_end() {
 
 /// AC-0017-04 — combinación de `WHERE` + `KNN`/`TRAVERSE`/`MATCH` + `LIMIT`.
 #[test]
+// @spec AC-0017-04
 fn test_ac_0017_04_combined_clauses() {
     let (_dir, mut database) = open_test_db("ac17_04");
     create_items(&mut database, "items");
@@ -311,6 +315,7 @@ fn test_ac_0017_04_combined_clauses() {
 
 /// AC-0017-05 — errores accionables para KNN/TRAVERSE/MATCH sin datos.
 #[test]
+// @spec AC-0017-05
 fn test_ac_0017_05_integration_errors_are_actionable() {
     let (_dir, mut database) = open_test_db("ac17_05");
     create_items(&mut database, "plain");
@@ -375,6 +380,7 @@ fn test_ac_0017_05_integration_errors_are_actionable() {
 
 /// FR-0017-02 — los índices se reconstruyen al reabrir la base (durabilidad).
 #[test]
+// @spec AC-0017-06
 fn test_ac_0017_06_indexes_survive_reopen() {
     let dir = tempfile::tempdir().expect("directorio temporal");
     let path = dir.path().join("reopen.db");

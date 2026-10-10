@@ -698,6 +698,7 @@ mod tests {
 
     /// AC-0020-01 — insert/get devuelven el valor correcto y sobrescriben.
     #[test]
+    // @spec AC-0020-01
     fn test_ac_0020_01_insert_get_overwrite() {
         let mut tree = BPlusTree::new(3).expect("orden válido");
         assert!(tree.is_empty());
@@ -715,6 +716,7 @@ mod tests {
 
     /// AC-0020-02 — remove elimina y las claves ausentes no alteran el árbol.
     #[test]
+    // @spec AC-0020-02
     fn test_ac_0020_02_remove_and_missing() {
         let mut tree = BPlusTree::new(3).expect("orden válido");
         for key in 0..20 {
@@ -734,6 +736,7 @@ mod tests {
 
     /// AC-0020-03 — range devuelve pares ordenados y acotados `[start, end)`.
     #[test]
+    // @spec AC-0020-03
     fn test_ac_0020_03_range_is_sorted_and_bounded() {
         let mut tree = BPlusTree::new(4).expect("orden válido");
         for key in [10, 3, 7, 1, 9, 5, 2, 8, 4, 6, 0] {
@@ -749,6 +752,7 @@ mod tests {
 
     /// AC-0020-04 — muchas claves sobreviven a splits en varios órdenes.
     #[test]
+    // @spec AC-0020-04
     fn test_ac_0020_04_many_keys_survive_splits() {
         for order in [3usize, 4, 5, 8] {
             let mut tree = BPlusTree::new(order).expect("orden válido");
@@ -766,6 +770,7 @@ mod tests {
 
     /// AC-0020-05 — vaciar con rebalanceo y seguir operativo.
     #[test]
+    // @spec AC-0020-05
     fn test_ac_0020_05_delete_to_empty_rebalances() {
         for order in [3usize, 4, 5] {
             let mut tree = BPlusTree::new(order).expect("orden válido");

@@ -42,6 +42,16 @@ acceptance_criteria:
     when: se ejecuta
     then: devuelve una sola fila con el agregado global
     test: test_ac_0040_05_aggregate_without_group_by
+  - id: AC-0040-06
+    given: columna Float con grupos
+    when: se ejecuta SUM/AVG agrupado
+    then: devuelve Float exacto por grupo (4.0/2.0 y 10.0)
+    test: test_ac_0040_06_float_aggregates
+  - id: AC-0040-07
+    given: grupos con conteos 2/1/3
+    when: se ejecuta GROUP BY con ORDER BY de agregado y LIMIT
+    then: ordena por el agregado y trunca al limite
+    test: test_ac_0040_07_group_by_order_limit
 exit_criteria:
   - cargo test -p ruscadb-query -p ruscadb -- test_ac_0040
   - cargo mutants -p ruscadb-query mutation score >= 70%
@@ -66,6 +76,7 @@ la semántica SQL de NULL (COUNT(*) cuenta filas; el resto ignora NULL).
 - **AC-0040-01** — parseo/roundtrip.
 - **AC-0040-02/03/04** — COUNT/SUM/AVG/MIN/MAX con NULLs.
 - **AC-0040-05** — agregado global sin GROUP BY.
+- **AC-0040-06/07** — agregados Float y GROUP BY con ORDER BY + LIMIT.
 
 ## Trazabilidad
 

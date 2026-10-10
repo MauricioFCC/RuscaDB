@@ -1,0 +1,5 @@
++++ b/crates/ruscadb/src/good.rs
++    // @spec AC-0099-01
++    fn test_ac_0099_01_planted() {
++        let x = values.cloned().unwrap_or_default();
++    }

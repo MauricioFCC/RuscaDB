@@ -79,6 +79,7 @@ fn run_crash_child(dir: &Path, sync: bool) -> RecoveryOutcome {
 /// Then: `recover` es `Ok` y lo recuperado es un prefijo válido (0..=N
 ///     registros `rec-{i}` en orden); jamás un frame a medias como válido.
 #[test]
+// @spec AC-0056-01
 fn test_ac_0056_01_kill_before_fsync_invisible() {
     let dir = tempfile::tempdir().expect("tempdir");
     let outcome = run_crash_child(dir.path(), false);
@@ -102,6 +103,7 @@ fn test_ac_0056_01_kill_before_fsync_invisible() {
 /// When: se recupera.
 /// Then: los N registros exactos en orden con LSNs 0..N.
 #[test]
+// @spec AC-0056-02
 fn test_ac_0056_02_kill_after_fsync_durable() {
     let dir = tempfile::tempdir().expect("tempdir");
     let outcome = run_crash_child(dir.path(), true);
@@ -120,6 +122,7 @@ fn test_ac_0056_02_kill_after_fsync_durable() {
 /// When: se recupera.
 /// Then: sobreviven los 2 primeros exactos y `truncated_bytes > 0`.
 #[test]
+// @spec AC-0056-03
 fn test_ac_0056_03_truncated_tail_discarded() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("wal.log");
@@ -147,6 +150,7 @@ fn test_ac_0056_03_truncated_tail_discarded() {
 /// When: se repite el recovery.
 /// Then: `recover(recover(w)) == recover(w)` (mismos registros y offsets).
 #[test]
+// @spec AC-0056-04
 fn test_ac_0056_04_replay_idempotent() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("wal.log");

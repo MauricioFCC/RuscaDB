@@ -600,6 +600,7 @@ mod recall_tests {
 
     /// AC-0034-01 — recall@10 de HNSW frente a fuerza bruta >= 0.95.
     #[test]
+    // @spec AC-0034-01
     fn test_ac_0034_01_recall_at_10_meets_target() {
         let vectors = lcg_vectors(N_VECTORS, DIM, CORPUS_SEED);
         let queries = lcg_vectors(N_QUERIES, DIM, CORPUS_SEED ^ 0xDEAD_BEEF);
@@ -616,6 +617,7 @@ mod recall_tests {
 
     /// AC-0034-02 — dos búsquedas idénticas devuelven el mismo resultado.
     #[test]
+    // @spec AC-0034-02
     fn test_ac_0034_02_search_is_deterministic() {
         let vectors = lcg_vectors(200, DIM, CORPUS_SEED);
         let index = build_index(&vectors, Metric::L2);
@@ -631,6 +633,7 @@ mod recall_tests {
 
     /// AC-0034-03 — índice vacío o `k == 0` devuelven vacío sin panics.
     #[test]
+    // @spec AC-0034-03
     fn test_ac_0034_03_empty_and_zero_k_are_safe() {
         let empty = HnswIndex::new(HnswParams::new(Metric::L2), DIM).expect("new");
         let empty_results = empty.search(&[0.0; DIM], K, EF_SEARCH).expect("empty");

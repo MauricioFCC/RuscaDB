@@ -47,6 +47,7 @@ mod tests {
 
     /// AC-0003-01 — el buffer pool respeta el presupuesto duro.
     #[test]
+    // @spec AC-0003-01
     fn test_ac_0003_01_buffer_pool_respects_budget() {
         let pages = canonical_pages();
         let mut pool = BufferPool::new(2).expect("pool");
@@ -61,6 +62,7 @@ mod tests {
 
     /// AC-0003-02 — una página pinneada no se desaloja (backpressure).
     #[test]
+    // @spec AC-0003-02
     fn test_ac_0003_02_pinned_page_is_not_evicted() {
         let pages = canonical_pages();
         let mut pool = BufferPool::new(1).expect("pool");
@@ -71,6 +73,7 @@ mod tests {
 
     /// AC-0003-03 — una página desalojada se recarga desde el loader.
     #[test]
+    // @spec AC-0003-03
     fn test_ac_0003_03_evicted_page_reloads() {
         let pages = canonical_pages();
         let mut pool = BufferPool::new(1).expect("pool");
@@ -88,6 +91,7 @@ mod tests {
 
     /// AC-0003-04 — LRU-2 discrimina frecuencia (desaloja la de 1 referencia).
     #[test]
+    // @spec AC-0003-04
     fn test_ac_0003_04_lru_k_discriminates() {
         let pages = canonical_pages();
         let mut pool = BufferPool::new(2).expect("pool");
@@ -104,6 +108,7 @@ mod tests {
 
     /// AC-0003-05 — roundtrip de `PagedFile`.
     #[test]
+    // @spec AC-0003-05
     fn test_ac_0003_05_paged_file_roundtrip() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("heap.db");

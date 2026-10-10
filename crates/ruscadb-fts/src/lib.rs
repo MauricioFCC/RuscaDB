@@ -38,6 +38,7 @@ mod tests {
 
     /// AC-0014-01 — tokeniza, separa y normaliza a minúsculas.
     #[test]
+    // @spec AC-0014-01
     fn test_ac_0014_01_tokenize_lowercases_and_splits() {
         assert_eq!(
             tokenize("the quick brown fox"),
@@ -50,6 +51,7 @@ mod tests {
 
     /// AC-0014-02 — solo aparecen los documentos que contienen el término.
     #[test]
+    // @spec AC-0014-02
     fn test_ac_0014_02_inverted_index_returns_matching_docs() {
         let mut index = InvertedIndex::new();
         let cat = RecordId::new();
@@ -68,6 +70,7 @@ mod tests {
 
     /// AC-0014-03 — BM25 ordena primero el documento más relevante.
     #[test]
+    // @spec AC-0014-03
     fn test_ac_0014_03_bm25_ranks_relevant_first() {
         let mut index = InvertedIndex::new();
         let dense = RecordId::new();
@@ -88,6 +91,7 @@ mod tests {
 
     /// AC-0014-04 — el roundtrip serde preserva el ranking.
     #[test]
+    // @spec AC-0014-04
     fn test_ac_0014_04_serde_roundtrip_preserves_ranking() {
         let mut index = InvertedIndex::new();
         index.insert(RecordId::new(), "gato gato gato");
@@ -103,6 +107,7 @@ mod tests {
 
     /// AC-0014-05 — un documento borrado no aparece en los resultados.
     #[test]
+    // @spec AC-0014-05
     fn test_ac_0014_05_deleted_docs_are_excluded() {
         let mut index = InvertedIndex::new();
         let kept = RecordId::new();
@@ -299,6 +304,7 @@ mod tests {
 
     /// AC-0037-01 — recupera todos los documentos con términos del prefijo.
     #[test]
+    // @spec AC-0037-01
     fn test_ac_0037_01_prefix_matches_all() {
         let mut index = InvertedIndex::new();
         let dense = RecordId::new();
@@ -327,6 +333,7 @@ mod tests {
 
     /// AC-0037-02 — un prefijo sin coincidencias devuelve vacío.
     #[test]
+    // @spec AC-0037-02
     fn test_ac_0037_02_prefix_no_match() {
         let mut index = InvertedIndex::new();
         index.insert(RecordId::new(), "gato");
@@ -337,6 +344,7 @@ mod tests {
 
     /// AC-0037-03 — prefijo vacío (y `k == 0`) devuelve vacío sin panics.
     #[test]
+    // @spec AC-0037-03
     fn test_ac_0037_03_empty_prefix() {
         let mut index = InvertedIndex::new();
         let id = RecordId::new();
@@ -350,6 +358,7 @@ mod tests {
     /// AC-0037-04 — un prefijo igual a un término completo es consistente con
     /// `search` (mismos documentos y mismas puntuaciones).
     #[test]
+    // @spec AC-0037-04
     fn test_ac_0037_04_prefix_of_full_term_consistent() {
         let mut index = InvertedIndex::new();
         let dense = RecordId::new();
@@ -367,6 +376,7 @@ mod tests {
 
     /// AC-0037-05 — los tombstones no aparecen en los resultados del prefijo.
     #[test]
+    // @spec AC-0037-05
     fn test_ac_0037_05_prefix_excludes_deleted() {
         let mut index = InvertedIndex::new();
         let kept = RecordId::new();

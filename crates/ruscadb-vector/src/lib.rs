@@ -69,6 +69,7 @@ mod tests {
 
     /// AC-0006-01 — vecino más cercano exacto en un conjunto pequeño (L2).
     #[test]
+    // @spec AC-0006-01
     fn test_ac_0006_01_exact_nearest_small_l2() {
         let vectors = vec![
             vec![0.0, 0.0],
@@ -86,6 +87,7 @@ mod tests {
 
     /// AC-0006-02 — recall@10 promedio >= 0.90 frente a fuerza bruta.
     #[test]
+    // @spec AC-0006-02
     fn test_ac_0006_02_recall_at_10() {
         let vectors = random_vectors(300, 16, 42);
         let index = build(&vectors, Metric::L2);
@@ -107,6 +109,7 @@ mod tests {
 
     /// AC-0006-03 — dimensión inconsistente devuelve `DimensionMismatch`.
     #[test]
+    // @spec AC-0006-03
     fn test_ac_0006_03_dimension_mismatch() {
         let mut index = HnswIndex::new(HnswParams::new(Metric::L2), 4).expect("new");
         assert!(matches!(
@@ -123,6 +126,7 @@ mod tests {
 
     /// AC-0006-04 — la métrica coseno elige el de mayor similitud.
     #[test]
+    // @spec AC-0006-04
     fn test_ac_0006_04_cosine_metric() {
         let vectors = vec![vec![10.0, 0.0], vec![0.0, 1.0]];
         let index = build(&vectors, Metric::Cosine);
@@ -132,6 +136,7 @@ mod tests {
 
     /// AC-0006-05 — la métrica de producto interno elige el de mayor producto.
     #[test]
+    // @spec AC-0006-05
     fn test_ac_0006_05_inner_product_metric() {
         let vectors = vec![vec![2.0, 0.0], vec![3.0, 0.0]];
         let index = build(&vectors, Metric::InnerProduct);

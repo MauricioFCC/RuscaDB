@@ -91,6 +91,7 @@ mod tests {
     /// Falla si `lib.rs` vuelve a exponer `heap_*`/`index_*`/
     /// `execute_select*`/`plan_for`/`RowLocator`/`CATALOG_*`.
     #[test]
+    // @spec AC-0030-01
     fn test_ac_0030_01_public_surface_has_no_internals() {
         let source = include_str!("lib.rs");
         assert_no_internals(source);
@@ -101,6 +102,7 @@ mod tests {
     ///
     /// Falla si `mvcc_soft_delete.rs` vuelve a usar `index_lookup_eq`.
     #[test]
+    // @spec AC-0030-02
     fn test_ac_0030_02_index_tests_use_public_api() {
         let source = include_str!("../tests/mvcc_soft_delete.rs");
         assert!(
@@ -118,6 +120,7 @@ mod tests {
     /// Ejerce `Database` + `get_record`/`primary_index_len`/`read_page`/
     /// `write_page` + `Page`/`PageId`/`PAGE_SIZE` (lo que usa `ruscadb-ffi`).
     #[test]
+    // @spec AC-0030-03
     fn test_ac_0030_03_no_regressions() {
         let dir = tempfile::tempdir().expect("directorio temporal");
         let path = dir.path().join("ac0030.data");

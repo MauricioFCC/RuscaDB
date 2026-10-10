@@ -5,8 +5,15 @@
 //! Comandos:
 //! - `trace`: verifica la trazabilidad SDD (cada AC en `specs/*.md` tiene un
 //!   test existente en el workspace). Gate T1.
+//! - `contract`: verifica el contrato bidireccional (K1: todo `test_ac_*`
+//!   numérico con marcador `@spec`; K2: sin marcadores huérfanos; K3: toda
+//!   spec `implemented` trazada). Gate T1 (SPEC-0061).
+//! - `judge <diff>`: rúbricas deterministas sobre un diff con veredicto
+//!   (puerta T2 v0, SPEC-0061; sin el path lee stdin).
 //!
 //! Sin dependencias externas (solo `std`) para mantener el bootstrap liviano.
+
+mod judge;
 
 use std::collections::HashSet;
 use std::fs;
@@ -14,15 +21,79 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let command = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "trace".to_string());
+    let mut args = std::env::args().skip(1);
+    let command = args.next().unwrap_or_else(|| "trace".to_string());
     match command.as_str() {
         "trace" => trace(),
+        "contract" => contract_cmd(),
+        "judge" => judge_cmd(args.next()),
         other => {
-            eprintln!("comando desconocido: {other} (disponible: trace)");
+            eprintln!("comando desconocido: {other} (disponibles: trace, contract, judge)");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Ejecuta el contrato de trazabilidad y reporta incumplimientos.
+fn contract_cmd() -> ExitCode {
+    let Some(root) = workspace_root() else {
+        eprintln!("[FAIL] xtask contract: no se pudo determinar la raíz del workspace");
+        return ExitCode::FAILURE;
+    };
+    let errors = judge::contract(&root);
+    if errors.is_empty() {
+        println!("[OK] xtask contract: marcadores bidireccionales y estados consistentes.");
+        ExitCode::SUCCESS
+    } else {
+        eprintln!("[FAIL] xtask contract: {} incumplimientos:", errors.len());
+        for error in &errors {
+            eprintln!("  - {error}");
+        }
+        ExitCode::FAILURE
+    }
+}
+
+/// Ejecuta el juez determinista sobre un diff (fichero o stdin).
+///
+/// Args:
+///     source: Ruta del diff, o `None` para leer stdin.
+fn judge_cmd(source: Option<String>) -> ExitCode {
+    let diff = match source {
+        Some(path) => match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) => {
+                eprintln!("[FAIL] xtask judge: no se pudo leer {path}: {error}");
+                return ExitCode::FAILURE;
+            }
+        },
+        None => {
+            use std::io::Read;
+            let mut text = String::new();
+            if std::io::stdin().read_to_string(&mut text).is_err() {
+                eprintln!("[FAIL] xtask judge: no se pudo leer stdin");
+                return ExitCode::FAILURE;
+            }
+            text
+        }
+    };
+    let verdict = judge::judge_diff(&diff);
+    println!(
+        "[{}] xtask judge: {}",
+        if verdict.passes() { "OK" } else { "FAIL" },
+        judge::verdict_line(&verdict)
+    );
+    for finding in &verdict.findings {
+        let level = match finding.level {
+            judge::Level::Pass => "PASS",
+            judge::Level::Warn => "WARN",
+            judge::Level::Fail => "FAIL",
+        };
+        println!("  - [{level}] {}: {}", finding.id, finding.detail);
+    }
+    if verdict.passes() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }
 
@@ -160,6 +231,7 @@ mod tests {
 
     /// AC-0016-01: el workflow nightly es válido y declara mutation/fuzz/miri.
     #[test]
+    // @spec AC-0016-01
     fn test_ac_0016_01_nightly_workflow_is_valid() {
         let yaml = read_root_file(".github/workflows/nightly.yml");
         for trigger in ["schedule:", "workflow_dispatch:"] {
@@ -192,6 +264,7 @@ mod tests {
     /// AC-0016-02: la config de cargo-mutants define exclude y toolchain (vía
     /// pin en `rust-toolchain.toml`) sin romper T1 (`deny_unknown_fields`).
     #[test]
+    // @spec AC-0016-02
     fn test_ac_0016_02_mutants_config_is_valid() {
         let toml = read_root_file(".cargo/mutants.toml");
         for key in ["exclude_globs", "test_tool", "additional_cargo_test_args"] {
@@ -214,6 +287,7 @@ mod tests {
 
     /// AC-0016-03: `deny.toml` declara las 4 secciones requeridas.
     #[test]
+    // @spec AC-0016-03
     fn test_ac_0016_03_deny_config_has_required_sections() {
         let toml = read_root_file("deny.toml");
         for section in ["[advisories]", "[licenses]", "[bans]", "[sources]"] {
@@ -225,6 +299,7 @@ mod tests {
     /// (ubuntu/windows) y corre en paralelo sin fail-fast. macOS se valida en
     /// `nightly.yml` (job `test-macos`, SPEC-0046).
     #[test]
+    // @spec AC-0033-01
     fn test_ac_0033_01_ci_has_os_matrix() {
         let yaml = read_root_file(".github/workflows/ci.yml");
         assert!(
@@ -254,6 +329,7 @@ mod tests {
     /// AC-0033-02: `nightly.yml` declara el job `sanitizers` (ASan sobre FFI,
     /// alert-only).
     #[test]
+    // @spec AC-0033-02
     fn test_ac_0033_02_nightly_has_sanitizers() {
         let yaml = read_root_file(".github/workflows/nightly.yml");
         assert!(
@@ -277,6 +353,7 @@ mod tests {
     /// AC-0033-03: `check_ci_config.py` valida la matriz OS y el job
     /// `sanitizers` además de las validaciones previas.
     #[test]
+    // @spec AC-0033-03
     fn test_ac_0033_03_check_ci_config_validates_matrix() {
         let script = read_root_file("scripts/check_ci_config.py");
         for needle in [
@@ -298,6 +375,7 @@ mod tests {
     /// (referencia a SELECT/WHERE/AND/MATCH/KNN/TRAVERSE/EXPLAIN/ORDER BY/
     /// GROUP BY/LIMIT) e invoca las dos entradas públicas del parser.
     #[test]
+    // @spec AC-0042-01
     fn test_ac_0042_01_fuzz_target_covers_grammar() {
         let target = read_root_file("fuzz/fuzz_targets/query_parse.rs");
         for clause in [
@@ -318,6 +396,7 @@ mod tests {
     /// AC-0042-02: el corpus del parser está sembrado con al menos 5 ficheros
     /// versionables bajo `fuzz/corpus/query_parse/`.
     #[test]
+    // @spec AC-0042-02
     fn test_ac_0042_02_fuzz_corpus_seeded() {
         let root = workspace_root().expect("raíz del workspace");
         let corpus = root.join("fuzz/corpus/query_parse");
@@ -335,6 +414,7 @@ mod tests {
     /// AC-0042-03: `nightly.yml` declara el job `fuzz` (alert-only) con la
     /// matriz de targets del parser y el dictionary de RQL para `query_parse`.
     #[test]
+    // @spec AC-0042-03
     fn test_ac_0042_03_nightly_fuzz_job() {
         let yaml = read_root_file(".github/workflows/nightly.yml");
         assert!(yaml.contains("fuzz:"), "nightly.yml sin job 'fuzz'");
@@ -359,6 +439,7 @@ mod tests {
     /// AC-0042-04: el target del parser mantiene el contrato no-panic (sin
     /// `unwrap(`/`expect(` sobre el resultado del parser).
     #[test]
+    // @spec AC-0042-04
     fn test_ac_0042_04_fuzz_target_is_panic_free() {
         let target = read_root_file("fuzz/fuzz_targets/query_parse.rs");
         for forbidden in ["unwrap(", "expect("] {
@@ -373,6 +454,7 @@ mod tests {
     /// AC-0046-01: la matriz del job `test` de `ci.yml` es rápida
     /// (ubuntu+windows) y no exige macOS en cada push.
     #[test]
+    // @spec AC-0046-01
     fn test_ac_0046_01_ci_matrix_fast() {
         let yaml = read_root_file(".github/workflows/ci.yml");
         assert!(
@@ -394,6 +476,7 @@ mod tests {
     /// AC-0046-02: `nightly.yml` declara un job que corre los tests en macOS
     /// (schedule, alert-only).
     #[test]
+    // @spec AC-0046-02
     fn test_ac_0046_02_nightly_has_macos() {
         let yaml = read_root_file(".github/workflows/nightly.yml");
         assert!(
@@ -417,6 +500,7 @@ mod tests {
     /// AC-0046-03: `check_ci_config.py` valida la matriz rápida (ubuntu +
     /// windows) y el job macOS de nightly.
     #[test]
+    // @spec AC-0046-03
     fn test_ac_0046_03_check_ci_config_validates_runners() {
         let script = read_root_file("scripts/check_ci_config.py");
         for needle in [
@@ -437,6 +521,7 @@ mod tests {
     /// Changelog (`[Unreleased]` + Added/Changed/Fixed), lista las fases F0–F6
     /// y las specs, y no inventa releases publicadas (`[0.1.0] - no publicado`).
     #[test]
+    // @spec AC-0050-01
     fn test_ac_0050_01_changelog_exists() {
         let changelog = read_root_file("CHANGELOG.md");
         assert!(
@@ -469,6 +554,7 @@ mod tests {
     /// una tabla área/estado/evidencia y documenta el desvío de DataFusion
     /// (ADR-001) como pendiente.
     #[test]
+    // @spec AC-0050-02
     fn test_ac_0050_02_roadmap_status() {
         let roadmap = read_root_file("docs/RuscaDB-roadmap.md");
         assert!(
@@ -493,6 +579,7 @@ mod tests {
     /// actualizados: DML (`INSERT`/`UPDATE`/`DELETE`), `GROUP BY`, `ORDER BY` y
     /// blobs integrados.
     #[test]
+    // @spec AC-0050-03
     fn test_ac_0050_03_mvp_updated() {
         let mvp = read_root_file("docs/MVP.md");
         for capability in ["INSERT", "UPDATE", "DELETE", "GROUP BY", "ORDER BY", "blob"] {
@@ -501,5 +588,39 @@ mod tests {
                 "docs/MVP.md no menciona la capacidad '{capability}'"
             );
         }
+    }
+
+    /// AC-0061-01: el contrato exige marcador `@spec` en todo `test_ac_*`
+    /// numérico y rechaza marcadores huérfanos (K1/K2 sobre el workspace real).
+    #[test]
+    // @spec AC-0061-01
+    fn test_ac_0061_01_contract_markers_bidirectional() {
+        let Some(root) = super::workspace_root() else {
+            panic!("sin raíz del workspace");
+        };
+        let errors = super::judge::contract(&root);
+        let marker_errors: Vec<&String> = errors
+            .iter()
+            .filter(|e| e.starts_with("K1") || e.starts_with("K2"))
+            .collect();
+        assert!(
+            marker_errors.is_empty(),
+            "incumplimientos K1/K2: {marker_errors:?}"
+        );
+    }
+
+    /// AC-0061-02: toda spec `implemented` tiene sus AC trazados (K3 real).
+    #[test]
+    // @spec AC-0061-02
+    fn test_ac_0061_02_implemented_specs_fully_traced() {
+        let Some(root) = super::workspace_root() else {
+            panic!("sin raíz del workspace");
+        };
+        let errors = super::judge::contract(&root);
+        let state_errors: Vec<&String> = errors.iter().filter(|e| e.starts_with("K3")).collect();
+        assert!(
+            state_errors.is_empty(),
+            "specs implemented sin trazar: {state_errors:?}"
+        );
     }
 }

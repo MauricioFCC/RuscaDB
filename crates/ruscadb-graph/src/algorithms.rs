@@ -326,6 +326,7 @@ mod tests {
 
     /// AC-0041-01 — BFS respeta niveles y no repite nodos.
     #[test]
+    // @spec AC-0041-01
     fn test_ac_0041_01_bfs_order() {
         let graph = graph_from(&[(1, 2), (1, 3), (2, 4), (3, 4), (4, 5), (5, 1)]);
         let order = bfs(&graph, 1);
@@ -338,6 +339,7 @@ mod tests {
 
     /// AC-0041-02 — dos islas producen exactamente dos componentes disjuntas.
     #[test]
+    // @spec AC-0041-02
     fn test_ac_0041_02_connected_components() {
         // Isla A: 1->2->3. Isla B con aristas invertidas (la dirección se ignora).
         let graph = graph_from(&[(1, 2), (2, 3), (11, 10), (12, 11)]);
@@ -352,6 +354,7 @@ mod tests {
 
     /// AC-0041-03 — el nodo más referenciado obtiene el score más alto.
     #[test]
+    // @spec AC-0041-03
     fn test_ac_0041_03_pagerank_ranks_hub() {
         // Estrella entrante: 2->1, 3->1, 4->1. El nodo 1 es hub y dangling.
         let graph = graph_from(&[(2, 1), (3, 1), (4, 1)]);
@@ -389,6 +392,7 @@ mod tests {
 
     /// AC-0041-04 — con un nodo colgante converge sin NaN y la suma es ~1.
     #[test]
+    // @spec AC-0041-04
     fn test_ac_0041_04_pagerank_dangling() {
         // Cadena 1->2->3 con el nodo 3 colgante (sin aristas de salida).
         let graph = graph_from(&[(1, 2), (2, 3)]);
@@ -412,6 +416,7 @@ mod tests {
     /// AC-0041-05 — grafos frontera (vacío, un nodo, self-loop) y parámetros
     /// inválidos no provocan panic.
     #[test]
+    // @spec AC-0041-05
     fn test_ac_0041_05_boundary_graphs() {
         let empty = CsrGraph::new();
         assert!(bfs(&empty, 0).is_empty());

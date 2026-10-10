@@ -99,6 +99,7 @@ mod tests {
 
     /// AC-0007-01 — aristas 1->2 y 1->3 dan vecinos salientes `{2,3}`.
     #[test]
+    // @spec AC-0007-01
     fn test_ac_0007_01_add_edge_and_neighbors() {
         let graph = graph_from(&[(1, 2), (1, 3)]);
         assert_eq!(graph.neighbors(1, Direction::Out), vec![2, 3]);
@@ -110,6 +111,7 @@ mod tests {
 
     /// AC-0007-02 — cadena 1->2->3->4; BFS con profundidad 1 devuelve `{1,2}`.
     #[test]
+    // @spec AC-0007-02
     fn test_ac_0007_02_bfs_respects_depth() {
         let graph = graph_from(&[(1, 2), (2, 3), (3, 4)]);
         let depth_one = graph.traverse(1, Direction::Out, 1, usize::MAX);
@@ -129,6 +131,7 @@ mod tests {
 
     /// AC-0007-03 — el traversal nunca supera `max_nodes`.
     #[test]
+    // @spec AC-0007-03
     fn test_ac_0007_03_max_nodes_limit() {
         let graph = graph_from(&[(1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8)]);
         let limited = graph.traverse(1, Direction::Out, u16::MAX, 3);
@@ -139,6 +142,7 @@ mod tests {
 
     /// AC-0007-04 — nodo desconocido: vecinos y traversal vacíos, sin panic.
     #[test]
+    // @spec AC-0007-04
     fn test_ac_0007_04_unknown_node_is_empty() {
         let graph = graph_from(&[(1, 2), (2, 3)]);
         assert!(graph.neighbors(999, Direction::Out).is_empty());

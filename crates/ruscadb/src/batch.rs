@@ -157,6 +157,7 @@ mod tests {
 
     /// AC-0027-01 — `insert_many` con N registros produce un solo commit.
     #[test]
+    // @spec AC-0027-01
     fn test_ac_0027_01_insert_many_single_commit() {
         let (dir, mut database) = open_test_db("ac01");
         create_table(&mut database);
@@ -183,6 +184,7 @@ mod tests {
     /// AC-0027-02 — un registro inválido falla con error accionable y no
     /// publica a medias (tras rollback la tabla sigue vacía).
     #[test]
+    // @spec AC-0027-02
     fn test_ac_0027_02_insert_many_error_is_actionable() {
         let (_dir, mut database) = open_test_db("ac02");
         create_table(&mut database);
@@ -210,6 +212,7 @@ mod tests {
     /// AC-0027-03 — `rollback` aborta la tx en vuelo y un snapshot posterior no
     /// ve los cambios.
     #[test]
+    // @spec AC-0027-03
     fn test_ac_0027_03_rollback_aborts_tx() {
         let (_dir, mut database) = open_test_db("ac03");
         create_table(&mut database);
@@ -271,6 +274,7 @@ mod tests {
     /// AC-0027-04 — `rollback` descarta las páginas sucias y la página vuelve
     /// al último estado confirmado.
     #[test]
+    // @spec AC-0027-04
     fn test_ac_0027_04_rollback_discards_dirty_pages() {
         let (_dir, mut database) = open_test_db("ac04");
         create_table(&mut database);
@@ -318,6 +322,7 @@ mod tests {
 
     /// AC-0027-05 — `rollback` en modo cifrado es rechazado con error accionable.
     #[test]
+    // @spec AC-0027-05
     fn test_ac_0027_05_rollback_encrypted_is_error() {
         let dir = tempfile::tempdir().expect("directorio temporal");
         let path = dir.path().join("vault.db");

@@ -108,6 +108,7 @@ fn assert_no_loss(state: &Arc<Mutex<SharedModel>>) {
 /// planificaciones y el invariante exige que ambos sean visibles y que el LSN
 /// (`snapshot.tx_id`) avance exactamente `2N`.
 #[test]
+// @spec AC-0053-01
 fn test_ac_0053_01_concurrent_commits_no_loss() {
     model_builder().check(|| {
         let state = Arc::new(Mutex::new(SharedModel {
@@ -134,6 +135,7 @@ fn test_ac_0053_01_concurrent_commits_no_loss() {
 /// `TxId`; la lectora toma un snapshot concurrente. El invariante exige que
 /// ambas visibilidades coincidan (todo o nada), en toda planificación.
 #[test]
+// @spec AC-0053-02
 fn test_ac_0053_02_snapshot_atomicity() {
     model_builder().check(|| {
         let state = Arc::new(Mutex::new(TxnManager::new()));
@@ -166,6 +168,7 @@ fn test_ac_0053_02_snapshot_atomicity() {
 /// commits son visibles, el LSN avanza 1 por commit y un snapshot congela su
 /// visibilidad ante commits posteriores.
 #[test]
+// @spec AC-0053-03
 fn test_ac_0053_03_suite_green() {
     let mut manager = TxnManager::new();
     let first = manager.begin();

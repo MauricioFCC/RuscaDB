@@ -26,6 +26,7 @@ fn shared_manager() -> Arc<Mutex<TxnManager>> {
 /// When: todas hacen begin + stage_write + commit.
 /// Then: los 64 commits son visibles y el LSN avanza exactamente 64.
 #[test]
+// @spec AC-0055-01
 fn test_ac_0055_01_no_loss_under_contention() {
     let manager = shared_manager();
     let mut handles = Vec::with_capacity(CONTENTION_THREADS);
@@ -62,6 +63,7 @@ fn test_ac_0055_01_no_loss_under_contention() {
 /// When: ambas intentan commit.
 /// Then: la primera gana y la segunda recibe `WriteConflict` con la clave.
 #[test]
+// @spec AC-0055-02
 fn test_ac_0055_02_write_write_conflict_actionable() {
     let mut manager = TxnManager::new();
     let first = manager.begin();
@@ -110,6 +112,7 @@ fn test_ac_0055_02_write_write_conflict_actionable() {
 /// When: se envuelve en `retry_on_conflict` con 5 intentos.
 /// Then: devuelve Ok y se invocó exactamente 3 veces.
 #[test]
+// @spec AC-0055-03
 fn test_ac_0055_03_retry_converges() {
     let mut attempts = 0;
     let result = retry_on_conflict(5, || {
@@ -152,6 +155,7 @@ fn test_ac_0055_03_retry_converges() {
 /// When: se mide `dead_versions` y corre `gc`.
 /// Then: la métrica coincide con lo purgado y lo vivo sigue visible.
 #[test]
+// @spec AC-0055-04
 fn test_ac_0055_04_bloat_measured_and_reaped() {
     let mut manager = TxnManager::new();
     let creator = manager.begin();

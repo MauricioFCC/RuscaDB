@@ -162,6 +162,7 @@ fn brute_force_filtered(
 /// AC-0048-01 — un `KNN` con filtro moderado (`InFilter`, iFVS) devuelve el
 /// top-k exacto restringido al filtro.
 #[test]
+// @spec AC-0048-01
 fn test_ac_0048_01_knn_filter_uses_ifvs_exact() {
     let (_dir, mut database) = open_test_db("ac48_01");
     create_items(&mut database, "items");
@@ -196,6 +197,7 @@ fn test_ac_0048_01_knn_filter_uses_ifvs_exact() {
 /// AC-0048-02 — un filtro muy selectivo (`s < 0.05` => `PreFilter` y `s = 0.05`
 /// => `InFilter`) devuelve exactamente el top-k restringido al filtro.
 #[test]
+// @spec AC-0048-02
 fn test_ac_0048_02_selective_filter_exact() {
     let (_dir, mut database) = open_test_db("ac48_02");
     create_items(&mut database, "items");
@@ -226,6 +228,7 @@ fn test_ac_0048_02_selective_filter_exact() {
 /// AC-0048-03 — un filtro total (`s = 1.0` => `PostFilter`) coincide con el
 /// `KNN` sin filtro.
 #[test]
+// @spec AC-0048-03
 fn test_ac_0048_03_full_filter_matches_unfiltered() {
     let (_dir, mut database) = open_test_db("ac48_03");
     create_items(&mut database, "items");
@@ -262,6 +265,7 @@ fn test_ac_0048_03_full_filter_matches_unfiltered() {
 /// AC-0048-04 — fronteras: filtro vacío => vacío sin panics; `k = 0` => vacío;
 /// `k > N` => acotado a `N`.
 #[test]
+// @spec AC-0048-04
 fn test_ac_0048_04_empty_filter() {
     let (_dir, mut database) = open_test_db("ac48_04");
     create_items(&mut database, "items");
@@ -295,6 +299,7 @@ fn test_ac_0048_04_empty_filter() {
 
 /// AC-0048-05 — el `KNN` sin `WHERE` conserva el comportamiento previo.
 #[test]
+// @spec AC-0048-05
 fn test_ac_0048_05_knn_without_filter_unchanged() {
     let (_dir, mut database) = open_test_db("ac48_05");
     create_items(&mut database, "items");

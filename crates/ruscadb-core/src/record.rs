@@ -230,6 +230,7 @@ mod tests {
 
     /// AC-0001-01 — el roundtrip de serialización es exacto.
     #[test]
+    // @spec AC-0001-01
     fn test_ac_0001_01_record_roundtrip_is_lossless() {
         let original = sample_record();
         let encoded = serde_json::to_string(&original).expect("serializa");
@@ -239,6 +240,7 @@ mod tests {
 
     /// AC-0001-02 — el ULID más antiguo ordena primero (monotonía temporal).
     #[test]
+    // @spec AC-0001-02
     fn test_ac_0001_02_ulid_ordering_is_monotonic() {
         let older = RecordId::new();
         std::thread::sleep(std::time::Duration::from_millis(2));
@@ -249,6 +251,7 @@ mod tests {
 
     /// AC-0001-03 — la metadata del embedding es obligatoria y consistente.
     #[test]
+    // @spec AC-0001-03
     fn test_ac_0001_03_embedding_metadata_is_mandatory() {
         let good = EmbeddingMeta {
             model_id: "all-MiniLM-L6-v2".to_string(),

@@ -1,0 +1,6 @@
++++ b/crates/ruscadb/src/evil.rs
++    fn test_ac_0099_01_planted() {
++        let x = values.unwrap();
++    }
++++ b/crates/ruscadb-vector/src/loot.rs
++    unsafe { core::ptr::read_volatile(ptr) }

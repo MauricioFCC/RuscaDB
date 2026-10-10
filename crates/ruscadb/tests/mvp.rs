@@ -311,6 +311,7 @@ fn assert_manifest_and_catalog(database: &mut Database) {
 
 /// AC-0031-01 — flujo MVP completo en claro con durabilidad total.
 #[test]
+// @spec AC-0031-01
 fn test_ac_0031_01_mvp_happy_path() {
     let (dir, mut database) = open_test_db("mvp_happy", 64);
     create_docs_table(&mut database);
@@ -403,6 +404,7 @@ fn seed_multimodel(database: &mut Database) {
 
 /// AC-0031-02 — multimodal: KNN + TRAVERSE + MATCH sobre los mismos docs.
 #[test]
+// @spec AC-0031-02
 fn test_ac_0031_02_mvp_multimodel() {
     let (_dir, mut database) = open_test_db("mvp_multi", 64);
     create_docs_table(&mut database);
@@ -502,6 +504,7 @@ fn assert_no_plaintext(path: &std::path::Path) {
 
 /// AC-0031-03 — flujo MVP cifrado sin claro en disco.
 #[test]
+// @spec AC-0031-03
 fn test_ac_0031_03_mvp_encrypted() {
     let dir = tempfile::tempdir().expect("directorio temporal cifrado");
     let path = dir.path().join("mvp_enc.db");
@@ -534,6 +537,7 @@ fn test_ac_0031_03_mvp_encrypted() {
 
 /// AC-0031-04 — `docs/MVP.md` existe y define el MVP.
 #[test]
+// @spec AC-0031-04
 fn test_ac_0031_04_mvp_doc_exists() {
     let doc: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/MVP.md");
     assert!(doc.is_file(), "docs/MVP.md debe existir en {doc:?}");

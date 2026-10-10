@@ -64,6 +64,7 @@ fn brute_force(vectors: &[Vec<f32>], query: &[f32], k: usize) -> Vec<usize> {
 /// When: se inserta.
 /// Then: `ResourceLimit` con `actual > limit` y el recurso nombrado.
 #[test]
+// @spec AC-0058-01
 fn test_ac_0058_01_over_budget_rejected() {
     let dim = 8;
     let params = HnswParams {
@@ -108,6 +109,7 @@ fn test_ac_0058_01_over_budget_rejected() {
 /// When: se mide recall@10 vs fuerza bruta exacta.
 /// Then: recall >= 0.95 y el footprint es ~dim bytes por vector.
 #[test]
+// @spec AC-0058-02
 fn test_ac_0058_02_quantized_recall_at_10() {
     let vectors = random_vectors(200, 16, 11);
     let flat = QuantizedFlatIndex::build(vectors.clone()).expect("build");
@@ -139,6 +141,7 @@ fn test_ac_0058_02_quantized_recall_at_10() {
 /// When: se corre cada bin.
 /// Then: reporta QPS y recall por bin; asserts de recall, sin crash.
 #[test]
+// @spec AC-0058-03
 fn test_ac_0058_03_qps_recall_by_selectivity_bin() {
     let vectors = random_vectors(200, 16, 5);
     let mut exact = HnswIndex::new(HnswParams::new(Metric::L2), 16).expect("new");

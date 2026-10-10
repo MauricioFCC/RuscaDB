@@ -451,6 +451,7 @@ mod tests {
 
     /// AC-0029-01 — cada ts cae en el inicio de su cubo (bote de 1h).
     #[test]
+    // @spec AC-0029-01
     fn test_ac_0029_01_time_bucket_floors() {
         // BVA: ts = 0, frontera exacta, interior, negativos y bote = 1.
         if let (Ok(zero), Ok(exact), Ok(inside)) = (
@@ -494,6 +495,7 @@ mod tests {
 
     /// AC-0029-02 — los agregados coinciden con el cálculo manual.
     #[test]
+    // @spec AC-0029-02
     fn test_ac_0029_02_window_aggregates() {
         let points = vec![point(0, 1.0), point(1, 2.0), point(2, 3.0), point(3, 4.0)];
         // Tumbling: una sola ventana [0, 4) con los cuatro puntos.
@@ -535,6 +537,7 @@ mod tests {
 
     /// AC-0029-03 — los huecos se rellenan con el último valor.
     #[test]
+    // @spec AC-0029-03
     fn test_ac_0029_03_resample_fills() {
         let points = vec![point(0, 1.0), point(2, 3.0)];
         if let (Ok(previous), Ok(nulls)) = (
@@ -556,6 +559,7 @@ mod tests {
 
     /// AC-0029-04 — el orden de entrada no altera el resultado.
     #[test]
+    // @spec AC-0029-04
     fn test_ac_0029_04_ordering_is_irrelevant() {
         let ordered = vec![
             point(0, 1.0),
@@ -586,6 +590,7 @@ mod tests {
 
     /// AC-0029-05 — entradas inválidas: error accionable, sin panics.
     #[test]
+    // @spec AC-0029-05
     fn test_ac_0029_05_invalid_inputs_are_safe() {
         assert!(time_bucket(0, 0).is_err());
         assert!(time_bucket(0, -100).is_err());
@@ -611,6 +616,7 @@ mod tests {
 
     /// AC-0039-01 — percentil 50 (mediana) con interpolación lineal.
     #[test]
+    // @spec AC-0039-01
     fn test_ac_0039_01_percentile_interpolates() {
         let points = vec![
             point(0, 10.0),
@@ -647,6 +653,7 @@ mod tests {
 
     /// AC-0039-02 — tasa por segundo entre puntos consecutivos.
     #[test]
+    // @spec AC-0039-02
     fn test_ac_0039_02_rate_per_second() {
         let points = vec![point(0, 0.0), point(1000, 10.0), point(2000, 30.0)];
         let expected = vec![(1000, 10.0), (2000, 20.0)];
@@ -664,6 +671,7 @@ mod tests {
 
     /// AC-0039-03 — media móvil con longitud y valores correctos.
     #[test]
+    // @spec AC-0039-03
     fn test_ac_0039_03_moving_average() {
         let points = vec![
             point(0, 10.0),
@@ -697,6 +705,7 @@ mod tests {
 
     /// AC-0039-04 — entradas inválidas: error accionable, sin panics.
     #[test]
+    // @spec AC-0039-04
     fn test_ac_0039_04_invalid_inputs() {
         let points = vec![point(0, 1.0), point(1, 2.0)];
         assert!(percentile(&points, -1.0).is_err());
@@ -712,6 +721,7 @@ mod tests {
 
     /// AC-0039-05 — series vacías o de un solo punto, sin panics.
     #[test]
+    // @spec AC-0039-05
     fn test_ac_0039_05_boundary_series() {
         if let (Ok(none), Ok(single_median), Ok(empty_average)) = (
             percentile(&[], 50.0),

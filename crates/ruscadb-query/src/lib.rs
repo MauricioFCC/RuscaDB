@@ -46,6 +46,7 @@ mod tests {
 
     /// AC-0005-01 — `SELECT` con proyección de columnas.
     #[test]
+    // @spec AC-0005-01
     fn test_ac_0005_01_parse_simple_select() {
         let query = parse("SELECT a, b FROM t").expect("parse");
         assert_eq!(
@@ -59,6 +60,7 @@ mod tests {
 
     /// AC-0005-02 — `WHERE` con `AND` de dos comparaciones.
     #[test]
+    // @spec AC-0005-02
     fn test_ac_0005_02_parse_where_and() {
         let query = parse("SELECT * FROM t WHERE a = 1 AND b < 2").expect("parse");
         let expected = Expr::And(
@@ -78,6 +80,7 @@ mod tests {
 
     /// AC-0005-03 — `LIMIT` numérico.
     #[test]
+    // @spec AC-0005-03
     fn test_ac_0005_03_parse_limit() {
         let query = parse("SELECT * FROM t LIMIT 10").expect("parse");
         assert_eq!(query.limit, Some(10));
@@ -85,6 +88,7 @@ mod tests {
 
     /// AC-0005-04 — entrada inválida devuelve `ParseError` con posición exacta.
     #[test]
+    // @spec AC-0005-04
     fn test_ac_0005_04_parse_error_has_position() {
         let error = parse("SELECT FROM").unwrap_err();
         match error {
@@ -198,6 +202,7 @@ mod tests {
 
     /// AC-0005-05 — roundtrip `Display → parse`.
     #[test]
+    // @spec AC-0005-05
     fn test_ac_0005_05_display_parse_roundtrip() {
         let query = parse("SELECT a, b FROM t WHERE a = 1 AND b < 2 LIMIT 5").expect("parse");
         let text = query.to_string();
@@ -240,6 +245,7 @@ mod tests {
 
     /// AC-0015-01 — parseo de `KNN`.
     #[test]
+    // @spec AC-0015-01
     fn test_ac_0015_01_parse_knn() {
         let statement = parse_statement("SELECT * FROM docs KNN embedding <|5|> [0.1, 0.2, 0.3]")
             .expect("parse");
@@ -260,6 +266,7 @@ mod tests {
 
     /// AC-0015-02 — parseo de `TRAVERSE`.
     #[test]
+    // @spec AC-0015-02
     fn test_ac_0015_02_parse_traverse() {
         let statement =
             parse_statement("SELECT * FROM nodes TRAVERSE edges DEPTH 3").expect("parse");
@@ -278,6 +285,7 @@ mod tests {
 
     /// AC-0015-03 — parseo de `EXPLAIN` que envuelve el `Select` interno.
     #[test]
+    // @spec AC-0015-03
     fn test_ac_0015_03_parse_explain() {
         let statement = parse_statement("EXPLAIN SELECT * FROM t WHERE a = 1").expect("parse");
         let Statement::Explain(explain) = statement else {
@@ -297,6 +305,7 @@ mod tests {
 
     /// AC-0015-04 — roundtrip `Display → parse` con KNN/TRAVERSE (orden canónico).
     #[test]
+    // @spec AC-0015-04
     fn test_ac_0015_04_display_parse_roundtrip_extensions() {
         let query = parse(
             "SELECT a, b FROM t WHERE a = 1 KNN emb <|3|> [1, 2.5] TRAVERSE edges DEPTH 2 LIMIT 7",
@@ -312,6 +321,7 @@ mod tests {
 
     /// AC-0015-05 — formas mal formadas devuelven `ParseError`.
     #[test]
+    // @spec AC-0015-05
     fn test_ac_0015_05_malformed_extensions_are_errors() {
         let cases = [
             "SELECT * FROM t KNN embedding <|x|> []",
@@ -429,6 +439,7 @@ mod tests {
 
     /// AC-0040-01 — parseo de `GROUP BY` + agregados en la proyección y roundtrip.
     #[test]
+    // @spec AC-0040-01
     fn test_ac_0040_01_parse_group_by() {
         let select = parse("SELECT a, COUNT(*) FROM t GROUP BY a").expect("parse");
         assert_eq!(
@@ -455,6 +466,7 @@ mod tests {
 
     /// AC-0040-01 (extensión) — agregados variados, orden canónico y alias.
     #[test]
+    // @spec AC-0040-01
     fn test_ac_0040_01_parse_aggregates_and_alias() {
         let query = parse(
             "SELECT b, SUM(a), AVG(a), MIN(a), MAX(a), COUNT(a) FROM t GROUP BY b ORDER BY b DESC LIMIT 3",
@@ -477,6 +489,7 @@ mod tests {
 
     /// Formas mal formadas de agregados y `GROUP BY` devuelven `ParseError`.
     #[test]
+    // @spec AC-0040-01
     fn test_ac_0040_01_malformed_aggregates_are_errors() {
         let cases = [
             "SELECT SUM(*) FROM t",
@@ -496,6 +509,7 @@ mod tests {
 
     /// AC-0036-01 — parseo de `ORDER BY <col> [ASC|DESC]` y roundtrip canónico.
     #[test]
+    // @spec AC-0036-01
     fn test_ac_0036_01_parse_order_by() {
         let ascending = parse("SELECT * FROM t ORDER BY a").expect("parse");
         assert_eq!(
@@ -757,6 +771,7 @@ mod tests {
 
     /// AC-0043-05 — roundtrip `Display → parse` de las tres formas DML.
     #[test]
+    // @spec AC-0043-05
     fn test_ac_0043_05_display_parse_roundtrip_dml() {
         let cases = [
             "INSERT INTO t (a, b) VALUES (1, 'x'), (2, 'y')",
@@ -822,6 +837,7 @@ mod tests {
 
     /// AC-0044-05 — roundtrip `Display → parse` de los operadores documentales.
     #[test]
+    // @spec AC-0044-05
     fn test_ac_0044_05_display_parse_roundtrip_doc_ops() {
         let cases = [
             "SELECT * FROM t WHERE doc -> 'a' = 1",

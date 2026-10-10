@@ -716,6 +716,7 @@ mod tests {
 
     /// AC-0023-01 — una query RQL válida produce el JSON del IR.
     #[test]
+    // @spec AC-0023-01
     fn test_ac_0023_01_parse_query_json() {
         let output = parse_query_json("SELECT * FROM t KNN embedding <|5|> [0.1, 0.2] LIMIT 10");
         let json = value(&output);
@@ -736,6 +737,7 @@ mod tests {
 
     /// AC-0023-01 (continuación) — columnas, filtro compuesto y `EXPLAIN`.
     #[test]
+    // @spec AC-0023-01
     fn test_ac_0023_01_parse_query_json_clauses() {
         let query = "SELECT a, b FROM docs WHERE a = 1 AND b < 2.5 AND MATCH(c, 'gato') \
                      TRAVERSE edges DEPTH 2";
@@ -760,6 +762,7 @@ mod tests {
 
     /// AC-0023-02 — los k vecinos se devuelven ordenados por distancia.
     #[test]
+    // @spec AC-0023-02
     fn test_ac_0023_02_vector_search_json() {
         let corpus = r#"[{"id":1,"vector":[0.0,0.0]},{"id":2,"vector":[1.0,0.0]},
             {"id":3,"vector":[0.0,1.0]},{"id":4,"vector":[5.0,5.0]}]"#;
@@ -774,6 +777,7 @@ mod tests {
 
     /// AC-0023-02 (BVA) — `k = 0`, `k > N`, corpus vacío y desempate por id.
     #[test]
+    // @spec AC-0023-02
     fn test_ac_0023_02_vector_search_boundaries() {
         let corpus = r#"[{"id":2,"vector":[1.0,0.0]},{"id":1,"vector":[-1.0,0.0]}]"#;
         let empty = value(&vector_search_json(corpus, "[0.0,0.0]", 0));
@@ -793,6 +797,7 @@ mod tests {
 
     /// AC-0023-03 — BM25 ordena los documentos más relevantes primero.
     #[test]
+    // @spec AC-0023-03
     fn test_ac_0023_03_text_search_json() {
         let docs = r#"[{"id":10,"text":"gato gato gato"},{"id":20,"text":"gato"},
             {"id":30,"text":"gato perro ave pez rata topo"}]"#;
@@ -807,6 +812,7 @@ mod tests {
 
     /// AC-0023-03 (BVA) — `k = 0`, corpus vacío y términos ausentes.
     #[test]
+    // @spec AC-0023-03
     fn test_ac_0023_03_text_search_boundaries() {
         let docs = r#"[{"id":1,"text":"gato"}]"#;
         let zero = value(&text_search_json(docs, "gato", 0));
@@ -822,6 +828,7 @@ mod tests {
 
     /// AC-0023-04 — `seal_json` + `open_json` recuperan los bytes originales.
     #[test]
+    // @spec AC-0023-04
     fn test_ac_0023_04_crypto_roundtrip() {
         let plaintext = "527573636144422065732067656e69616c";
         let sealed = value(&seal_json(KEY_HEX, plaintext));
@@ -844,6 +851,7 @@ mod tests {
 
     /// AC-0023-04 (seguridad) — nonce único y detección de manipulación.
     #[test]
+    // @spec AC-0023-04
     fn test_ac_0023_04_crypto_security() {
         let first = value(&seal_json(KEY_HEX, "00"));
         let second = value(&seal_json(KEY_HEX, "00"));
@@ -870,6 +878,7 @@ mod tests {
 
     /// AC-0023-05 — entradas inválidas devuelven JSON de error, sin panics.
     #[test]
+    // @spec AC-0023-05
     fn test_ac_0023_05_errors_are_json() {
         for output in [
             parse_query_json("SELECT FROM"),

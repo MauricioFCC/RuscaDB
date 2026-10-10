@@ -148,6 +148,7 @@ mod tests {
 
     /// AC-0028-01 — el builder abre una base equivalente a `DbConfig`.
     #[test]
+    // @spec AC-0028-01
     fn test_ac_0028_01_builder_opens_equivalent_database() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("builder.db");
@@ -178,6 +179,7 @@ mod tests {
 
     /// AC-0028-05 — `pool_capacity(0)` falla igual que `DbConfig`.
     #[test]
+    // @spec AC-0028-05
     fn test_ac_0028_05_builder_rejects_invalid_config() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("invalida.db");

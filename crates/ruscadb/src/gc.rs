@@ -187,6 +187,7 @@ mod tests {
 
     /// AC-0028-02 — `tables()` devuelve los nombres exactos creados.
     #[test]
+    // @spec AC-0028-02
     fn test_ac_0028_02_tables_lists_created_tables() {
         let (_dir, mut database) = open_test_db("tables");
         assert_eq!(database.tables().expect("tablas"), Vec::<String>::new());
@@ -200,6 +201,7 @@ mod tests {
 
     /// AC-0028-03 — `reap()` purga las filas obsoletas y cuenta exacto.
     #[test]
+    // @spec AC-0028-03
     fn test_ac_0028_03_reap_purges_obsolete() {
         let (_dir, mut database) = open_test_db("reap-purge");
         create_int_table(&mut database, "t");
@@ -234,6 +236,7 @@ mod tests {
 
     /// AC-0028-04 — `reap()` conserva vivas y borradas recientes.
     #[test]
+    // @spec AC-0028-04
     fn test_ac_0028_04_reap_keeps_live_and_recent() {
         let (_dir, mut database) = open_test_db("reap-keep");
         create_int_table(&mut database, "t");

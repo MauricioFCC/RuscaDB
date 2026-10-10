@@ -524,6 +524,7 @@ mod tests {
     #[case(2)]
     #[case(4)]
     #[case(16)]
+    // @spec AC-0004-01
     fn test_ac_0004_01_commit_survives_reopen(#[case] capacity: usize) {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("db.data");
@@ -540,6 +541,7 @@ mod tests {
 
     /// AC-0004-02 — el replay restaura páginas si el archivo de datos se pierde.
     #[test]
+    // @spec AC-0004-02
     fn test_ac_0004_02_recovery_replays_committed_pages() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("db.data");
@@ -558,6 +560,7 @@ mod tests {
 
     /// AC-0004-03 — la cola rasgada del WAL se trunca sin perder el commit válido.
     #[test]
+    // @spec AC-0004-03
     fn test_ac_0004_03_torn_wal_tail_is_truncated() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("db.data");

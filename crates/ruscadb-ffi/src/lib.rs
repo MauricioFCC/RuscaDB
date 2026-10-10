@@ -573,6 +573,7 @@ mod tests {
 
     /// AC-0026-01 — una consulta válida devuelve `RC_OK` y un JSON con las filas.
     #[test]
+    // @spec AC-0026-01
     fn test_ac_0026_01_execute_returns_json() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("db.data");
@@ -597,6 +598,7 @@ mod tests {
 
     /// AC-0026-02 — una query inválida es `RC_DOMAIN_ERROR` con `last_error`.
     #[test]
+    // @spec AC-0026-02
     fn test_ac_0026_02_invalid_query_is_error() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("db.data");
@@ -627,6 +629,7 @@ mod tests {
 
     /// AC-0026-03 — un buffer pequeño no desborda y reporta el tamaño requerido.
     #[test]
+    // @spec AC-0026-03
     fn test_ac_0026_03_small_buffer_reports_size() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("db.data");
@@ -663,6 +666,7 @@ mod tests {
 
     /// AC-0026-04 — handle nulo/inválido/liberado y punteros nulos dan error.
     #[test]
+    // @spec AC-0026-04
     fn test_ac_0026_04_invalid_handle_is_error() {
         let sql = CString::new("SELECT * FROM t").expect("sql");
         let mut buffer = [0 as c_char; 64];
@@ -707,6 +711,7 @@ mod tests {
 
     /// AC-0026-05 — los wrappers Python y Node exponen `execute`.
     #[test]
+    // @spec AC-0026-05
     fn test_ac_0026_05_wrappers_expose_execute() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
 
@@ -742,6 +747,7 @@ mod tests {
 
     /// AC-0010-01 — abrir y cerrar deja un handle válido sin fugas.
     #[test]
+    // @spec AC-0010-01
     fn test_ac_0010_01_open_and_close() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("db.data");
@@ -753,6 +759,7 @@ mod tests {
 
     /// AC-0010-02 — escribir, commit y reabrir conserva el contenido.
     #[test]
+    // @spec AC-0010-02
     fn test_ac_0010_02_write_commit_reopen() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("db.data");
@@ -781,6 +788,7 @@ mod tests {
 
     /// AC-0010-03 — un handle inválido o liberado devuelve error sin desreferenciar.
     #[test]
+    // @spec AC-0010-03
     fn test_ac_0010_03_invalid_handle_is_error() {
         let bogus = std::ptr::dangling_mut::<RuscadbHandle>();
         let mut out = [0u8; PAGE_SIZE];
@@ -811,6 +819,7 @@ mod tests {
 
     /// AC-0010-04 — punteros nulos y longitudes inconsistentes son error.
     #[test]
+    // @spec AC-0010-04
     fn test_ac_0010_04_null_pointer_is_error() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("db.data");

@@ -139,6 +139,7 @@ mod tests {
 
     /// AC-0013-05 — end-to-end cifrado sin claro en disco.
     #[test]
+    // @spec AC-0013-05
     fn test_ac_0013_05_encrypted_database_end_to_end() {
         let dir = tempfile::tempdir().expect("dir");
         let path = dir.path().join("vault.data");

@@ -108,6 +108,7 @@ fn edge_to(node: RecordId) -> Edge {
 
 /// AC-0022-01 — tras el borrado la fila desaparece de `SELECT *` y del conteo.
 #[test]
+// @spec AC-0022-01
 fn test_ac_0022_01_delete_hides_row() {
     let (_dir, mut database) = open_test_db("ac22_01");
     create_t(&mut database);
@@ -133,6 +134,7 @@ fn test_ac_0022_01_delete_hides_row() {
 
 /// AC-0022-02 — el borrado (auto-commit) sobrevive a cerrar y reabrir.
 #[test]
+// @spec AC-0022-02
 fn test_ac_0022_02_delete_survives_reopen() {
     let dir = tempfile::tempdir().expect("directorio temporal");
     let path = dir.path().join("ac22_02.data");
@@ -161,6 +163,7 @@ fn test_ac_0022_02_delete_survives_reopen() {
 
 /// AC-0022-03 — un snapshot anterior al borrado sigue viendo la fila (MVCC).
 #[test]
+// @spec AC-0022-03
 fn test_ac_0022_03_snapshot_before_delete_still_sees_row() {
     let (_dir, mut database) = open_test_db("ac22_03");
     create_t(&mut database);
@@ -183,6 +186,7 @@ fn test_ac_0022_03_snapshot_before_delete_still_sees_row() {
 
 /// AC-0022-04 — borrar un id ausente (o repetido) es no-op idempotente.
 #[test]
+// @spec AC-0022-04
 fn test_ac_0022_04_delete_missing_is_noop() {
     let (_dir, mut database) = open_test_db("ac22_04");
     create_t(&mut database);
@@ -221,6 +225,7 @@ fn test_ac_0022_04_delete_missing_is_noop() {
 
 /// AC-0022-05 — la fila borrada no aparece en KNN, MATCH ni TRAVERSE.
 #[test]
+// @spec AC-0022-05
 fn test_ac_0022_05_deleted_row_excluded_from_indexes() {
     let (_dir, mut database) = open_test_db("ac22_05");
     database
@@ -330,6 +335,7 @@ fn test_ac_0022_05_deleted_row_excluded_from_indexes() {
 /// AC-0022-05 (coherencia fina) — el índice secundario no conserva entradas de
 /// la fila borrada (se comprueba por la API de búsqueda del índice).
 #[test]
+// @spec AC-0022-06
 fn test_ac_0022_06_secondary_index_entry_removed() {
     let (_dir, mut database) = open_test_db("ac22_06");
     create_t(&mut database);
@@ -368,6 +374,7 @@ fn test_ac_0022_06_secondary_index_entry_removed() {
 /// AC-0022-05 (coherencia fina) — con claves duplicadas solo se retira la
 /// entrada de la fila borrada, no la de la fila viva con la misma clave.
 #[test]
+// @spec AC-0022-07
 fn test_ac_0022_07_secondary_index_duplicate_keys() {
     let (_dir, mut database) = open_test_db("ac22_07");
     create_t(&mut database);
@@ -402,6 +409,7 @@ fn test_ac_0022_07_secondary_index_duplicate_keys() {
 /// AC-0022-05 (coherencia fina) — borrar una fila con índice secundario y valor
 /// `NULL` en la columna indexada es un no-op seguro (no hay entrada que quitar).
 #[test]
+// @spec AC-0022-08
 fn test_ac_0022_08_secondary_index_null_value_is_noop() {
     let (_dir, mut database) = open_test_db("ac22_08");
     create_t(&mut database);

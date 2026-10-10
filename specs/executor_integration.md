@@ -42,6 +42,11 @@ acceptance_criteria:
     when: se ejecuta KNN/TRAVERSE/MATCH
     then: devuelve un error accionable (sin panics)
     test: test_ac_0017_05_integration_errors_are_actionable
+  - id: AC-0017-06
+    given: una base con filas e índices (secundario, HNSW, CSR, FTS)
+    when: se cierra y reabre
+    then: los índices se reconstruyen y las consultas devuelven lo mismo
+    test: test_ac_0017_06_indexes_survive_reopen
 exit_criteria:
   - cargo test -p ruscadb -- test_ac_0017
   - cargo mutants -p ruscadb -p ruscadb-query mutation score >= 70%

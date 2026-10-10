@@ -57,6 +57,7 @@ fn insert_row(database: &mut Database, a: i64, b: &str) {
 
 /// AC-0019-01 — el manifiesto se crea, el epoch sube y persiste entre aperturas.
 #[test]
+// @spec AC-0019-01
 fn test_ac_0019_01_manifest_epoch_persists() {
     let dir = tempfile::tempdir().expect("directorio temporal");
     let path = dir.path().join("ac19_01.data");
@@ -89,6 +90,7 @@ fn test_ac_0019_01_manifest_epoch_persists() {
 
 /// AC-0019-02 — manifiesto con JSON inválido o schema_version futura → error.
 #[test]
+// @spec AC-0019-02
 fn test_ac_0019_02_corrupt_or_future_manifest_is_error() {
     let dir = tempfile::tempdir().expect("directorio temporal");
     let path = dir.path().join("ac19_02.data");
@@ -115,6 +117,7 @@ fn test_ac_0019_02_corrupt_or_future_manifest_is_error() {
 
 /// AC-0019-03 — una versión de una tx en vuelo no es visible (sin dirty reads).
 #[test]
+// @spec AC-0019-03
 fn test_ac_0019_03_in_flight_tx_not_visible() {
     let (_dir, mut database) = open_test_db("ac19_03");
     create_t(&mut database);
@@ -135,6 +138,7 @@ fn test_ac_0019_03_in_flight_tx_not_visible() {
 
 /// AC-0019-04 — snapshot previo al insert no lo ve; el nuevo sí.
 #[test]
+// @spec AC-0019-04
 fn test_ac_0019_04_snapshot_visibility_end_to_end() {
     let (_dir, mut database) = open_test_db("ac19_04");
     create_t(&mut database);
@@ -154,6 +158,7 @@ fn test_ac_0019_04_snapshot_visibility_end_to_end() {
 
 /// AC-0019-05 — el checkpoint_lsn sigue al último LSN confirmado y persiste.
 #[test]
+// @spec AC-0019-05
 fn test_ac_0019_05_checkpoint_lsn_tracks_commits() {
     let dir = tempfile::tempdir().expect("directorio temporal");
     let path = dir.path().join("ac19_05.data");

@@ -99,6 +99,7 @@ const JOIN_QUERY: &str =
 
 /// AC-0052-01 — el INNER JOIN devuelve solo las filas emparejadas.
 #[test]
+// @spec AC-0052-01
 fn test_ac_0052_01_inner_join_matches() {
     let (_dir, mut database) = open_test_db("ac0052_01");
     seed_canonical(&mut database);
@@ -125,6 +126,7 @@ fn test_ac_0052_01_inner_join_matches() {
 
 /// AC-0052-02 — sin coincidencias el JOIN devuelve 0 filas.
 #[test]
+// @spec AC-0052-02
 fn test_ac_0052_02_no_match_empty() {
     let (_dir, mut database) = open_test_db("ac0052_02");
     create_schema(&mut database);
@@ -137,6 +139,7 @@ fn test_ac_0052_02_no_match_empty() {
 
 /// AC-0052-03 — con una tabla vacía el JOIN devuelve 0 filas sin panics.
 #[test]
+// @spec AC-0052-03
 fn test_ac_0052_03_empty_table() {
     let (_dir, mut database) = open_test_db("ac0052_03");
     create_schema(&mut database);
@@ -154,6 +157,7 @@ fn test_ac_0052_03_empty_table() {
 
 /// AC-0052-04 — el `ON` no-equi o multi-condición da error accionable.
 #[test]
+// @spec AC-0052-04
 fn test_ac_0052_04_non_equi_errors() {
     let (_dir, mut database) = open_test_db("ac0052_04");
     seed_canonical(&mut database);

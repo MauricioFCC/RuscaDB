@@ -10,6 +10,7 @@ use ruscadb_query::{JoinClause, parse, parse_statement};
 
 /// AC-0052-01 — `FROM a JOIN b ON a.x = b.y` puebla `Select::join`.
 #[test]
+// @spec AC-0052-01
 fn test_ac_0052_01_parse_inner_join() {
     let select =
         parse("SELECT authors.name FROM authors JOIN books ON authors.id = books.author_id")
@@ -34,6 +35,7 @@ fn test_ac_0052_01_parse_inner_join() {
 
 /// AC-0052-01 — el orden de los lados del `ON` se conserva tal cual.
 #[test]
+// @spec AC-0052-01
 fn test_ac_0052_01_parse_join_reversed_sides() {
     let select =
         parse("SELECT * FROM authors JOIN books ON books.author_id = authors.id").expect("parse");
@@ -58,6 +60,7 @@ fn test_ac_0052_01_parse_join_reversed_sides() {
 
 /// AC-0052-04 — el `ON` no-equi se rechaza con `ParseError` accionable.
 #[test]
+// @spec AC-0052-04
 fn test_ac_0052_04_non_equi_parse_errors() {
     for operator in [">", "<", "!=", ">=", "<="] {
         let input = format!("SELECT * FROM a JOIN b ON a.x {operator} b.y");
@@ -72,6 +75,7 @@ fn test_ac_0052_04_non_equi_parse_errors() {
 
 /// AC-0052-04 — el `ON` multi-condición se rechaza con `ParseError`.
 #[test]
+// @spec AC-0052-04
 fn test_ac_0052_04_multi_condition_parse_errors() {
     let error =
         parse("SELECT * FROM a JOIN b ON a.x = b.y AND a.z = b.w").expect_err("multi-condición");

@@ -959,6 +959,7 @@ mod tests {
 
     /// AC-0002-01 — un COMMIT sincronizado sobrevive al cierre del proceso.
     #[test]
+    // @spec AC-0002-01
     fn test_ac_0002_01_wal_durability_after_restart() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
@@ -975,6 +976,7 @@ mod tests {
 
     /// AC-0002-02 — el recovery trunca la cola rasgada.
     #[test]
+    // @spec AC-0002-02
     fn test_ac_0002_02_wal_recovery_truncated_tail() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
@@ -1003,6 +1005,7 @@ mod tests {
 
     /// AC-0002-03 — el replay del WAL es idempotente.
     #[test]
+    // @spec AC-0002-03
     fn test_ac_0002_03_wal_replay_is_idempotent() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
