@@ -8,6 +8,7 @@
 #   miri       -> UB/unsafe en crates sin unsafe (query, fts, core)
 #   sanitizers -> AddressSanitizer sobre ruscadb-ffi (nightly, linux-gnu)
 #   test-macos -> cargo test --workspace --all-features en macOS (SPEC-0046)
+#   loom       -> model checking del MVCC con --cfg loom (SPEC-0053)
 #
 # El gate T1 (determinista, bloquea merge) vive en `.github/workflows/ci.yml`.
 
@@ -186,3 +187,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
         run: cargo test --workspace --all-features --locked
+
+  # ── T3.6 — Loom: model checking del MVCC (SPEC-0053, alert-only) ───────────
+  # Explora planificaciones de commits/snapshots concurrentes con --cfg loom.
+  loom:
+    name: Loom MVCC
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: loom model tests
+        env:
+          RUSTFLAGS: "--cfg loom"
+        run: cargo test -p ruscadb-txn --test loom_mvcc

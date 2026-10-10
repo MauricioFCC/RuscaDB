@@ -240,7 +240,7 @@ mod tests {
                 "nightly.yml sin trigger '{trigger}'"
             );
         }
-        for job in ["mutation:", "fuzz:", "miri:"] {
+        for job in ["mutation:", "fuzz:", "miri:", "loom:"] {
             assert!(yaml.contains(job), "nightly.yml sin job '{job}'");
         }
         assert!(

@@ -179,6 +179,19 @@ RUSTFLAGS="-Zsanitizer=address" ASAN_OPTIONS=detect_leaks=0 \
 diseño; interesan los errores de memoria. El job `sanitizers` es **alert-only**
 (`continue-on-error: true`) y sube `asan-test.log` como artifact.
 
+### Loom — model checking del MVCC (SPEC-0053)
+
+El job `loom` de nightly explora planificaciones de commits/snapshots
+concurrentes con `RUSTFLAGS="--cfg loom"` (sin toolchain nightly):
+
+```bash
+RUSTFLAGS="--cfg loom" cargo test -p ruscadb-txn --test loom_mvcc
+```
+
+Alert-only (`continue-on-error: true`). Sin el flag, loom ejecuta cada modelo
+una sola vez (sigue verde); con el flag explora las planificaciones acotadas
+(`preemption_bound`).
+
 ### macOS — cross-platform fuera del PR (SPEC-0046)
 
 La cobertura macOS se movió fuera del PR: el job `test-macos` de `nightly.yml`

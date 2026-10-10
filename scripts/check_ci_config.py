@@ -51,6 +51,7 @@ REQUIRED_JOBS: tuple[str, ...] = (
     "miri",
     "sanitizers",
     "test-macos",
+    "loom",
 )
 # Targets que debe fuzzear el job `fuzz` de nightly.yml (SPEC-0042/AC-03).
 FUZZ_TARGETS: tuple[str, ...] = ("query_parse", "wal_recover")
@@ -414,7 +415,7 @@ def main() -> int:
     print(
         "[OK] check_ci_config: ci.yml (matriz rápida ubuntu/windows + "
         "mutation-diff MS>=70 en PR), "
-        "nightly.yml (mutation/fuzz/miri/sanitizers + test-macos, alert-only; "
+        "nightly.yml (mutation/fuzz/miri/sanitizers/loom + test-macos, alert-only; "
         "fuzz con query_parse/wal_recover + dictionary), "
         "mutants.toml y deny.toml (4 secciones) válidos."
     )
