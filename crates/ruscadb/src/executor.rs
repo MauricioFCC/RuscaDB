@@ -11,7 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ruscadb_core::{Record, RecordId, RuscaError, ScalarMap, ScalarValue};
 use ruscadb_query::{
-    AggFunc, Aggregate, CompareOp, Expr, KnnClause, OrderBy, Projection, Select, TraverseClause,
+    AggFunc, Aggregate, CompareOp, Expr, HavingCondition, KnnClause, OrderBy, Projection, Select,
+    TraverseClause,
 };
 use ruscadb_txn::{Snapshot, Version};
 
@@ -175,6 +176,9 @@ pub(crate) fn execute_with_plan_at(
     plan: Plan,
     snapshot: &Snapshot,
 ) -> Result<Vec<Row>, RuscaError> {
+    if let Some(join) = &select.join {
+        return crate::join::execute_join_at(database, select, join, snapshot);
+    }
     let table = Catalog::load(database)?.get(&select.from)?.clone();
     let candidates = fetch_candidates(database, &table, &plan, select.filter.as_ref())?;
     let (matches, scalar_filter) = split_matches(select.filter.as_ref());
@@ -803,15 +807,27 @@ impl GroupAccumulator {
                 row.insert(column.clone(), value);
             }
         }
-        for (aggregate, state) in aggregates.iter().zip(&self.cells) {
-            let value = if aggregate.func == AggFunc::CountStar {
-                ScalarValue::Int(self.row_count as i64)
-            } else {
-                state.finish()
-            };
+        for (index, aggregate) in aggregates.iter().enumerate() {
+            let value = self.aggregate_value(aggregates, index);
             row.insert(aggregate_output_key(aggregate), value);
         }
         row
+    }
+
+    /// Valor final del agregado `aggregates[index]` en este grupo.
+    ///
+    /// Args:
+    ///     aggregates: Lista de agregados alineada con `self.cells`.
+    ///     index: Posición del agregado cuyo valor se pide.
+    ///
+    /// Returns:
+    ///     El valor agregado (`COUNT(*)` usa el conteo de filas).
+    fn aggregate_value(&self, aggregates: &[Aggregate], index: usize) -> ScalarValue {
+        if aggregates[index].func == AggFunc::CountStar {
+            ScalarValue::Int(self.row_count as i64)
+        } else {
+            self.cells[index].finish()
+        }
     }
 }
 
@@ -939,7 +955,14 @@ fn aggregate_records(
     records: &[Record],
 ) -> Result<Vec<Row>, RuscaError> {
     validate_aggregate_query(table, select)?;
-    let kinds = aggregate_kinds(table, select)?;
+    // Agregados del SELECT más los que solo aparecen en el HAVING (SPEC-0051):
+    // se acumulan todos, pero `to_row` solo emite los del SELECT.
+    let mut all_aggregates: Vec<Aggregate> = select.aggregates.clone();
+    all_aggregates.extend(having_aggregates(select));
+    let kinds: Vec<AggKind> = all_aggregates
+        .iter()
+        .map(|aggregate| aggregate_kind(table, aggregate))
+        .collect::<Result<_, _>>()?;
     let mut groups: BTreeMap<Vec<u8>, GroupAccumulator> = BTreeMap::new();
     if select.group_by.is_empty() {
         groups.insert(Vec::new(), GroupAccumulator::empty(&kinds));
@@ -951,15 +974,11 @@ fn aggregate_records(
             .entry(key)
             .or_insert_with(|| GroupAccumulator::new(keys, &kinds));
         group.row_count += 1;
-        accumulate(
-            &select.aggregates,
-            &kinds,
-            &record.scalars,
-            &mut group.cells,
-        )?;
+        accumulate(&all_aggregates, &kinds, &record.scalars, &mut group.cells)?;
     }
     let mut rows: Vec<Row> = groups
         .values()
+        .filter(|group| group_satisfies_having(group, &all_aggregates, &select.having))
         .map(|group| group.to_row(&select.projection, &select.aggregates))
         .collect();
     if let Some(order_by) = &select.order_by {
@@ -969,6 +988,70 @@ fn aggregate_records(
         rows.truncate(limit as usize);
     }
     Ok(rows)
+}
+
+/// Agregados que solo aparecen en el `HAVING` (no están en el `SELECT`).
+///
+/// Args:
+///     select: Consulta con agregados y condiciones `HAVING`.
+///
+/// Returns:
+///     Un [`Aggregate`] sin alias por cada `(func, columna)` del `HAVING`
+///     ausente en `select.aggregates` (para acumularlo junto al resto).
+fn having_aggregates(select: &Select) -> Vec<Aggregate> {
+    let mut extra = Vec::new();
+    for condition in &select.having {
+        let present = select.aggregates.iter().any(|aggregate| {
+            aggregate.func == condition.func && aggregate.column == condition.column
+        });
+        if !present {
+            extra.push(Aggregate {
+                func: condition.func,
+                column: condition.column.clone(),
+                alias: None,
+            });
+        }
+    }
+    extra
+}
+
+/// Indica si un grupo satisface todas las condiciones del `HAVING` (AND).
+///
+/// Un literal `NULL` o un agregado `NULL` excluyen al grupo (como en `WHERE`).
+/// Un agregado del `HAVING` ausente en la lista acumulada es un error interno.
+fn group_satisfies_having(
+    group: &GroupAccumulator,
+    aggregates: &[Aggregate],
+    having: &[HavingCondition],
+) -> bool {
+    having.iter().all(|condition| {
+        let position = aggregates.iter().position(|aggregate| {
+            aggregate.func == condition.func && aggregate.column == condition.column
+        });
+        let Some(index) = position else {
+            return false;
+        };
+        let value = group.aggregate_value(aggregates, index);
+        let Ok(literal) = having_literal_value(&condition.literal) else {
+            return false;
+        };
+        compare_values(condition.op, &value, &literal).unwrap_or(false)
+    })
+}
+
+/// Valor escalar de un literal del `HAVING` (el parser solo admite Int/Float/Text).
+///
+/// Errors:
+///     [`RuscaError::TypeMismatch`] si el literal no es un escalar simple.
+fn having_literal_value(literal: &Expr) -> Result<ScalarValue, RuscaError> {
+    match literal {
+        Expr::Int(number) => Ok(ScalarValue::Int(*number)),
+        Expr::Float(number) => Ok(ScalarValue::Float(*number)),
+        Expr::Text(text) => Ok(ScalarValue::Text(text.clone())),
+        other => Err(RuscaError::TypeMismatch {
+            message: format!("HAVING exige un literal, se obtuvo {other:?}"),
+        }),
+    }
 }
 
 /// Valida la consulta agregada (proyección agrupada, columnas y tipos).
@@ -1004,6 +1087,11 @@ fn validate_aggregate_query(table: &TableDef, select: &Select) -> Result<(), Rus
         }
     }
     let _ = aggregate_kinds(table, select)?;
+    // Valida los agregados del HAVING con las mismas reglas (columna
+    // existente, SUM/AVG numéricos) para errores accionables (SPEC-0051).
+    for aggregate in having_aggregates(select) {
+        let _ = aggregate_kind(table, &aggregate)?;
+    }
     if let Some(order_by) = &select.order_by {
         if !is_aggregate_output_column(select, &order_by.column) {
             return Err(RuscaError::ColumnNotFound {

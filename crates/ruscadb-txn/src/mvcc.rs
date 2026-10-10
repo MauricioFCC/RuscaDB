@@ -6,7 +6,7 @@
 //! isolation*: sin lecturas sucias, con *first-committer-wins* como política de
 //! conflicto.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ruscadb_core::RuscaError;
 use serde::{Deserialize, Serialize};
@@ -96,6 +96,14 @@ pub struct TxnManager {
     next_tx: TxId,
     in_flight: BTreeSet<TxId>,
     committed: BTreeSet<TxId>,
+    /// Escrituras staged por transacción en vuelo (detección first-committer-wins).
+    write_sets: BTreeMap<TxId, BTreeSet<String>>,
+    /// Reloj de commits visto al `begin` (para saber qué es concurrente).
+    begin_clock: BTreeMap<TxId, u64>,
+    /// Último reloj de commit por clave (quién confirmó último cada clave).
+    committed_writes: BTreeMap<String, u64>,
+    /// Contador monótono de commits (reloj lógico de first-committer-wins).
+    commit_clock: u64,
 }
 
 impl TxnManager {
@@ -109,6 +117,10 @@ impl TxnManager {
             next_tx: FIRST_TX,
             in_flight: BTreeSet::new(),
             committed: BTreeSet::new(),
+            write_sets: BTreeMap::new(),
+            begin_clock: BTreeMap::new(),
+            committed_writes: BTreeMap::new(),
+            commit_clock: 0,
         }
     }
 
@@ -121,7 +133,32 @@ impl TxnManager {
         let tx = self.next_tx;
         self.next_tx += 1;
         self.in_flight.insert(tx);
+        self.begin_clock.insert(tx, self.commit_clock);
         tx
+    }
+
+    /// Registra la intención de escribir `key` en la transacción en vuelo.
+    ///
+    /// Sin esta declaración, `commit` no puede detectar conflictos
+    /// write-write (first-committer-wins) sobre la clave.
+    ///
+    /// Args:
+    ///     tx: Identificador devuelto por [`begin`](TxnManager::begin).
+    ///     key: Clave lógica que la transacción pretende escribir.
+    ///
+    /// Returns:
+    ///     `Ok(())` si la intención quedó registrada.
+    ///
+    /// Raises:
+    ///     [`RuscaError::InvalidConfig`] si `tx` no está en vuelo.
+    pub fn stage_write(&mut self, tx: TxId, key: String) -> Result<(), RuscaError> {
+        if !self.in_flight.contains(&tx) {
+            return Err(RuscaError::InvalidConfig(format!(
+                "stage_write en transacción no en vuelo: tx_id {tx}"
+            )));
+        }
+        self.write_sets.entry(tx).or_default().insert(key);
+        Ok(())
     }
 
     /// Publica una transacción en vuelo.
@@ -135,11 +172,39 @@ impl TxnManager {
     /// Raises:
     ///     [`RuscaError::InvalidConfig`] si `tx` no está en vuelo (inexistente,
     ///     ya confirmada o nunca iniciada).
+    /// Publica una transacción en vuelo con first-committer-wins.
+    ///
+    /// Si otra transacción concurrente (confirmada después de que `tx`
+    /// empezara) ya escribió alguna clave del write-set de `tx`, el commit
+    /// falla con [`RuscaError::WriteConflict`] y `tx` deja de estar en vuelo
+    /// (hay que empezar una transacción nueva para reintentar).
+    ///
+    /// Args:
+    ///     tx: Identificador devuelto por [`begin`](TxnManager::begin).
+    ///
+    /// Returns:
+    ///     `Ok(())` si la transacción se publicó sin conflictos.
+    ///
+    /// Raises:
+    ///     [`RuscaError::InvalidConfig`] si `tx` no está en vuelo;
+    ///     [`RuscaError::WriteConflict`] si perdió la carrera por una clave.
     pub fn commit(&mut self, tx: TxId) -> Result<(), RuscaError> {
         if !self.in_flight.remove(&tx) {
             return Err(RuscaError::InvalidConfig(format!(
                 "commit de transacción no en vuelo: tx_id {tx}"
             )));
+        }
+        let seen = self.begin_clock.remove(&tx).unwrap_or(0);
+        let staged = self.write_sets.remove(&tx).unwrap_or_default();
+        if let Some(key) = staged
+            .iter()
+            .find(|key| self.committed_writes.get(*key).copied().unwrap_or(0) > seen)
+        {
+            return Err(RuscaError::WriteConflict { key: key.clone() });
+        }
+        self.commit_clock += 1;
+        for key in staged {
+            self.committed_writes.insert(key, self.commit_clock);
         }
         self.committed.insert(tx);
         Ok(())
@@ -168,6 +233,8 @@ impl TxnManager {
                 "rollback de transacción no en vuelo: tx_id {tx}"
             )));
         }
+        self.write_sets.remove(&tx);
+        self.begin_clock.remove(&tx);
         Ok(())
     }
 
@@ -251,4 +318,55 @@ pub fn gc(versions: &mut Vec<Version>, watermark: TxId) -> usize {
     let before = versions.len();
     versions.retain(|version| !is_obsolete(version, watermark));
     before - versions.len()
+}
+
+/// Cuenta las versiones obsoletas (bloat) sin purgar (SPEC-0055, R5).
+///
+/// Es la métrica que el reaper debe llevar a cero: `dead_versions` antes de
+/// `gc` menos lo purgado debe ser 0, y `dead_versions` después de `gc` es 0.
+///
+/// Args:
+///     versions: Versiones del registro (no se modifican).
+///     watermark: Low watermark actual (`TxnManager::low_watermark`).
+///
+/// Returns:
+///     Número de versiones purgables por `gc`.
+pub fn dead_versions(versions: &[Version], watermark: TxId) -> usize {
+    versions
+        .iter()
+        .filter(|version| is_obsolete(version, watermark))
+        .count()
+}
+
+/// Reintenta una operación ante conflictos write-write (SPEC-0055, R6).
+///
+/// Solo reintenta [`RuscaError::WriteConflict`]; cualquier otro error se
+/// devuelve de inmediato. Entre intentos duerme un backoff exponencial
+/// acotado (50 µs · 2^n, techo 2 ms) para desincronizar a los contendientes.
+/// Garantiza al menos un intento aunque `max_attempts` sea 0.
+///
+/// Args:
+///     max_attempts: Tope de intentos totales (incluido el primero).
+///     operation: Operación que empieza su propia transacción en cada intento
+///         (un `tx` conflictado no puede reutilizarse).
+///
+/// Returns:
+///     El primer `Ok`, o el último error tras agotar los intentos.
+pub fn retry_on_conflict<T>(
+    max_attempts: u32,
+    mut operation: impl FnMut() -> Result<T, RuscaError>,
+) -> Result<T, RuscaError> {
+    let attempts = max_attempts.max(1);
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match operation() {
+            Ok(value) => return Ok(value),
+            Err(RuscaError::WriteConflict { .. }) if attempt < attempts => {
+                let backoff = 50_u64.saturating_mul(1 << attempt.min(6)).min(2_000);
+                std::thread::sleep(std::time::Duration::from_micros(backoff));
+            }
+            Err(other) => return Err(other),
+        }
+    }
 }

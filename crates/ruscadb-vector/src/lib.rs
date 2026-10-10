@@ -10,10 +10,12 @@
 
 mod distance;
 mod hnsw;
+mod quant;
 mod rng;
 
 pub use distance::distance;
-pub use hnsw::{HnswIndex, HnswParams};
+pub use hnsw::{HnswIndex, HnswParams, estimate_footprint};
+pub use quant::{QuantizedFlatIndex, ScalarQuantizer};
 
 #[cfg(test)]
 mod tests {

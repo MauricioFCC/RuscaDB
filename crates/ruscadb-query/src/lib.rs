@@ -13,8 +13,8 @@ pub mod lexer;
 mod parser;
 
 pub use ast::{
-    AggFunc, Aggregate, CompareOp, Delete, Explain, Expr, Insert, KnnClause, OrderBy, Projection,
-    Select, Statement, TraverseClause, Update,
+    AggFunc, Aggregate, ColumnRef, CompareOp, Delete, Explain, Expr, HavingCondition, Insert,
+    JoinClause, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause, Update,
 };
 pub use parser::{parse, parse_statement};
 
@@ -28,10 +28,10 @@ mod tests {
     use ruscadb_core::RuscaError;
 
     /// Palabras reservadas de RQL: no pueden usarse como identificadores.
-    const RESERVED_IDENTIFIERS: [&str; 27] = [
+    const RESERVED_IDENTIFIERS: [&str; 29] = [
         "select", "from", "where", "and", "limit", "knn", "traverse", "depth", "explain", "match",
         "order", "by", "asc", "desc", "group", "count", "sum", "avg", "min", "max", "as", "insert",
-        "into", "values", "update", "set", "delete",
+        "into", "values", "update", "set", "delete", "join", "on",
     ];
 
     /// Estrategia de identificadores que evita las palabras reservadas.
@@ -223,6 +223,8 @@ mod tests {
                 projection: Projection::Columns(columns),
                 aggregates: vec![],
                 group_by: vec![],
+                having: vec![],
+                join: None,
                 from: table,
                 filter: None,
                 knn: None,
@@ -577,6 +579,8 @@ mod tests {
                 projection: Projection::Columns(columns),
                 aggregates: vec![],
                 group_by: vec![],
+                having: vec![],
+                join: None,
                 from: table,
                 filter: None,
                 knn: Some(KnnClause { column: knn_column, k, query }),
@@ -600,6 +604,8 @@ mod tests {
                 projection: Projection::All,
                 aggregates: vec![],
                 group_by: vec![],
+                having: vec![],
+                join: None,
                 from: table,
                 filter: Some(Expr::Compare {
                     left: Box::new(Expr::Column(filter_column)),
@@ -628,6 +634,8 @@ mod tests {
                 projection: Projection::All,
                 aggregates: vec![],
                 group_by: vec![],
+                having: vec![],
+                join: None,
                 from: table,
                 filter: Some(Expr::Match { column, query }),
                 knn: None,
@@ -652,6 +660,8 @@ mod tests {
                 projection: Projection::All,
                 aggregates: vec![],
                 group_by: vec![],
+                having: vec![],
+                join: None,
                 from: table,
                 filter: None,
                 knn: None,
@@ -885,6 +895,8 @@ mod tests {
                 projection: Projection::All,
                 aggregates: vec![],
                 group_by: vec![],
+                having: vec![],
+                join: None,
                 from: table,
                 filter: Some(Expr::Compare {
                     left: Box::new(Expr::DocExtract { column, path: segments }),

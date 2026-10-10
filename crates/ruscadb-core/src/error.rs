@@ -128,4 +128,24 @@ pub enum RuscaError {
         /// Columna de aristas pedida por `TRAVERSE`.
         column: String,
     },
+
+    /// Conflicto write-write MVCC (first-committer-wins, SPEC-0055).
+    #[error(
+        "conflicto write-write en la clave '{key}' (otra transacción concurrente confirmó primero; reintenta)"
+    )]
+    WriteConflict {
+        /// Clave escrita por dos transacciones concurrentes.
+        key: String,
+    },
+
+    /// Límite duro de recursos excedido (roadmap §6.4, SPEC-0058).
+    #[error("límite de recurso '{resource}' excedido: tope {limit} bytes, estimado {actual} bytes")]
+    ResourceLimit {
+        /// Recurso limitado (p. ej. "hnsw_ram").
+        resource: String,
+        /// Tope configurado en bytes.
+        limit: u64,
+        /// Uso estimado en bytes.
+        actual: u64,
+    },
 }

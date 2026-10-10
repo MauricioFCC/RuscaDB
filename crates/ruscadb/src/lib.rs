@@ -22,6 +22,7 @@ mod gc;
 mod heap;
 mod index;
 mod indexes;
+mod join;
 mod table_api;
 
 pub use builder::DatabaseBuilder;

@@ -32,13 +32,29 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   SBOM y supply chain.
 - **SPEC-0001..0050**: 50 specs SDD (`specs/*.md`), cada AC trazado a un test
   `test_ac_XXXX_NN_*` verificado por `cargo xtask trace`.
+- **SPEC-0051**: `GROUP BY` multi-clave + `HAVING` (`COUNT`/`SUM`/`AVG` con
+  `AND`; `HAVING` sin `GROUP BY` es `ParseError`).
+- **SPEC-0052**: `INNER JOIN` de dos tablas por igualdad simple (nested-loop
+  con lookups al índice primario; no-equi rechazado con error accionable).
+- **SPEC-0053**: modelo loom del MVCC (commits concurrentes sin pérdida,
+  atomicidad del snapshot).
+- **SPEC-0055**: contención MVCC c=64 sin pérdidas, first-committer-wins con
+  error `WriteConflict`, `retry_on_conflict` con backoff acotado y métrica
+  `dead_versions` para el reaper.
+- **SPEC-0056**: harness crash-recovery del WAL (hijo + kill pre/post `sync`,
+  tail rasgada truncada, replay idempotente).
+- **SPEC-0058**: budget duro de RAM para HNSW (`ResourceLimit` con estimado)
+  + índice plano cuantizado (1 B/dim) con recall@10 ≥ 0.95.
+- **SPEC-0054/0057/0059/0060** (aceptadas, pendientes): límites del planner,
+  time-series en la fachada, benches criterion y revalidación ADR-001.
 
 ### Changed
 
 - RQL ampliado de forma incremental: `SELECT`/`WHERE`/`LIMIT` (SPEC-0005) →
   extensiones `KNN`/`TRAVERSE`/`EXPLAIN` (SPEC-0015) → `ORDER BY` (SPEC-0036) →
   `GROUP BY` + agregados (SPEC-0040) → DML y operadores de documento
-  (SPEC-0043/0044).
+  (SPEC-0043/0044) → `GROUP BY` multi-clave + `HAVING` (SPEC-0051) →
+  `INNER JOIN` por PK (SPEC-0052).
 - La fachada `ruscadb` integra el blob store y su GC con el barrier R7
   (SPEC-0038) y el iFVS en el executor del `KNN` con `WHERE` (SPEC-0048).
 

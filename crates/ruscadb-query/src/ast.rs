@@ -56,6 +56,22 @@ pub struct Aggregate {
     pub alias: Option<String>,
 }
 
+/// Condición de `HAVING`: `<agregado> <op> <literal>` (SPEC-0051).
+///
+/// Se evalúa por grupo DESPUÉS de agregar; varias condiciones se combinan con
+/// `AND`. El literal es siempre un escalar (`Int`/`Float`/`Text`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct HavingCondition {
+    /// Función de agregación (`CountStar` solo para `COUNT(*)`).
+    pub func: AggFunc,
+    /// Columna agregada (`None` solo para `COUNT(*)`).
+    pub column: Option<String>,
+    /// Operador de comparación contra el literal.
+    pub op: CompareOp,
+    /// Literal escalar de comparación.
+    pub literal: Expr,
+}
+
 /// Operador de comparación.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompareOp {
@@ -203,6 +219,30 @@ pub struct OrderBy {
     pub desc: bool,
 }
 
+/// Referencia cualificada `tabla.columna` del `ON` de un `JOIN` (SPEC-0052).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ColumnRef {
+    /// Tabla propietaria de la columna.
+    pub table: String,
+    /// Columna dentro de la tabla.
+    pub column: String,
+}
+
+/// Cláusula `JOIN <tabla> ON <izq> = <der>` (SPEC-0052).
+///
+/// Solo `INNER JOIN` con una única igualdad entre columnas cualificadas
+/// (`a.x = b.y`); cualquier otra forma se rechaza en el parser con
+/// [`ParseError`](ruscadb_core::RuscaError::ParseError) accionable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JoinClause {
+    /// Tabla interior del JOIN.
+    pub table: String,
+    /// Lado izquierdo de la igualdad.
+    pub left: ColumnRef,
+    /// Lado derecho de la igualdad.
+    pub right: ColumnRef,
+}
+
 /// Sentencia `SELECT` analizada.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Select {
@@ -216,6 +256,8 @@ pub struct Select {
     pub aggregates: Vec<Aggregate>,
     /// Tabla de origen.
     pub from: String,
+    /// JOIN interior con igualdad simple (SPEC-0052; `None` sin `JOIN`).
+    pub join: Option<JoinClause>,
     /// Filtro `WHERE` (opcional).
     pub filter: Option<Expr>,
     /// Cláusula `KNN` (opcional).
@@ -224,6 +266,8 @@ pub struct Select {
     pub traverse: Option<TraverseClause>,
     /// Columnas de `GROUP BY` (vacío si no hay agrupación).
     pub group_by: Vec<String>,
+    /// Condiciones de `HAVING` unidas por `AND` (vacío si no hay; SPEC-0051).
+    pub having: Vec<HavingCondition>,
     /// Cláusula `ORDER BY` (opcional).
     pub order_by: Option<OrderBy>,
     /// Límite `LIMIT` (opcional).
@@ -347,11 +391,40 @@ impl fmt::Display for Aggregate {
     }
 }
 
+impl fmt::Display for HavingCondition {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.column {
+            Some(column) => write!(formatter, "{}({column})", self.func.as_str())?,
+            None => write!(formatter, "{}(*)", self.func.as_str())?,
+        }
+        write!(formatter, " {} {}", self.op.as_str(), self.literal)
+    }
+}
+
+impl fmt::Display for ColumnRef {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}.{}", self.table, self.column)
+    }
+}
+
+impl fmt::Display for JoinClause {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "JOIN {} ON {} = {}",
+            self.table, self.left, self.right
+        )
+    }
+}
+
 impl fmt::Display for Select {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "SELECT ")?;
         write_projection(formatter, &self.projection, &self.aggregates)?;
         write!(formatter, " FROM {}", self.from)?;
+        if let Some(join) = &self.join {
+            write!(formatter, " {join}")?;
+        }
         if let Some(filter) = &self.filter {
             write!(formatter, " WHERE {filter}")?;
         }
@@ -363,6 +436,15 @@ impl fmt::Display for Select {
         }
         if !self.group_by.is_empty() {
             write!(formatter, " GROUP BY {}", self.group_by.join(", "))?;
+        }
+        if !self.having.is_empty() {
+            write!(formatter, " HAVING ")?;
+            for (index, condition) in self.having.iter().enumerate() {
+                if index > 0 {
+                    write!(formatter, " AND ")?;
+                }
+                write!(formatter, "{condition}")?;
+            }
         }
         if let Some(order_by) = &self.order_by {
             write!(formatter, " {order_by}")?;

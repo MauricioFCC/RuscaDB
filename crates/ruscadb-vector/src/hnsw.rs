@@ -17,10 +17,12 @@ pub struct HnswParams {
     pub ef_construction: usize,
     /// Métrica de distancia.
     pub metric: Metric,
+    /// Budget duro de RAM en bytes (`None` = sin límite, SPEC-0058).
+    pub memory_budget_bytes: Option<u64>,
 }
 
 impl HnswParams {
-    /// Crea parámetros con valores por defecto razonables.
+    /// Crea parámetros con valores por defecto razonables (sin budget).
     ///
     /// Args:
     ///     metric: Métrica de distancia.
@@ -29,8 +31,25 @@ impl HnswParams {
             m: 16,
             ef_construction: 200,
             metric,
+            memory_budget_bytes: None,
         }
     }
+}
+
+/// Estima el footprint RAM del HNSW en bytes (SPEC-0058, R3).
+///
+/// Modelo: `n·dim·4` (vectores f32) + `n·2·m·8` (vecinos capa 0, ids u64) +
+/// `n·64` (overhead de nodo). Es una cota de admisión, no una medición.
+///
+/// Args:
+///     n: Número de vectores.
+///     m: Grado `HnswParams::m`.
+///     dim: Dimensión.
+///
+/// Returns:
+///     Bytes estimados.
+pub fn estimate_footprint(n: usize, m: usize, dim: usize) -> u64 {
+    n as u64 * (dim as u64 * 4 + 2 * m as u64 * 8 + 64)
 }
 
 /// Candidato (nodo, distancia) ordenable por distancia.
@@ -141,8 +160,19 @@ impl HnswIndex {
     ///     El id asignado (0-based, en orden de inserción).
     ///
     /// Errors:
-    ///     [`RuscaError::DimensionMismatch`] si la dimensión no coincide.
+    ///     [`RuscaError::DimensionMismatch`] si la dimensión no coincide;
+    ///     [`RuscaError::ResourceLimit`] si el budget de RAM no admite otro vector.
     pub fn insert(&mut self, vector: &[f32]) -> Result<usize, RuscaError> {
+        if let Some(budget) = self.params.memory_budget_bytes {
+            let projected = estimate_footprint(self.nodes.len() + 1, self.params.m, self.dim);
+            if projected > budget {
+                return Err(RuscaError::ResourceLimit {
+                    resource: "hnsw_ram".to_string(),
+                    limit: budget,
+                    actual: projected,
+                });
+            }
+        }
         self.insert_impl(vector)
     }
 
@@ -416,6 +446,7 @@ mod unit_tests {
                 m: 8,
                 ef_construction: 10,
                 metric: Metric::L2,
+                memory_budget_bytes: None,
             },
             3,
         )

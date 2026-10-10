@@ -59,6 +59,12 @@ pub enum Keyword {
     Set,
     /// `DELETE` (DML).
     Delete,
+    /// `JOIN` (SPEC-0052: solo `INNER JOIN` con una igualdad).
+    Join,
+    /// `ON` (condición del `JOIN`, SPEC-0052).
+    On,
+    /// `HAVING` (filtro post-agregación, SPEC-0051).
+    Having,
 }
 
 impl Keyword {
@@ -92,6 +98,9 @@ impl Keyword {
             Self::Update => "UPDATE",
             Self::Set => "SET",
             Self::Delete => "DELETE",
+            Self::Join => "JOIN",
+            Self::On => "ON",
+            Self::Having => "HAVING",
         }
     }
 
@@ -131,6 +140,9 @@ impl Keyword {
             "update" => Some(Self::Update),
             "set" => Some(Self::Set),
             "delete" => Some(Self::Delete),
+            "join" => Some(Self::Join),
+            "on" => Some(Self::On),
+            "having" => Some(Self::Having),
             _ => None,
         }
     }
@@ -181,6 +193,8 @@ pub enum Token {
     Arrow,
     /// `@>` (contención documental).
     AtGt,
+    /// `.` (separador de referencia cualificada `tabla.columna`, SPEC-0052).
+    Dot,
 }
 
 /// Token con su posición (byte) en el texto original.
@@ -289,6 +303,7 @@ impl<'a> Lexer<'a> {
             b']' => self.single(Token::RBracket),
             b'(' => self.single(Token::LParen),
             b')' => self.single(Token::RParen),
+            b'.' => self.consume_dot(position)?,
             b'\'' => Token::Text(self.read_string(position)?),
             b'0'..=b'9' => self.read_number(position)?,
             byte if byte.is_ascii_alphabetic() || byte == b'_' => self.read_word(),
@@ -311,6 +326,21 @@ impl<'a> Lexer<'a> {
     fn single(&mut self, token: Token) -> Token {
         self.index += 1;
         token
+    }
+
+    /// Consume `.` como separador `tabla.columna` (SPEC-0052).
+    ///
+    /// Solo es separador cuando le sigue el inicio de un identificador
+    /// (letra o `_`); en otro caso se conserva el error histórico
+    /// "carácter inesperado '.'" (p. ej. el segundo punto de `1.2.3`).
+    fn consume_dot(&mut self, position: usize) -> Result<Token, RuscaError> {
+        match self.peek_next() {
+            Some(byte) if byte.is_ascii_alphabetic() || byte == b'_' => {
+                self.index += 1;
+                Ok(Token::Dot)
+            }
+            _ => Err(parse_error("carácter inesperado '.'", position)),
+        }
     }
 
     /// Consume `<|` (KNN), `<=` o `<` según el byte siguiente.

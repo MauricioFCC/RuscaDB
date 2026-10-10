@@ -1,8 +1,8 @@
 //! Parser recursive-descent de RQL sobre los tokens del lexer.
 
 use crate::ast::{
-    AggFunc, Aggregate, CompareOp, Delete, Explain, Expr, Insert, KnnClause, OrderBy, Projection,
-    Select, Statement, TraverseClause, Update,
+    AggFunc, Aggregate, ColumnRef, CompareOp, Delete, Explain, Expr, HavingCondition, Insert,
+    JoinClause, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause, Update,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use ruscadb_core::RuscaError;
@@ -325,7 +325,7 @@ impl Parser {
         self.expect_keyword(Keyword::Select)?;
         let (projection, aggregates) = self.parse_projection()?;
         self.expect_keyword(Keyword::From)?;
-        let from = self.expect_ident()?;
+        let (from, join) = self.parse_from()?;
         let filter = if self.match_keyword(Keyword::Where) {
             Some(self.parse_filter()?)
         } else {
@@ -346,6 +346,15 @@ impl Parser {
         } else {
             Vec::new()
         };
+        // `HAVING` exige `GROUP BY` (SPEC-0051, AC-0051-03).
+        let having = if self.match_keyword(Keyword::Having) {
+            if group_by.is_empty() {
+                return Err(self.error("HAVING exige GROUP BY".to_string()));
+            }
+            self.parse_having()?
+        } else {
+            Vec::new()
+        };
         let order_by = if self.match_keyword(Keyword::Order) {
             Some(self.parse_order_by()?)
         } else {
@@ -360,13 +369,92 @@ impl Parser {
             projection,
             aggregates,
             from,
+            join,
             filter,
             knn,
             traverse,
             group_by,
+            having,
             order_by,
             limit,
         })
+    }
+
+    /// Parsea la cláusula `FROM`: tabla exterior + `JOIN` opcional (SPEC-0052).
+    ///
+    /// Returns:
+    ///     `(tabla, join)`: la tabla de `FROM` y la cláusula `JOIN`, si la hay.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si el `JOIN` está mal formado.
+    fn parse_from(&mut self) -> Result<(String, Option<JoinClause>), RuscaError> {
+        let from = self.expect_ident()?;
+        let join = if self.match_keyword(Keyword::Join) {
+            Some(self.parse_join(&from)?)
+        } else {
+            None
+        };
+        Ok((from, join))
+    }
+
+    /// Parsea `JOIN <tabla> ON <a.x> = <b.y>` (solo INNER, una igualdad).
+    ///
+    /// Args:
+    ///     from: Tabla exterior ya parseada (para rechazar el self-join).
+    ///
+    /// Returns:
+    ///     La cláusula [`JoinClause`] con ambos lados cualificados.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si el `ON` no es una única igualdad
+    ///     `tabla.columna = tabla.columna`, si hay multi-condición (`AND`),
+    ///     o si es un self-join sin alias (ambiguo, fuera de alcance).
+    fn parse_join(&mut self, from: &str) -> Result<JoinClause, RuscaError> {
+        let table = self.expect_ident()?;
+        if table == from {
+            return Err(self.error(
+                "self-join sin alias no soportado: usa alias distintos para cada lado (fuera de alcance de SPEC-0052)",
+            ));
+        }
+        self.expect_keyword(Keyword::On)?;
+        let left = self.parse_join_side()?;
+        if self.peek() != Some(&Token::Eq) {
+            return Err(self.error(
+                "el ON del JOIN solo admite una igualdad 'a.x = b.y' (non-equi fuera de alcance de SPEC-0052)",
+            ));
+        }
+        self.advance();
+        let right = self.parse_join_side()?;
+        if self.peek() == Some(&Token::Keyword(Keyword::And)) {
+            return Err(self.error(
+                "el ON del JOIN solo admite una condición (multi-condición con AND fuera de alcance de SPEC-0052)",
+            ));
+        }
+        Ok(JoinClause { table, left, right })
+    }
+
+    /// Parsea un lado del `ON`: referencia cualificada `tabla.columna`.
+    ///
+    /// Returns:
+    ///     La referencia [`ColumnRef`] con tabla y columna.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si falta la tabla, el `.` o la columna.
+    fn parse_join_side(&mut self) -> Result<ColumnRef, RuscaError> {
+        if !matches!(self.peek(), Some(Token::Ident(_))) {
+            return Err(self.error(
+                "el ON del JOIN exige columnas cualificadas 'tabla.columna' (p. ej. ON a.id = b.a_id)",
+            ));
+        }
+        let table = self.expect_ident()?;
+        if self.peek() != Some(&Token::Dot) {
+            return Err(self.error(
+                "el ON del JOIN exige columnas cualificadas 'tabla.columna' (p. ej. ON a.id = b.a_id)",
+            ));
+        }
+        self.advance();
+        let column = self.expect_ident()?;
+        Ok(ColumnRef { table, column })
     }
 
     /// Parsea la proyección: `*` o una lista de columnas y agregados.
@@ -385,7 +473,7 @@ impl Parser {
             if self.is_aggregate_function() {
                 aggregates.push(self.parse_aggregate()?);
             } else {
-                columns.push(self.expect_ident()?);
+                columns.push(self.parse_column_name()?);
             }
             if self.peek() == Some(&Token::Comma) {
                 self.advance();
@@ -394,6 +482,24 @@ impl Parser {
             }
         }
         Ok((Projection::Columns(columns), aggregates))
+    }
+
+    /// Parsea un nombre de columna proyectada: `col` o `tabla.col` (SPEC-0052).
+    ///
+    /// Returns:
+    ///     El nombre tal cual (`col`) o cualificado (`tabla.col`).
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si no hay un identificador (o falta la
+    ///     columna tras el `.`).
+    fn parse_column_name(&mut self) -> Result<String, RuscaError> {
+        let first = self.expect_ident()?;
+        if self.peek() != Some(&Token::Dot) {
+            return Ok(first);
+        }
+        self.advance();
+        let second = self.expect_ident()?;
+        Ok(format!("{first}.{second}"))
     }
 
     /// Indica si el token actual inicia una función de agregación.
@@ -408,6 +514,29 @@ impl Parser {
 
     /// Parsea un agregado `FUNC(<*|columna>) [AS alias]`.
     fn parse_aggregate(&mut self) -> Result<Aggregate, RuscaError> {
+        let (func, column) = self.parse_agg_call()?;
+        let alias = if self.match_keyword(Keyword::As) {
+            Some(self.expect_ident()?)
+        } else {
+            None
+        };
+        Ok(Aggregate {
+            func,
+            column,
+            alias,
+        })
+    }
+
+    /// Parsea la llamada `FUNC(<*|columna>)` sin alias.
+    ///
+    /// Returns:
+    ///     `(función, columna)`: `COUNT(*)` se normaliza a
+    ///     `(CountStar, None)`; solo `COUNT` admite `'*'`.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si falta el paréntesis o si una función
+    ///     distinta de `COUNT` usa `'*'`.
+    fn parse_agg_call(&mut self) -> Result<(AggFunc, Option<String>), RuscaError> {
         let func = self.parse_agg_func()?;
         self.expect_token(
             &Token::LParen,
@@ -434,16 +563,7 @@ impl Parser {
             }
             (other, true) => other,
         };
-        let alias = if self.match_keyword(Keyword::As) {
-            Some(self.expect_ident()?)
-        } else {
-            None
-        };
-        Ok(Aggregate {
-            func,
-            column,
-            alias,
-        })
+        Ok((func, column))
     }
 
     /// Parsea la función de agregación y avanza el cursor.
@@ -469,6 +589,41 @@ impl Parser {
             columns.push(self.expect_ident()?);
         }
         Ok(columns)
+    }
+
+    /// Parsea `HAVING <agregado> <op> <literal> [AND ...]` (SPEC-0051).
+    ///
+    /// Returns:
+    ///     Las condiciones del `HAVING` en su orden de aparición.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si un agregado está mal formado o si el
+    ///     lado derecho no es un literal escalar.
+    fn parse_having(&mut self) -> Result<Vec<HavingCondition>, RuscaError> {
+        let mut conditions = vec![self.parse_having_condition()?];
+        while self.match_keyword(Keyword::And) {
+            conditions.push(self.parse_having_condition()?);
+        }
+        Ok(conditions)
+    }
+
+    /// Parsea una condición `<agregado> <op> <literal>` del `HAVING`.
+    ///
+    /// Returns:
+    ///     La condición con el agregado normalizado (`COUNT(*)` → `CountStar`).
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] ante agregado u operador inválidos.
+    fn parse_having_condition(&mut self) -> Result<HavingCondition, RuscaError> {
+        let (func, column) = self.parse_agg_call()?;
+        let op = self.parse_compare_op()?;
+        let literal = self.parse_literal()?;
+        Ok(HavingCondition {
+            func,
+            column,
+            op,
+            literal,
+        })
     }
 
     /// Parsea el filtro `WHERE` (predicados unidos por `AND`, asociativo izq.).
@@ -606,9 +761,20 @@ impl Parser {
     }
 
     /// Parsea la cláusula `ORDER BY <col> [ASC|DESC]` (`ASC` por defecto).
+    ///
+    /// Acepta la forma cualificada `tabla.columna` (necesaria para que el
+    /// `ORDER BY` tras un `JOIN` llegue al executor, que lo rechaza con un
+    /// error accionable que menciona `JOIN`, SPEC-0052).
     fn parse_order_by(&mut self) -> Result<OrderBy, RuscaError> {
         self.expect_keyword(Keyword::By)?;
-        let column = self.expect_ident()?;
+        let first = self.expect_ident()?;
+        let column = if self.peek() == Some(&Token::Dot) {
+            self.advance();
+            let second = self.expect_ident()?;
+            format!("{first}.{second}")
+        } else {
+            first
+        };
         let desc = self.match_keyword(Keyword::Desc);
         if !desc {
             self.match_keyword(Keyword::Asc);
