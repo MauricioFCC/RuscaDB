@@ -1,0 +1,6 @@
+---
+source: crates/ruscadb-query/tests/snapshots.rs
+assertion_line: 43
+expression: "format!(\"{error}\")"
+---
+error de sintaxis en posición 30: HAVING exige GROUP BY

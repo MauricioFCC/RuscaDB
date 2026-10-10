@@ -4,3 +4,7 @@
 +    }
 +++ b/crates/ruscadb-vector/src/loot.rs
 +    unsafe { core::ptr::read_volatile(ptr) }
++    unsafe fn planted() {}
++    unsafe impl Planted for Widget {}
++++ b/docs/guide.rs
++    let x = y.unwrap();

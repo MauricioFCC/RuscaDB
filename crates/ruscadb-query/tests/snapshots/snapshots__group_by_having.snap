@@ -1,0 +1,6 @@
+---
+source: crates/ruscadb-query/tests/snapshots.rs
+assertion_line: 18
+expression: "format!(\"{statement}\")"
+---
+SELECT b, COUNT(*) FROM t GROUP BY b HAVING COUNT(*) > 1

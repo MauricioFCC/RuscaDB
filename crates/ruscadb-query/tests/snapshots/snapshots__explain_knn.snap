@@ -1,0 +1,6 @@
+---
+source: crates/ruscadb-query/tests/snapshots.rs
+assertion_line: 35
+expression: "format!(\"{statement}\")"
+---
+EXPLAIN SELECT * FROM t KNN embedding <|2|> [0.1, 0.2]

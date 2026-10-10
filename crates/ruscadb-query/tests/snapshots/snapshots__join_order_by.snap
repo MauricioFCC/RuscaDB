@@ -1,0 +1,6 @@
+---
+source: crates/ruscadb-query/tests/snapshots.rs
+assertion_line: 26
+expression: "format!(\"{statement}\")"
+---
+SELECT * FROM a JOIN b ON a.x = b.y ORDER BY a.z

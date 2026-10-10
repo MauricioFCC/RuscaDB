@@ -427,6 +427,42 @@ mod judge_tests {
 
     use super::{Agreement, Level, judge_diff, verdict_line};
 
+    /// Parsers internos: `specacs` deduce estado e ids únicos (MutGen: mata
+    /// `&& -> ||` en el filtro de ids cortos/duplicados).
+    #[test]
+    fn specacs_parses_status_and_dedups() {
+        let (status, ids) = super::specacs(
+            "status: accepted\nacceptance_criteria:\n  - id: AC-0001-01\n  - id: AC-0001-01\n  - id: AC-1\n",
+        );
+        assert_eq!(status, "accepted");
+        assert_eq!(
+            ids,
+            vec!["AC-0001-01".to_string()],
+            "únicos y >= 8: {ids:?}"
+        );
+    }
+
+    /// Parsers internos: `ac_number`/`markers_in` estrictos (MutGen: mata los
+    /// `&& -> ||`, el `> -> >=` y el `-> true` de la validación numérica).
+    #[test]
+    fn ac_number_and_markers_are_strict() {
+        assert_eq!(super::ac_number("AC-0001-01"), Some("0001_01".to_string()));
+        for malformed in ["AC-WIP", "AC-01", "AC-ABCD-01", "AC-0001", "AC-0001-01-x"] {
+            assert_eq!(
+                super::ac_number(malformed),
+                None,
+                "{malformed} no es numérico"
+            );
+        }
+        assert!(super::marker_is_numbered("AC-0001-01"));
+        assert!(!super::marker_is_numbered("AC-WIP"));
+        assert_eq!(
+            super::markers_in("ver AC- y AC-0001-01"),
+            vec!["AC-0001-01".to_string()],
+            "el bare AC- se ignora"
+        );
+    }
+
     /// AC-0061-03 — rúbricas sobre diffs fixture (sucio FAIL, limpio SUCCESS).
     #[test]
     // @spec AC-0061-03
@@ -436,15 +472,22 @@ mod judge_tests {
         let dirty = include_str!("fixtures/dirty.diff");
         let verdict = judge_diff(dirty);
         assert!(!verdict.passes(), "el diff sucio debe fallar");
-        let ids: Vec<&str> = verdict.findings.iter().map(|f| f.id).collect();
-        assert!(ids.contains(&"J1-missing-marker"), "falta J1: {ids:?}");
-        assert!(ids.contains(&"J2-unsafe-outside-ffi"), "falta J2: {ids:?}");
-        assert!(
+        // Conteos exactos (MutGen): cada mutante de un solo operador en las
+        // cadenas ||/&& de J2/J3 cambia estos conteos y debe morir aquí.
+        let count = |id: &str, level: Level| {
             verdict
                 .findings
                 .iter()
-                .any(|f| f.id == "J3-unwrap-in-src" && f.level == Level::Warn),
-            "J3 debe avisar sin fallar: {ids:?}"
+                .filter(|f| f.id == id && f.level == level)
+                .count()
+        };
+        assert_eq!(count("J1-missing-marker", Level::Fail), 1, "J1 exacto");
+        assert_eq!(count("J2-unsafe-outside-ffi", Level::Fail), 3, "J2 exacto");
+        assert_eq!(count("J3-unwrap-in-src", Level::Warn), 1, "J3 exacto");
+        assert_eq!(
+            verdict.findings.len(),
+            5,
+            "sin hallazgos de más ni de menos"
         );
 
         let clean = include_str!("fixtures/clean.diff");
@@ -482,5 +525,61 @@ mod judge_tests {
         assert_eq!(empty.cohen_kappa(), 0.0);
         assert_eq!(empty.false_pass_rate(), 0.0);
         assert_eq!(empty.false_fail_rate(), 0.0);
+
+        // Degenerado con chance == 1 (acuerdo total): κ = 0.0 por guarda, no
+        // NaN (MutGen: mata las mutaciones del guarda anti-división-por-cero).
+        let total = Agreement {
+            tp: 5,
+            fp: 0,
+            fn_: 0,
+            tn: 0,
+        };
+        assert_eq!(total.cohen_kappa(), 0.0);
+    }
+
+    /// El contrato detecta K1 (marcador ausente) y K2 (huérfano) sobre un
+    /// árbol fixture (MutGen: mata `marker_is_numbered -> false`, que apaga
+    /// K2 en silencio).
+    #[test]
+    fn contract_detects_orphan_and_missing_markers() {
+        let root =
+            std::env::temp_dir().join(format!("ruscadb-contract-fixture-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("specs")).expect("specs");
+        std::fs::create_dir_all(root.join("crates/a/src")).expect("src");
+        // Los tokens `fn test_ac_` / `@spec AC-` se concatenan para que K1/K2
+        // no vean este fuente (auto-hospedaje: los escáneres leen *.rs).
+        std::fs::write(
+            root.join("specs/fix.md"),
+            "status: accepted\nacceptance_criteria:\n  - id: AC-0001-01\n",
+        )
+        .expect("spec");
+        let rs = "// @spec AC-".to_string()
+            + "0001-01\nfn test_ac_"
+            + "0001_01_ok() {}\nfn helper_a() {}\nfn helper_b() {}\nfn helper_c() {}\nfn helper_d() {}\nfn test_ac_"
+            + "0001_02_missing() {}\n// @spec AC-"
+            + "0001-99\nfn helper() {}\n// @spec AC-"
+            + "WIP\nfn malformed_ignored() {}\n";
+        std::fs::write(root.join("crates/a/src/lib.rs"), rs).expect("rs");
+        let errors = super::contract(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            errors.iter().any(|e| e.starts_with("K1")),
+            "debe flaggear K1 (02 sin marcador): {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.starts_with("K2") && e.contains("AC-0001-99")),
+            "debe flaggear K2 (huérfano 99): {errors:?}"
+        );
+        assert!(
+            !errors.iter().any(|e| e.contains("AC-0001-01")),
+            "01 está bien trazado: {errors:?}"
+        );
+        assert!(
+            !errors.iter().any(|e| e.contains("WIP")),
+            "el marcador malformado se ignora: {errors:?}"
+        );
     }
 }
