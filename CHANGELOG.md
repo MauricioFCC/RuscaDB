@@ -45,16 +45,23 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   tail rasgada truncada, replay idempotente).
 - **SPEC-0058**: budget duro de RAM para HNSW (`ResourceLimit` con estimado)
   + índice plano cuantizado (1 B/dim) con recall@10 ≥ 0.95.
-- **SPEC-0054/0057/0059/0060** (aceptadas, pendientes): límites del planner,
-  time-series en la fachada, benches criterion y revalidación ADR-001.
+- **SPEC-0054**: límites del planner pre-ejecución (profundidad AST ≤ 64,
+  budget de complejidad `ResourceLimit`, `LIMIT` implícito 1000, timeout
+  cooperativo `QueryTimeout` y `EXPLAIN` con aviso de full-scan R9).
+- **SPEC-0057**: time-series cableado en la fachada (`ts_api`): `ts_bucket`
+  alineado a `time_bucket` y `ts_window` deslizante con agregados
+  `count/sum/min/max/avg`, columna no temporal rechazada con error accionable.
+- **SPEC-0059/0060** (aceptadas, pendientes): benches criterion y
+  revalidación ADR-001.
 
 ### Changed
 
 - RQL ampliado de forma incremental: `SELECT`/`WHERE`/`LIMIT` (SPEC-0005) →
   extensiones `KNN`/`TRAVERSE`/`EXPLAIN` (SPEC-0015) → `ORDER BY` (SPEC-0036) →
   `GROUP BY` + agregados (SPEC-0040) → DML y operadores de documento
-  (SPEC-0043/0044) → `GROUP BY` multi-clave + `HAVING` (SPEC-0051) →
-  `INNER JOIN` por PK (SPEC-0052).
+  (SPEC-0043/0044) →   `GROUP BY` multi-clave + `HAVING` (SPEC-0051) →
+  `INNER JOIN` por PK (SPEC-0052). La fachada también expone el planner de
+  límites (SPEC-0054) y el módulo time-series `ts_api` (SPEC-0057).
 - La fachada `ruscadb` integra el blob store y su GC con el barrier R7
   (SPEC-0038) y el iFVS en el executor del `KNN` con `WHERE` (SPEC-0048).
 

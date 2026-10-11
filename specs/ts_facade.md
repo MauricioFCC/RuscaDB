@@ -1,7 +1,7 @@
 ---
 id: SPEC-0057
 feature: ts_facade
-status: accepted
+status: implemented
 owner: facade-team
 appetite_days: 5
 boundaries:

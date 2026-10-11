@@ -824,6 +824,7 @@ dependencies = [
  "ruscadb-multimodal",
  "ruscadb-query",
  "ruscadb-storage",
+ "ruscadb-ts",
  "ruscadb-txn",
  "ruscadb-vector",
  "ruscadb-wal",

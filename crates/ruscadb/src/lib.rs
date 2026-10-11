@@ -24,6 +24,7 @@ mod index;
 mod indexes;
 mod join;
 mod table_api;
+mod ts_api;
 
 pub use builder::DatabaseBuilder;
 
@@ -37,6 +38,7 @@ pub use ruscadb_core::{
 };
 pub use ruscadb_multimodal::BlobHash;
 pub use ruscadb_storage::{PAGE_SIZE, Page, PageId};
+pub use ts_api::TsRow;
 // Vocabulario transaccional / de manifiesto para consumidores de la fachada
 // (SPEC-0019): snapshots, versiones y el manifiesto versionado.
 pub use ruscadb_txn::{CURRENT_SCHEMA_VERSION, Manifest, Snapshot, TxId, Version};

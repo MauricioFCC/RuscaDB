@@ -32,6 +32,7 @@ ruscadb-fvs = { workspace = true }
 ruscadb-btree = { workspace = true }
 ruscadb-txn = { workspace = true }
 ruscadb-wal = { workspace = true }
+ruscadb-ts = { workspace = true }
 ruscadb-crypto = { workspace = true }
 postcard = { workspace = true }
 zeroize = { workspace = true }
