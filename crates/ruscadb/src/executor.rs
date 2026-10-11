@@ -8,8 +8,12 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::{Duration, Instant};
 
 use ruscadb_core::{Record, RecordId, RuscaError, ScalarMap, ScalarValue};
+use ruscadb_query::limits::{
+    DEFAULT_TIMEOUT_MILLIS, FULL_SCAN_WARN_THRESHOLD, IMPLICIT_LIMIT, check_budget,
+};
 use ruscadb_query::{
     AggFunc, Aggregate, CompareOp, Expr, HavingCondition, KnnClause, OrderBy, Projection, Select,
     TraverseClause,
@@ -21,6 +25,74 @@ use crate::database::Database;
 use crate::document::{doc_contains, extract_doc_scalar};
 use crate::heap::{heap_read, heap_scan};
 use crate::index::{canonical_key, index_lookup_eq};
+
+/// Presupuesto cooperativo de una query (SPEC-0054, §6.4).
+///
+/// El deadline se comprueba cada 1024 filas escaneadas: los bucles largos
+/// abortan con [`RuscaError::QueryTimeout`] en vez de colgar el hilo.
+#[derive(Clone, Debug)]
+pub(crate) struct QueryBudget {
+    /// Instante a partir del cual el scan debe abortar.
+    deadline: Instant,
+    /// Presupuesto total en ms (para el mensaje de error).
+    millis: u64,
+}
+
+impl QueryBudget {
+    /// Presupuesto con timeout explícito desde ahora.
+    pub(crate) fn with_timeout(millis: u64) -> Self {
+        Self {
+            deadline: Instant::now() + Duration::from_millis(millis),
+            millis,
+        }
+    }
+
+    /// Presupuesto por defecto del planner.
+    pub(crate) fn default_budget() -> Self {
+        Self::with_timeout(DEFAULT_TIMEOUT_MILLIS)
+    }
+
+    /// Presupuesto ya expirado (solo tests: simula un deadline vencido).
+    #[cfg(test)]
+    pub(crate) fn expired() -> Self {
+        Self {
+            deadline: Instant::now()
+                .checked_sub(Duration::from_secs(3600))
+                .unwrap_or_else(Instant::now),
+            millis: 0,
+        }
+    }
+
+    /// Comprueba el deadline cada 1024 filas (`rows` = filas ya vistas).
+    ///
+    /// El muestreo evita llamar al reloj en cada fila (coste ~0).
+    pub(crate) fn check(&self, rows: u64) -> Result<(), RuscaError> {
+        if rows % 1024 == 0 && Instant::now() > self.deadline {
+            return Err(RuscaError::QueryTimeout {
+                millis: self.millis,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Aviso de full-scan sobre el umbral para `EXPLAIN` (R9, SPEC-0054).
+///
+/// Args:
+///     plan: Plan elegido por [`plan_for`].
+///     estimated_rows: Filas estimadas de la tabla.
+///
+/// Returns:
+///     El aviso si hay `FullScan` con filas >= [`FULL_SCAN_WARN_THRESHOLD`].
+pub(crate) fn full_scan_warning(plan: &Plan, estimated_rows: u64) -> Option<String> {
+    if matches!(plan, Plan::FullScan) && estimated_rows >= FULL_SCAN_WARN_THRESHOLD {
+        Some(format!(
+            "WARNING full-scan over ~{estimated_rows} rows (threshold {FULL_SCAN_WARN_THRESHOLD}): considera un índice o un LIMIT"
+        ))
+    } else {
+        None
+    }
+}
 
 /// Fila resultado: escalares proyectados por nombre de columna.
 pub type Row = BTreeMap<String, ScalarValue>;
@@ -105,9 +177,16 @@ pub(crate) fn execute_select_at(
     select: &Select,
     snapshot: &Snapshot,
 ) -> Result<Vec<Row>, RuscaError> {
+    // Planner (SPEC-0054): budget pre-ejecución + LIMIT implícito + deadline.
+    check_budget(select)?;
+    let mut effective = select.clone();
+    if effective.limit.is_none() {
+        effective.limit = Some(IMPLICIT_LIMIT);
+    }
+    let budget = QueryBudget::default_budget();
     let catalog = Catalog::load(database)?;
-    let plan = plan_for(select, &catalog)?;
-    execute_with_plan_at(database, select, plan, snapshot)
+    let plan = plan_for(&effective, &catalog)?;
+    execute_with_plan_at(database, &effective, plan, snapshot, &budget)
 }
 
 /// Ejecuta un `SELECT` con un plan fijado resolviendo cláusulas en orden.
@@ -146,7 +225,8 @@ pub(crate) fn execute_with_plan(
     plan: Plan,
 ) -> Result<Vec<Row>, RuscaError> {
     let snapshot = database.snapshot();
-    execute_with_plan_at(database, select, plan, &snapshot)
+    let budget = QueryBudget::default_budget();
+    execute_with_plan_at(database, select, plan, &snapshot, &budget)
 }
 
 /// Ejecuta un `SELECT` con un plan fijado y visibilidad "as of" `snapshot`.
@@ -169,12 +249,14 @@ pub(crate) fn execute_with_plan(
 ///     [`RuscaError::TypeMismatch`] ante errores de esquema;
 ///     [`RuscaError::MissingTextColumn`] / [`RuscaError::MissingVector`] /
 ///     [`RuscaError::MissingGraph`] / [`RuscaError::DimensionMismatch`] ante
-///     cláusulas que no encajan con los datos de la tabla.
+///     cláusulas que no encajan con los datos de la tabla;
+///     [`RuscaError::QueryTimeout`] si vence el deadline del scan (SPEC-0054).
 pub(crate) fn execute_with_plan_at(
     database: &mut Database,
     select: &Select,
     plan: Plan,
     snapshot: &Snapshot,
+    budget: &QueryBudget,
 ) -> Result<Vec<Row>, RuscaError> {
     if let Some(join) = &select.join {
         return crate::join::execute_join_at(database, select, join, snapshot);
@@ -183,7 +265,8 @@ pub(crate) fn execute_with_plan_at(
     let candidates = fetch_candidates(database, &table, &plan, select.filter.as_ref())?;
     let (matches, scalar_filter) = split_matches(select.filter.as_ref());
     let mut records = Vec::new();
-    for (_, record) in candidates {
+    for (index, (_, record)) in candidates.into_iter().enumerate() {
+        budget.check(index as u64)?;
         if is_visible(snapshot, &record) && keeps_row(&table, scalar_filter.as_ref(), &record)? {
             records.push(record);
         }
@@ -1339,5 +1422,96 @@ fn sort_rows(order_by: &OrderBy, rows: &mut [Row]) -> Result<(), RuscaError> {
     match failure {
         Some(error) => Err(error),
         None => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod planner_tests {
+    //! Tests del planner (SPEC-0054): timeout cooperativo y aviso de full-scan.
+
+    use super::{Plan, QueryBudget, execute_with_plan_at, full_scan_warning};
+    use crate::catalog::{ColumnDef, ColumnType};
+    use crate::database::{Database, DbConfig};
+    use ruscadb_core::{RuscaError, ScalarMap, ScalarValue};
+    use ruscadb_query::parse;
+
+    /// Abre una base temporal con `t(a INT)` y 10 filas.
+    fn open_seeded_db(tag: &str) -> (tempfile::TempDir, Database) {
+        let dir = tempfile::tempdir().expect("directorio temporal");
+        let path = dir.path().join(format!("{tag}.db"));
+        let mut database = Database::open(DbConfig::new(&path, 128)).expect("apertura");
+        database
+            .create_table(
+                "t",
+                vec![ColumnDef {
+                    name: "a".to_string(),
+                    col_type: ColumnType::Int,
+                }],
+            )
+            .expect("create_table");
+        for index in 0..10 {
+            database
+                .insert(
+                    "t",
+                    ScalarMap::from([("a".to_string(), ScalarValue::Int(index))]),
+                )
+                .expect("insert");
+        }
+        (dir, database)
+    }
+
+    /// AC-0054-04 — deadline vencido aborta el scan con `QueryTimeout`.
+    #[test]
+    // @spec AC-0054-04
+    fn test_ac_0054_04_timeout_cancels_scan() {
+        let (_dir, mut database) = open_seeded_db("ac0054_04");
+        let select = parse("SELECT * FROM t").expect("parse");
+        let snapshot = database.snapshot();
+        let error = execute_with_plan_at(
+            &mut database,
+            &select,
+            Plan::FullScan,
+            &snapshot,
+            &QueryBudget::expired(),
+        )
+        .expect_err("deadline vencido debe abortar");
+        assert!(
+            matches!(error, RuscaError::QueryTimeout { .. }),
+            "se esperaba QueryTimeout, se obtuvo {error:?}"
+        );
+
+        // Con budget fresco el mismo scan funciona (sin falsos timeouts).
+        let rows = execute_with_plan_at(
+            &mut database,
+            &select,
+            Plan::FullScan,
+            &snapshot,
+            &QueryBudget::default_budget(),
+        )
+        .expect("budget fresco");
+        assert_eq!(rows.len(), 10);
+    }
+
+    /// BVA del aviso puro: umbral exacto y planes no-FullScan.
+    #[test]
+    fn full_scan_warning_fires_over_threshold() {
+        assert!(
+            full_scan_warning(&Plan::FullScan, 1000).is_some(),
+            "en el umbral avisa"
+        );
+        assert!(
+            full_scan_warning(&Plan::FullScan, 999).is_none(),
+            "bajo el umbral calla"
+        );
+        assert!(
+            full_scan_warning(
+                &Plan::IndexScan {
+                    column: "a".to_string()
+                },
+                999_999
+            )
+            .is_none(),
+            "con índice nunca avisa"
+        );
     }
 }

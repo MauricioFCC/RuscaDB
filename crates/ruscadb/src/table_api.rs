@@ -15,8 +15,8 @@ use ruscadb_txn::Snapshot;
 
 use crate::catalog::{Catalog, ColumnDef, ColumnType, TableDef};
 use crate::database::Database;
-use crate::executor::{Row, execute_select_at};
-use crate::heap::{blank_slotted_page, heap_insert};
+use crate::executor::{Plan, Row, execute_select_at, full_scan_warning, plan_for};
+use crate::heap::{blank_slotted_page, heap_insert, heap_scan};
 use crate::index::index_insert;
 use crate::indexes::TableIndexes;
 
@@ -252,6 +252,68 @@ impl Database {
     ///     El catálogo persistido (vacío si la base es nueva).
     pub fn catalog(&mut self) -> Result<Catalog, RuscaError> {
         Catalog::load(self)
+    }
+
+    /// Explica el plan de un `EXPLAIN SELECT ...` sin ejecutarlo (SPEC-0054).
+    ///
+    /// Renderiza el plan de acceso ([`Plan`]) más las cláusulas presentes y,
+    /// si el plan es `FullScan` sobre una tabla con filas estimadas >=
+    /// [`FULL_SCAN_WARN_THRESHOLD`](ruscadb_query::limits::FULL_SCAN_WARN_THRESHOLD),
+    /// añade un aviso `WARNING full-scan` (R9). No ejecuta el pipeline: solo
+    /// cuenta filas para el estimado.
+    ///
+    /// Args:
+    ///     query: Texto RQL que debe empezar por `EXPLAIN`.
+    ///
+    /// Returns:
+    ///     Líneas del plan (`FullScan(t)`, `WHERE ...`, `LIMIT ...`, avisos).
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si no es un `EXPLAIN SELECT`;
+    ///     [`RuscaError::TableNotFound`] si la tabla no existe.
+    pub fn explain(&mut self, query: &str) -> Result<Vec<String>, RuscaError> {
+        let inner = match parse_statement(query)? {
+            Statement::Explain(explain) => explain.inner,
+            Statement::Select(_) => {
+                return Err(RuscaError::ParseError {
+                    message: "se esperaba EXPLAIN SELECT ...".to_string(),
+                    position: 0,
+                });
+            }
+            Statement::Insert(_) | Statement::Update(_) | Statement::Delete(_) => {
+                return Err(RuscaError::ParseError {
+                    message: "EXPLAIN solo admite SELECT".to_string(),
+                    position: 0,
+                });
+            }
+        };
+        let catalog = Catalog::load(self)?;
+        let table = catalog.get(&inner.from)?.clone();
+        let plan = plan_for(&inner, &catalog)?;
+        let mut lines = vec![render_plan(&plan, &inner.from)];
+        if inner.filter.is_some() {
+            lines.push("WHERE <predicados>".to_string());
+        }
+        if let Some(limit) = inner.limit {
+            lines.push(format!("LIMIT {limit}"));
+        }
+        if matches!(plan, Plan::FullScan) {
+            let estimated = heap_scan(self, &table)?.len() as u64;
+            if let Some(warning) = full_scan_warning(&plan, estimated) {
+                lines.push(warning);
+            }
+        }
+        Ok(lines)
+    }
+}
+
+/// Renderiza una línea de plan (`FullScan(t)`, `IndexScan(t.col)`, ...).
+fn render_plan(plan: &Plan, table: &str) -> String {
+    match plan {
+        Plan::FullScan => format!("FullScan({table})"),
+        Plan::IndexScan { column } => format!("IndexScan({table}.{column})"),
+        Plan::KnnScan { column } => format!("KnnScan({table}.{column})"),
+        Plan::TraverseScan { column } => format!("TraverseScan({table}.{column})"),
     }
 }
 

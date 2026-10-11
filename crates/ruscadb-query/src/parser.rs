@@ -5,6 +5,7 @@ use crate::ast::{
     JoinClause, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause, Update,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
+use crate::limits::check_depth;
 use ruscadb_core::RuscaError;
 
 /// Prefijo común de los mensajes de error de sintaxis.
@@ -365,7 +366,7 @@ impl Parser {
         } else {
             None
         };
-        Ok(Select {
+        let select = Select {
             projection,
             aggregates,
             from,
@@ -377,7 +378,11 @@ impl Parser {
             having,
             order_by,
             limit,
-        })
+        };
+        // Guard clause anti-DoS: el árbol AND anidado crece con la cadena, así
+        // que la profundidad se valida aquí, antes de planificar (SPEC-0054).
+        check_depth(&select).map_err(|message| self.error(message))?;
+        Ok(select)
     }
 
     /// Parsea la cláusula `FROM`: tabla exterior + `JOIN` opcional (SPEC-0052).

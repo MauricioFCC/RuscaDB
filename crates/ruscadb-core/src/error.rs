@@ -139,13 +139,20 @@ pub enum RuscaError {
     },
 
     /// Límite duro de recursos excedido (roadmap §6.4, SPEC-0058).
-    #[error("límite de recurso '{resource}' excedido: tope {limit} bytes, estimado {actual} bytes")]
+    #[error("límite de recurso '{resource}' excedido: tope {limit}, estimado {actual}")]
     ResourceLimit {
-        /// Recurso limitado (p. ej. "hnsw_ram").
+        /// Recurso limitado (p. ej. "hnsw_ram", "query_complexity").
         resource: String,
-        /// Tope configurado en bytes.
+        /// Tope configurado (en las unidades del recurso).
         limit: u64,
-        /// Uso estimado en bytes.
+        /// Uso estimado (en las unidades del recurso).
         actual: u64,
+    },
+
+    /// Timeout cooperativo de query agotado (SPEC-0054, §6.4).
+    #[error("consulta cancelada por timeout tras {millis} ms")]
+    QueryTimeout {
+        /// Presupuesto total concedido en milisegundos.
+        millis: u64,
     },
 }

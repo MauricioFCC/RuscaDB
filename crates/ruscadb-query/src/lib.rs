@@ -10,11 +10,16 @@
 
 pub mod ast;
 pub mod lexer;
+pub mod limits;
 mod parser;
 
 pub use ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, Delete, Explain, Expr, HavingCondition, Insert,
     JoinClause, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause, Update,
+};
+pub use limits::{
+    COMPLEXITY_BUDGET, DEFAULT_TIMEOUT_MILLIS, FULL_SCAN_WARN_THRESHOLD, IMPLICIT_LIMIT,
+    MAX_AST_DEPTH,
 };
 pub use parser::{parse, parse_statement};
 

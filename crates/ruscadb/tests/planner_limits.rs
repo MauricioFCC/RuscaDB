@@ -56,6 +56,7 @@ fn and_chain(count: usize) -> String {
 /// When: se ejecuta.
 /// Then: `ParseError` accionable que menciona el límite 64.
 #[test]
+// @spec AC-0054-01
 fn test_ac_0054_01_deep_nesting_rejected() {
     let (_dir, mut database) = open_test_db("ac0054_01");
     create_ab_table(&mut database);
@@ -79,6 +80,7 @@ fn test_ac_0054_01_deep_nesting_rejected() {
 /// When: se ejecuta.
 /// Then: `ResourceLimit` con recurso `query_complexity` (sin tocar disco).
 #[test]
+// @spec AC-0054-02
 fn test_ac_0054_02_long_chain_over_budget_rejected() {
     let (_dir, mut database) = open_test_db("ac0054_02");
     create_ab_table(&mut database);
@@ -100,13 +102,19 @@ fn test_ac_0054_02_long_chain_over_budget_rejected() {
 /// When: se ejecuta sin LIMIT.
 /// Then: devuelve exactamente 1000 filas.
 #[test]
+// @spec AC-0054-03
 fn test_ac_0054_03_implicit_limit_injected() {
     let (_dir, mut database) = open_test_db("ac0054_03");
     create_ab_table(&mut database);
     seed_rows(&mut database, 1500);
 
     let rows = database.execute("SELECT * FROM t").expect("select");
-    assert_eq!(rows.len(), IMPLICIT_LIMIT, "límite implícito: {len}", len = rows.len());
+    assert_eq!(
+        rows.len(),
+        IMPLICIT_LIMIT,
+        "límite implícito: {len}",
+        len = rows.len()
+    );
 
     let limited = database
         .execute("SELECT * FROM t LIMIT 10")
@@ -120,6 +128,7 @@ fn test_ac_0054_03_implicit_limit_injected() {
 /// When: se pide EXPLAIN del SELECT.
 /// Then: el plan incluye `FullScan(t)` y un aviso de full-scan.
 #[test]
+// @spec AC-0054-05
 fn test_ac_0054_05_explain_flags_full_scan() {
     let (_dir, mut database) = open_test_db("ac0054_05");
     create_ab_table(&mut database);
