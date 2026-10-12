@@ -51,10 +51,31 @@ impl McpServer {
                 return error_response(Value::Null, ERR_PARSE, format!("JSON inválido: {error}"));
             }
         };
-        let id = request.get("id").cloned().unwrap_or(Value::Null);
+        // Batch JSON-RPC (SPEC-0071): un array devuelve una respuesta por
+        // elemento, serializadas juntas como array.
+        if let Value::Array(items) = request {
+            let responses: Vec<String> =
+                items.iter().map(|item| self.handle_single(item)).collect();
+            return format!("[{}]", responses.join(","));
+        }
+        self.handle_single(&request)
+    }
+
+    /// Procesa un request JSON-RPC individual (notificación → sin respuesta).
+    ///
+    /// Args:
+    ///     request: Request JSON-RPC ya parseado.
+    ///
+    /// Returns:
+    ///     La respuesta JSON, o cadena vacía si es una notificación (sin `id`).
+    fn handle_single(&mut self, request: &Value) -> String {
+        // JSON-RPC 2.0: las notificaciones (sin `id`) NO se responden.
+        let Some(id) = request.get("id").cloned() else {
+            return String::new();
+        };
         match request.get("method").and_then(Value::as_str) {
             Some("tools/list") => ok_response(id, json!({ "tools": tool_catalog() })),
-            Some("tools/call") => self.call_tool(&request, id),
+            Some("tools/call") => self.call_tool(request, id),
             Some(other) => error_response(
                 id,
                 ERR_METHOD_NOT_FOUND,
@@ -109,6 +130,17 @@ impl McpServer {
                         "la tool 'query' requiere 'arguments.sql' (string)".to_string(),
                     );
                 };
+                // El transporte MCP es de solo lectura (SPEC-0070): el DML se
+                // rechaza en el servidor, independientemente del rol heredado.
+                if is_write_sql(sql) {
+                    return error_response(
+                        id,
+                        ERR_SERVER,
+                        "permiso denegado: el servidor MCP es de solo lectura (usa el SDK \
+                         embebido para escribir)"
+                            .to_string(),
+                    );
+                }
                 match self.db.execute(sql) {
                     Ok(rows) => ok_response(id, json!({ "rows": rows_to_json(&rows) })),
                     Err(error) => error_response(id, ERR_SERVER, format!("query falló: {error}")),
@@ -160,6 +192,25 @@ fn tool_catalog() -> Value {
             "description": "Verifica WAL, heap e índice vectorial y reporta banderas de integridad."
         }
     ])
+}
+
+/// Indica si una sentencia SQL es de escritura (guard del transporte MCP).
+///
+/// Args:
+///     sql: Texto SQL.
+///
+/// Returns:
+///     `true` si el primer verbo es `INSERT`/`UPDATE`/`DELETE`/`CREATE`/`DROP`.
+fn is_write_sql(sql: &str) -> bool {
+    let verb = sql
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_uppercase();
+    matches!(
+        verb.as_str(),
+        "INSERT" | "UPDATE" | "DELETE" | "CREATE" | "DROP"
+    )
 }
 
 /// Convierte filas de la fachada a JSON (objetos `columna -> valor`).

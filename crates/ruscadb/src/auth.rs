@@ -133,9 +133,15 @@ impl Database {
         if !self.audit_enabled {
             return;
         }
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_nanos() as u64);
+        // Reloj monótono (SPEC-0070): base `Instant` + contador estrictamente
+        // creciente (SystemTime puede retroceder con ajustes de NTP).
+        let elapsed = self.audit_epoch.elapsed().as_nanos() as u64;
+        let nanos = if elapsed > self.audit_last_nanos {
+            elapsed
+        } else {
+            self.audit_last_nanos + 1
+        };
+        self.audit_last_nanos = nanos;
         self.audit.push(AuditEntry {
             action: action.to_string(),
             detail: detail.to_string(),

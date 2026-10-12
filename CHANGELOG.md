@@ -88,6 +88,19 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - **SPEC-0068**: crate **`ruscadb-mcp`** (22.º crate del workspace) — servidor
   MCP por **stdio** (JSON-RPC 2.0) con tools `query`/`tables`/
   `integrity_check`; sin dependencias de red (solo `serde_json`).
+- **SPEC-0069**: coherencia del caché semántico — invalidación de entradas en
+  toda mutación (insert/insert_many/update/delete), **firma de query** (tabla,
+  `k`, `WHERE`, `LIMIT` con el vector enmascarado) y coseno que rechaza
+  dimensiones distintas.
+- **SPEC-0070**: endurecimiento del camino de escritura — `insert_many`
+  (camino del `INSERT` SQL) con RBAC + gates + allowlist, `Database::delete`
+  con `require_write`, servidor MCP de **solo lectura** (guard DML) y audit con
+  **reloj monótono** estrictamente creciente + notificaciones JSON-RPC sin
+  respuesta.
+- **SPEC-0071**: robustez miscelánea — re-scoring híbrido sobre todo el top-k
+  (scores en una sola escala), registry atómico sin estado parcial (y ruta
+  correcta `<data>.models.json`, sin doble extensión), contador de jobs
+  saturante y **batch JSON-RPC** en el servidor MCP.
 
 ### Retrospectiva
 
@@ -113,6 +126,15 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   nuevo `ruscadb-mcp`). Veredictos: RRF/MaxSim en producción (reranker ONNX
   real queda opcional); auditoría y caché en memoria (persistencia futura);
   MCP por stdio preserva la identidad «sin red».
+- Tercera edición (ciclo SPEC-0069..0071): auditoría retrospectiva de los
+  módulos nuevos con **5 hallazgos P1 reales** — caché sin invalidación, clave
+  de caché incompleta (tabla/k/WHERE), `insert_many` evadiendo RBAC/gates,
+  `delete` sin RBAC y MCP ejecutando escrituras — más 10 P2/P3 (doble extensión
+  del registry, coseno truncando dimensiones, notificaciones JSON-RPC,
+  scores híbridos mezclados). Los tres P1/P2 corregidos con TDD (RED por
+  aserción) en SPEC-0069..0071; quedan como líneas futuras: reranker ONNX real,
+  persistencia de caché/audit, overflow pages del heap y tools MCP de
+  escritura.
 
 ### Changed
 

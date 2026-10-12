@@ -11,9 +11,6 @@ use ruscadb_core::{Metric, Record, RuscaError};
 
 use crate::database::Database;
 
-/// Funcion reservada para el nombre de archivo del registry de modelos.
-const MODELS_FILE_EXTENSION: &str = "models.json";
-
 /// Política de ingesta configurable por instancia (SPEC-0064).
 ///
 /// Por defecto está **abierta** (`max_record_bytes = 0` sin límite,
@@ -123,8 +120,7 @@ impl Database {
         let bytes = serde_json::to_vec_pretty(&payload).map_err(|error| {
             RuscaError::InvalidConfig(format!("registry no serializable: {error}"))
         })?;
-        let path = models_path_for(self.models_path());
-        atomic_write(&path, &bytes)?;
+        atomic_write(self.models_path(), &bytes)?;
         Ok(())
     }
 
@@ -137,13 +133,16 @@ impl Database {
     ///     [`RuscaError::Io`] si falla la lectura;
     ///     [`RuscaError::InvalidConfig`] si el JSON es inválido.
     pub(crate) fn restore_registry(&mut self) -> Result<(), RuscaError> {
-        let path = models_path_for(self.models_path());
+        let path = self.models_path();
         if !path.exists() {
             return Ok(());
         }
-        let bytes = std::fs::read(&path)?;
+        let bytes = std::fs::read(path)?;
         let entries: Vec<serde_json::Value> = serde_json::from_slice(&bytes)
             .map_err(|error| RuscaError::InvalidConfig(format!("registry inválido: {error}")))?;
+        // Fase 1: validar TODAS las entradas sin tocar el registry (SPEC-0071):
+        // un JSON inválido a mitad no debe dejar estado parcial.
+        let mut parsed = Vec::with_capacity(entries.len());
         for entry in entries {
             let model_id = entry
                 .get("model_id")
@@ -172,7 +171,11 @@ impl Database {
                 .ok_or_else(|| {
                     RuscaError::InvalidConfig(format!("registry: '{model_id}' sin version"))
                 })? as u32;
-            self.registry.register(model_id, dim, metric, version)?;
+            parsed.push((model_id.to_string(), dim, metric, version));
+        }
+        // Fase 2: registrar solo cuando TODAS las entradas son válidas.
+        for (model_id, dim, metric, version) in parsed {
+            self.registry.register(&model_id, dim, metric, version)?;
         }
         Ok(())
     }
@@ -186,17 +189,6 @@ impl Database {
     }
 }
 
-/// Derivar la ruta del registry de modelos a partir del archivo de datos.
-///
-/// Args:
-///     data_path: Ruta del `PagedFile` (`.db`).
-///
-/// Returns:
-///     La ruta con extensión `models.json`.
-fn models_path_for(data_path: &Path) -> std::path::PathBuf {
-    data_path.with_extension(MODELS_FILE_EXTENSION)
-}
-
 /// Escribe un fichero de forma atómica (temporal + rename).
 ///
 /// Args:
@@ -206,8 +198,15 @@ fn models_path_for(data_path: &Path) -> std::path::PathBuf {
 /// Errors:
 ///     [`RuscaError::Io`] si falla la escritura o el rename.
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), RuscaError> {
-    let tmp = path.with_extension("models.json.tmp");
+    let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)?;
-    Ok(())
+    match std::fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            // Best-effort: no dejar el temporal huérfano; el error accionable
+            // sigue siendo el del rename.
+            let _ = std::fs::remove_file(&tmp);
+            Err(error.into())
+        }
+    }
 }

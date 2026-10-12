@@ -812,11 +812,12 @@ actualizada.
 
 ## Estado de implementación
 
-> Actualizado con el loop SPEC-0051..0068 (todas implementadas y trazadas),
-> incluido el spike DataFusion SPEC-0060 (ADR-013), el gate T2 SPEC-0061, el
-> hardening operativo SPEC-0062, el híbrido SPEC-0063 y las 5 líneas futuras
-> restantes (SPEC-0064..0068).
-> Los estados de `specs/*.md` están normalizados a `implemented` (68/68) y el
+> Actualizado con el loop SPEC-0051..0071 (todas implementadas y trazadas),
+> incluidos el spike DataFusion SPEC-0060 (ADR-013), el gate T2 SPEC-0061, el
+> hardening operativo SPEC-0062, el híbrido SPEC-0063, las líneas futuras
+> SPEC-0064..0068 y las correcciones de la retrospectiva 3 (SPEC-0069..0071:
+> coherencia de caché, endurecimiento del camino de escritura, robustez).
+> Los estados de `specs/*.md` están normalizados a `implemented` (71/71) y el
 > contrato SDD (`cargo xtask contract`) los valida bidireccionalmente.
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs

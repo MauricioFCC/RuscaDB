@@ -117,6 +117,10 @@ pub struct Database {
     pub(crate) audit_enabled: bool,
     /// Trail de auditoría en memoria (SPEC-0066).
     pub(crate) audit: Vec<AuditEntry>,
+    /// Base de reloj monótono del audit (SPEC-0070).
+    pub(crate) audit_epoch: std::time::Instant,
+    /// Último timestamp emitido en el audit (SPEC-0070).
+    pub(crate) audit_last_nanos: u64,
     /// Pipeline de blobs (SPEC-0067): cola FIFO de análisis.
     pub(crate) blob_pipeline: BlobPipeline,
 }
@@ -185,6 +189,8 @@ impl Database {
             role: Role::default(),
             audit_enabled: false,
             audit: Vec::new(),
+            audit_epoch: std::time::Instant::now(),
+            audit_last_nanos: 0,
             blob_pipeline: BlobPipeline::default(),
         };
         database.restore_registry()?;

@@ -35,9 +35,11 @@ pub struct CostReport {
     pub nanos: u64,
 }
 
-/// Entrada del caché: clave vectorial y resultado servido.
+/// Entrada del caché: firma de query, clave vectorial y resultado servido.
 pub(crate) struct CacheEntry {
-    /// Vector de consulta (clave).
+    /// Firma de la query (texto con el vector enmascarado): tabla, k, WHERE...
+    signature: String,
+    /// Vector de consulta (clave de similitud).
     vector: Vec<f32>,
     /// Filas devueltas para esa clave.
     rows: Vec<Row>,
@@ -99,20 +101,20 @@ impl Database {
         self.cost_report = CostReport::default();
     }
 
-    /// Busca un hit semántico para el vector de consulta (solo con ON).
+    /// Busca un hit semántico para la firma y el vector de consulta (solo con ON).
     ///
     /// Args:
+    ///     signature: Firma de la query (tabla, k, WHERE... con el vector `[?]`).
     ///     vector: Vector de consulta parseado del RQL.
     ///
     /// Returns:
-    ///     Las filas cacheadas si `cos(vector, clave) >= umbral` (hit), o
+    ///     Las filas cacheadas si firma idéntica y `cos >= umbral` (hit), o
     ///     `None` si no (miss). Contabiliza la métrica correspondiente.
-    pub(crate) fn cache_lookup(&mut self, vector: &[f32]) -> Option<Vec<Row>> {
-        let hit = self
-            .semantic_cache
-            .entries
-            .iter()
-            .find(|entry| cosine(vector, &entry.vector) >= SEMANTIC_CACHE_THRESHOLD);
+    pub(crate) fn cache_lookup(&mut self, signature: &str, vector: &[f32]) -> Option<Vec<Row>> {
+        let hit = self.semantic_cache.entries.iter().find(|entry| {
+            entry.signature == signature
+                && cosine(vector, &entry.vector) >= SEMANTIC_CACHE_THRESHOLD
+        });
         match hit {
             Some(entry) => {
                 self.semantic_cache.hits += 1;
@@ -125,27 +127,37 @@ impl Database {
         }
     }
 
-    /// Almacena (o actualiza) la clave y su resultado.
+    /// Almacena (o actualiza) la entrada de la MISMA firma y clave similar.
     ///
     /// Se invoca con o sin el modo habilitado: permite calentar el caché y
-    /// garantizar hits futuros (AC-0065-01/05).
+    /// garantizar hits futuros (AC-0065-01/05). Una firma distinta nunca
+    /// reemplaza a otra entrada (AC-0069-02/03).
     ///
     /// Args:
+    ///     signature: Firma de la query.
     ///     vector: Vector de consulta (clave).
     ///     rows: Filas servidas por el motor.
-    pub(crate) fn cache_store(&mut self, vector: Vec<f32>, rows: Vec<Row>) {
-        if let Some(entry) = self
-            .semantic_cache
-            .entries
-            .iter_mut()
-            .find(|entry| cosine(&vector, &entry.vector) >= SEMANTIC_CACHE_THRESHOLD)
-        {
+    pub(crate) fn cache_store(&mut self, signature: String, vector: Vec<f32>, rows: Vec<Row>) {
+        if let Some(entry) = self.semantic_cache.entries.iter_mut().find(|entry| {
+            entry.signature == signature
+                && cosine(&vector, &entry.vector) >= SEMANTIC_CACHE_THRESHOLD
+        }) {
             entry.rows = rows;
             return;
         }
-        self.semantic_cache
-            .entries
-            .push(CacheEntry { vector, rows });
+        self.semantic_cache.entries.push(CacheEntry {
+            signature,
+            vector,
+            rows,
+        });
+    }
+
+    /// Invalida las ENTRADAS del caché tras una mutación (SPEC-0069).
+    ///
+    /// Conserva los contadores acumulados de hits/misses: la invalidación es
+    /// de datos, no de telemetría.
+    pub(crate) fn invalidate_semantic_cache(&mut self) {
+        self.semantic_cache.entries.clear();
     }
 
     /// Acumula una consulta ejecutada en el reporte de coste.
@@ -169,6 +181,9 @@ impl Database {
 /// Returns:
 ///     El coseno en `[-1.0, 1.0]` (0 si alguno es el vector nulo).
 fn cosine(a: &[f32], b: &[f32]) -> f64 {
+    if a.len() != b.len() {
+        return 0.0;
+    }
     let dot: f64 = a.iter().zip(b).map(|(x, y)| *x as f64 * *y as f64).sum();
     let norm_a: f64 = a
         .iter()
@@ -213,6 +228,31 @@ pub(crate) fn extract_knn_vector(query: &str) -> Option<Vec<f32>> {
     } else {
         Some(values)
     }
+}
+
+/// Firma de una query KNN: texto normalizado con el vector enmascarado.
+///
+/// Dos consultas con la misma firma difieren solo en los valores del vector
+/// (tabla, `k`, `WHERE` y `LIMIT` forman parte de la firma, SPEC-0069).
+///
+/// Args:
+///     query: Texto RQL.
+///
+/// Returns:
+///     La firma (p. ej. `SELECT * FROM items KNN embedding <|2|> [?]`), o
+///     `None` si la query no es un KNN cacheable.
+pub(crate) fn query_signature(query: &str) -> Option<String> {
+    let marker = query.rfind("KNN")?;
+    let rest = &query[marker..];
+    let start = rest.find('[')?;
+    let tail = &rest[start + 1..];
+    let end = tail.find(']')?;
+    let mut masked = String::with_capacity(query.len());
+    masked.push_str(&query[..marker]);
+    masked.push_str(&rest[..start]);
+    masked.push_str("[?]");
+    masked.push_str(&tail[end + 1..]);
+    Some(masked.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
 #[cfg(test)]

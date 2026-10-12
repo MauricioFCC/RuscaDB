@@ -15,7 +15,7 @@ use ruscadb_core::{Record, RecordId, RuscaError};
 use crate::catalog::Catalog;
 use crate::database::Database;
 use crate::heap::heap_insert;
-use crate::table_api::{maintain_index, validate_scalars};
+use crate::table_api::{apply_registry, maintain_index, validate_scalars};
 
 impl Database {
     /// Inserta un lote de registros con un único commit.
@@ -50,12 +50,18 @@ impl Database {
         table: &str,
         records: impl IntoIterator<Item = Record>,
     ) -> Result<Vec<RecordId>, RuscaError> {
+        // RBAC (SPEC-0070): el camino del INSERT SQL también exige Write.
+        self.require_write("insert")?;
         let mut catalog = Catalog::load(self)?;
         let definition = catalog.get(table)?.clone();
         // Fase 1 (sin efectos): valida el esquema de TODOS los registros antes
         // de tocar el heap, de modo que un registro inválido no publique nada.
+        // Además aplica los gates de ingesta (SPEC-0064) y la allowlist
+        // (SPEC-0032/0070) por registro.
         let mut validated = Vec::new();
         for mut record in records {
+            self.enforce_ingestion_gates(table, &record)?;
+            apply_registry(self, &mut record)?;
             record.scalars = validate_scalars(&definition, table, record.scalars)?;
             validated.push(record);
         }
@@ -88,6 +94,8 @@ impl Database {
         if is_auto_commit {
             self.txn.commit(tx)?;
         }
+        // Coherencia del caché (SPEC-0069).
+        self.invalidate_semantic_cache();
         Ok(ids)
     }
 }

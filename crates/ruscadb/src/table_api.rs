@@ -171,6 +171,8 @@ impl Database {
             self.txn.commit(tx)?;
         }
         self.note_audit("insert", table);
+        // Coherencia del caché (SPEC-0069): una escritura invalida entradas.
+        self.invalidate_semantic_cache();
         Ok(record.id)
     }
 
@@ -249,15 +251,19 @@ impl Database {
             self.require_write("execute")?;
         }
         let query_vector = crate::cache::extract_knn_vector(query);
-        // Caché semántico (SPEC-0065): sirve hits solo con el modo ON.
+        let cache_key = match (crate::cache::query_signature(query), query_vector) {
+            (Some(signature), Some(vector)) => Some((signature, vector)),
+            _ => None,
+        };
+        // Caché semántico (SPEC-0065/0069): sirve hits solo con el modo ON.
         let rows = {
             if self.semantic_cache.enabled {
-                if let Some(vector) = &query_vector {
-                    if let Some(hit) = self.cache_lookup(vector) {
+                if let Some((signature, vector)) = &cache_key {
+                    if let Some(hit) = self.cache_lookup(signature, vector) {
                         hit
                     } else {
                         let rows = self.execute_dispatch(query, snapshot)?;
-                        self.cache_store(vector.clone(), rows.clone());
+                        self.cache_store(signature.clone(), vector.clone(), rows.clone());
                         rows
                     }
                 } else {
@@ -265,8 +271,8 @@ impl Database {
                 }
             } else {
                 let rows = self.execute_dispatch(query, snapshot)?;
-                if let Some(vector) = &query_vector {
-                    self.cache_store(vector.clone(), rows.clone());
+                if let Some((signature, vector)) = &cache_key {
+                    self.cache_store(signature.clone(), vector.clone(), rows.clone());
                 }
                 rows
             }
@@ -388,7 +394,7 @@ fn render_plan(plan: &Plan, table: &str) -> String {
 ///
 /// Errors:
 ///     [`RuscaError::InvalidConfig`] si el vector no cumple la allowlist.
-fn apply_registry(database: &Database, record: &mut Record) -> Result<(), RuscaError> {
+pub(crate) fn apply_registry(database: &Database, record: &mut Record) -> Result<(), RuscaError> {
     let Some(vector) = record.vector.as_ref() else {
         return Ok(());
     };

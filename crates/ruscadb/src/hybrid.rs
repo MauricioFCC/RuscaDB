@@ -22,8 +22,6 @@ use crate::heap::heap_scan;
 const RRF_K_RECIPROCAL: u32 = 60;
 /// Multiplicador para pedir N > k candidatos por vía antes de fusionar.
 const RRF_CANDIDATES_MULTIPLIER: usize = 4;
-/// Profundidad del re-scoring late-interaction sobre la lista fusionada.
-const MAXSIM_RERANK_DEPTH: usize = 20;
 
 /// Etapa que determinó el orden final de un hit híbrido (SPEC-0063).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -293,7 +291,10 @@ fn rescore_or_keep(
     if !eligible {
         return (fused, base);
     }
-    let depth = k.min(MAXSIM_RERANK_DEPTH);
+    // El re-scoring cubre TODO el top-k (SPEC-0071): limitarlo a una
+    // profundidad menor dejaría la cola con scores RRF y rompería la
+    // monotonía de la lista devuelta.
+    let depth = k;
     let top: Vec<(RecordId, f32)> = fused.iter().take(depth).copied().collect();
     let mut ranked: Vec<(usize, usize)> = top
         .iter()
@@ -372,5 +373,37 @@ mod tests {
             rescore_or_keep(fused.clone(), Some("gato"), &texts, 1, HybridStage::Rrf);
         assert_eq!(order, fused);
         assert_eq!(stage, HybridStage::Rrf);
+    }
+
+    /// AC-0071-01 — con `k` mayor que la profundidad histórica (20) el
+    /// re-scoring cubre TODO el top-k y los scores quedan en una sola escala
+    /// (monótonos no crecientes).
+    #[test]
+    // @spec AC-0071-01
+    fn test_ac_0071_01_hybrid_scores_monotonic_beyond_depth() {
+        let mut fused = Vec::new();
+        let mut texts = BTreeMap::new();
+        for index in 0..25_usize {
+            let id = RecordId::new();
+            fused.push((id, 1.0 - index as f32 * 0.01));
+            let text = if index >= 20 {
+                "alfa beta gamma"
+            } else {
+                "alfa"
+            };
+            texts.insert(id, text.to_string());
+        }
+        let (order, stage) =
+            rescore_or_keep(fused, Some("alfa beta gamma"), &texts, 25, HybridStage::Rrf);
+        assert_eq!(order.len(), 25, "conserva los 25 candidatos");
+        assert_eq!(stage, HybridStage::MaxSim, "el reorden cambia la lista");
+        for window in order.windows(2) {
+            assert!(
+                window[0].1 >= window[1].1,
+                "los scores del top-k deben ser no crecientes: {} < {}",
+                window[0].1,
+                window[1].1
+            );
+        }
     }
 }

@@ -52,6 +52,8 @@ impl Database {
     ///     [`RuscaError::CorruptManifest`] si el heap es inválido;
     ///     [`RuscaError::Io`] si falla la escritura o la confirmación.
     pub fn delete(&mut self, table: &str, id: &RecordId) -> Result<bool, RuscaError> {
+        // RBAC (SPEC-0070): borrar exige rol Write o superior.
+        self.require_write("delete")?;
         let mut catalog = Catalog::load(self)?;
         let definition = catalog.get(table)?.clone();
         let Some((locator, record)) = locate_row(self, &definition, id)? else {
@@ -75,6 +77,8 @@ impl Database {
         if is_auto_commit {
             self.txn.commit(tx)?;
         }
+        // Coherencia del caché (SPEC-0069).
+        self.invalidate_semantic_cache();
         Ok(true)
     }
 }

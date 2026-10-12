@@ -68,7 +68,7 @@ impl Database {
     ///     [`RuscaError::Io`] si no hay blob store configurado (implícito en
     ///     `get_blob` al procesar); aquí no se produce error.
     pub fn blob_pipeline_enqueue(&mut self, hash: &BlobHash) -> Result<u64, RuscaError> {
-        self.blob_pipeline.next_job += 1;
+        self.blob_pipeline.next_job = next_job_id(self.blob_pipeline.next_job);
         let job = self.blob_pipeline.next_job;
         self.blob_pipeline.queue.push_back((job, hash.clone()));
         Ok(job)
@@ -137,6 +137,17 @@ fn infer_media_type(bytes: &[u8]) -> String {
     }
 }
 
+/// Avanza el contador de trabajos sin desbordar (SPEC-0071).
+///
+/// Args:
+///     current: Identificador actual (0 si aún no se encoló nada).
+///
+/// Returns:
+///     El siguiente identificador, saturado en `u64::MAX`.
+fn next_job_id(current: u64) -> u64 {
+    current.saturating_add(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,5 +165,18 @@ mod tests {
             infer_media_type(&[0xFF, 0x00, 0xFE]),
             "application/octet-stream"
         );
+    }
+
+    /// AC-0071-03 — el contador de trabajos satura sin desbordar.
+    #[test]
+    // @spec AC-0071-03
+    fn test_ac_0071_03_job_counter_saturates() {
+        assert_eq!(next_job_id(0), 1, "avanza desde cero");
+        assert_eq!(
+            next_job_id(u64::MAX),
+            u64::MAX,
+            "satura en el máximo sin panic ni wrap"
+        );
+        assert_eq!(next_job_id(u64::MAX - 1), u64::MAX);
     }
 }

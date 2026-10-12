@@ -84,6 +84,8 @@ impl Database {
         if is_auto_commit {
             self.txn.commit(tx)?;
         }
+        // Coherencia del caché (SPEC-0069): un UPDATE invalida entradas.
+        self.invalidate_semantic_cache();
         Ok(vec![affected_row(affected)])
     }
 

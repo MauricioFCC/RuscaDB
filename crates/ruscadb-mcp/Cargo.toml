@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
 description = "Servidor MCP (Model Context Protocol) sobre transporte stdio para RuscaDB (SPEC-0068)"
+publish = false
 
 [lints]
 workspace = true
