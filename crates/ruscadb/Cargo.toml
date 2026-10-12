@@ -15,6 +15,11 @@ categories = ["database", "database-implementations", "data-structures"]
 [lints]
 workspace = true
 
+# La lib no tiene `#[bench]` (criterion vive en `benches/`); evita que
+# `cargo bench --workspace` invoque el harness de libtest con flags ajenos.
+[lib]
+bench = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -42,3 +47,8 @@ tempfile = { workspace = true }
 proptest = { workspace = true }
 rstest = { workspace = true }
 pretty_assertions = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "facade_smoke"
+harness = false

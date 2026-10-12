@@ -51,8 +51,11 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - **SPEC-0057**: time-series cableado en la fachada (`ts_api`): `ts_bucket`
   alineado a `time_bucket` y `ts_window` deslizante con agregados
   `count/sum/min/max/avg`, columna no temporal rechazada con error accionable.
-- **SPEC-0059/0060** (aceptadas, pendientes): benches criterion y
-  revalidación ADR-001.
+- **SPEC-0059**: benches criterion de regressión (point-read indexado, ingest
+  blob 1 MiB, group-commit WAL c=64, latencia HNSW k=10) con baseline
+  versionada (`benches/baselines/initial.md`), job `benches` alert-only en
+  nightly y guard que exige su presencia.
+- **SPEC-0060** (aceptada, pendiente): revalidación ADR-001.
 
 ### Changed
 

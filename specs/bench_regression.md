@@ -1,7 +1,7 @@
 ---
 id: SPEC-0059
 feature: bench_regression
-status: accepted
+status: implemented
 owner: perf-team
 appetite_days: 4
 boundaries:

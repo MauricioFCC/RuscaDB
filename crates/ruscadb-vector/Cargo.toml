@@ -12,6 +12,10 @@ authors.workspace = true
 [lints]
 workspace = true
 
+# Sin `#[bench]` en la lib (criterion vive en `benches/`).
+[lib]
+bench = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -20,5 +24,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 ruscadb-core = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 proptest = { workspace = true }
 pretty_assertions = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "knn_latency"
+harness = false

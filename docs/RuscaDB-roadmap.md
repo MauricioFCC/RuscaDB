@@ -755,11 +755,11 @@ actualizada.
 ## Estado de implementación
 
 > Actualizado con el loop SPEC-0051..0058 (implementadas y trazadas) más
-> SPEC-0054 y SPEC-0057; quedan aceptadas pendientes SPEC-0059/0060.
+> SPEC-0054, SPEC-0057 y SPEC-0059; queda aceptada pendiente SPEC-0060.
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
 > SDD cuyos AC están cubiertos por tests `test_ac_*` y verificados por
-> `cargo xtask trace` (8 AC pendientes = las 2 specs aceptadas no implementadas).
+> `cargo xtask trace` (3 AC pendientes = la spec aceptada no implementada).
 
 | Área | Estado | Evidencia (specs) |
 |---|---|---|
@@ -769,8 +769,8 @@ actualizada.
 | F3 — Índices y grafos (HNSW, FVS/iFVS, CSR, BM25, B+tree) | ✅ | SPEC-0006, SPEC-0007, SPEC-0014, SPEC-0020, SPEC-0021, SPEC-0024, SPEC-0034, SPEC-0037, SPEC-0041, SPEC-0047, SPEC-0048, SPEC-0058 |
 | F4 — Multimodal / IA / time-series | ✅ | SPEC-0008, SPEC-0009, SPEC-0029, SPEC-0032, SPEC-0035, SPEC-0038, SPEC-0039, SPEC-0049, SPEC-0057 |
 | F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026 |
-| F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045 |
-| Aceptadas pendientes (spec escrita, sin implementar) | ⏳ | SPEC-0059 (benches criterion), SPEC-0060 (revalidación ADR-001) |
+| F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059 |
+| Aceptadas pendientes (spec escrita, sin implementar) | ⏳ | SPEC-0060 (revalidación ADR-001) |
 | Líneas futuras (inspiradas en la literatura y cursos del sector sobre IA en producción; sin spec aún) | ⏳ | hardening operativo + shadow reads, retrieval híbrido con rerank, gates de ingesta + registry, caché semántico + coste por query, audit + RBAC, pipeline de blobs, MCP server |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |

@@ -8,7 +8,8 @@ Comprueba, sin dependencias externas obligatorias (solo stdlib):
    cola de runners (SPEC-0046).
 2. ``.github/workflows/nightly.yml`` (T3) es YAML parseable y declara los jobs
    ``mutation``/``fuzz``/``miri``/``sanitizers`` (alert-only) más el job
-   ``test-macos`` que corre en ``macos-latest`` (SPEC-0046); además, el job
+   ``test-macos`` que corre en ``macos-latest`` (SPEC-0046), ``loom``
+   (SPEC-0053) y ``benches`` (criterion smoke, SPEC-0059); además, el job
    ``fuzz`` declara la matriz de targets ``query_parse``/``wal_recover`` y el
    target del parser usa un dictionary (SPEC-0042). Si PyYAML no está
    instalado se aplica un parser textual robusto por indentación.
@@ -52,6 +53,7 @@ REQUIRED_JOBS: tuple[str, ...] = (
     "sanitizers",
     "test-macos",
     "loom",
+    "benches",
 )
 # Targets que debe fuzzear el job `fuzz` de nightly.yml (SPEC-0042/AC-03).
 FUZZ_TARGETS: tuple[str, ...] = ("query_parse", "wal_recover")

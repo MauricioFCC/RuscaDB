@@ -205,6 +205,31 @@ Se ejecuta en `schedule`/`workflow_dispatch` porque la cola de runners macOS es
 larga. `scripts/check_ci_config.py` valida que nightly declare un job en
 `macos-latest` y que `ci.yml` mantenga la matriz rápida ubuntu+windows.
 
+### Benches — criterion smoke P95 (SPEC-0059)
+
+El job `benches` de nightly compila y corre los benches criterion en modo
+smoke (`-- --test`: una pasada por bench, sin medición estadística), el
+equivalente al AC-0059-01:
+
+```bash
+# Smoke local (< 5 min, NF-0059-01) — lo que corre el AC:
+cargo bench -p ruscadb --bench facade_smoke \
+  -p ruscadb-wal --bench wal_commit \
+  -p ruscadb-vector --bench knn_latency -- --test
+
+# Medición real con baseline (comparación entre ramas):
+cargo bench --workspace --benches -- --save-baseline main
+cargo bench --workspace --benches -- --baseline main
+```
+
+Los benches viven en `crates/{ruscadb,ruscadb-wal,ruscadb-vector}/benches/`
+(point-read indexado + ingest blob 1 MiB, group-commit WAL c=64, latencia
+HNSW k=10). La baseline versionada inicial está en
+`benches/baselines/initial.md` (tablas p50/p95 + receta `critcmp`). El gate
+P95 ≤ +5 % alert-only se valida comparando contra esa baseline; el job CI es
+`continue-on-error: true` y el AC vive como test `#[ignore]` en
+`crates/ruscadb/tests/bench_smoke.rs` para no penalizar el T1.
+
 ### SBOM (CycloneDX, supply chain §6.5)
 
 Job `sbom` de T1 (informativo): `cargo cyclonedx --format json --all`.

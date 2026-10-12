@@ -12,6 +12,10 @@ authors.workspace = true
 [lints]
 workspace = true
 
+# Sin `#[bench]` en la lib (criterion vive en `benches/`).
+[lib]
+bench = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -23,3 +27,8 @@ crc32c = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "wal_commit"
+harness = false
