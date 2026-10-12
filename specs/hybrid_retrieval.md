@@ -1,7 +1,7 @@
 ---
 id: SPEC-0063
 feature: hybrid_retrieval
-status: accepted
+status: implemented
 owner: query-team
 appetite_days: 5
 boundaries:

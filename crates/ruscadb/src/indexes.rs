@@ -90,6 +90,14 @@ impl TableIndexes {
         self.vector.metric
     }
 
+    /// Nombres de las columnas con índice FTS (SPEC-0063).
+    ///
+    /// Returns:
+    ///     Las claves del mapa de índices invertidos (cola FTS de la tabla).
+    pub(crate) fn text_columns(&self) -> Vec<String> {
+        self.fts.keys().cloned().collect()
+    }
+
     /// Indica si la tabla tiene al menos un nodo en el grafo (alguna arista).
     ///
     /// Returns:

@@ -21,6 +21,7 @@ mod executor;
 mod gc;
 mod hardening;
 mod heap;
+mod hybrid;
 mod index;
 mod indexes;
 mod join;
@@ -34,6 +35,7 @@ pub use database::{Database, DbConfig};
 pub use encryption::EncryptionConfig;
 pub use executor::{Plan, Row};
 pub use hardening::{IntegrityReport, ShadowDivergence, ShadowReport};
+pub use hybrid::{HybridHit, HybridStage, HybridWeights};
 pub use ruscadb_core::{
     Edge, EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError,
     ScalarMap, ScalarValue,

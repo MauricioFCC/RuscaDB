@@ -67,6 +67,11 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   coherencia del heap y cobertura del índice vectorial) + shadow reads
   (`set_shadow_reads`/`shadow_report`): cada KNN se re-verifica contra el
   oráculo exacto `ruscadb_vector::distance` sin alterar el resultado servido.
+- **SPEC-0063**: búsqueda híbrida término+vector — `Database::hybrid_search`
+  con fusión **RRF** (inversión de rango ponderada, K=60, N=k×4) y re-scoring
+  late-interaction por overlap de términos (proxy de MaxSim, TRF
+  arXiv:2508.01405), degradación graceful a BM25/KNN puros (`Bm25Only`/
+  `KnnOnly`) y API aditiva sin tocar `execute`.
 
 ### Retrospectiva
 
@@ -84,8 +89,8 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   realidad del workspace; comentario `ci.yml` corregido (crash-tests viven en
   T1); `verification.md` (contract, benches real, tabla jobs, 62 specs/279
   AC/555 tests); README (555 tests, feature `datafusion` opcional); CHANGELOG
-  (SPEC-0061, 62 specs, typo). SPEC-0063 `hybrid_retrieval` queda en `draft`→
-  `accepted` (aprobada, pendiente de TDD).
+  (SPEC-0061, 62 specs, typo). SPEC-0063 `hybrid_retrieval` aprobada e
+  **implementada** en este ciclo (RRF + re-scoring overlap, API aditiva).
 
 ### Changed
 
