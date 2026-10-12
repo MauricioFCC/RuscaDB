@@ -1,7 +1,7 @@
 ---
 id: SPEC-0043
 feature: dml_statements
-status: accepted
+status: implemented
 owner: query-team
 appetite_days: 8
 boundaries:

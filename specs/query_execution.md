@@ -1,7 +1,7 @@
 ---
 id: SPEC-0012
 feature: query_execution
-status: accepted
+status: implemented
 owner: query-team
 appetite_days: 10
 boundaries:

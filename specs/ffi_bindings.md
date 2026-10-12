@@ -1,7 +1,7 @@
 ---
 id: SPEC-0010
 feature: ffi_bindings
-status: accepted
+status: implemented
 owner: bindings-team
 appetite_days: 8
 boundaries:

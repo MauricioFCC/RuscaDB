@@ -1,7 +1,7 @@
 ---
 id: SPEC-0027
 feature: batch_and_rollback
-status: accepted
+status: implemented
 owner: storage-team
 appetite_days: 6
 boundaries:

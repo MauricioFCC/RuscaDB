@@ -1,7 +1,7 @@
 ---
 id: SPEC-0011
 feature: crypto
-status: accepted
+status: implemented
 owner: security-team
 appetite_days: 6
 boundaries:

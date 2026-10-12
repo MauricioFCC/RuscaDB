@@ -1,7 +1,7 @@
 ---
 id: SPEC-0018
 feature: mvcc_manifest
-status: accepted
+status: implemented
 owner: storage-team
 appetite_days: 8
 boundaries:

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0016
 feature: ci_t3
-status: accepted
+status: implemented
 owner: platform-team
 appetite_days: 4
 boundaries:

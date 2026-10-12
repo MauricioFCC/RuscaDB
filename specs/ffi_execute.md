@@ -1,7 +1,7 @@
 ---
 id: SPEC-0026
 feature: ffi_execute
-status: accepted
+status: implemented
 owner: platform-team
 appetite_days: 5
 boundaries:

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0002
 feature: wal_durability
-status: accepted
+status: implemented
 owner: storage-team
 appetite_days: 10
 boundaries:
@@ -37,8 +37,9 @@ exit_criteria:
   - mutation score del diff >= 70%
   - T2 spec_fidelity >= 0.90
 rollback:
-  - flag RUSCADB_FF_WAL_V2=0
-  - down-migration documentada en specs/migrations/0002_down.md
+  - no hay flag de compatibilidad ni migracion de formato: el WAL es unico
+    (frames CRC32C); revertir el diff del crate `ruscadb-wal`
+  - down-migration: no aplica (no hay formato v2 con el que convivir)
 sandbox:
   - cargo test -p ruscadb-wal
 ---

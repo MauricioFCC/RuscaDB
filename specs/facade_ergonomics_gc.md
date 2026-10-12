@@ -1,7 +1,7 @@
 ---
 id: SPEC-0028
 feature: facade_ergonomics_gc
-status: accepted
+status: implemented
 owner: storage-team
 appetite_days: 5
 boundaries:

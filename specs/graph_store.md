@@ -1,7 +1,7 @@
 ---
 id: SPEC-0007
 feature: graph_store
-status: accepted
+status: implemented
 owner: index-team
 appetite_days: 6
 boundaries:

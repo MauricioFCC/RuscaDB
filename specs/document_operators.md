@@ -1,7 +1,7 @@
 ---
 id: SPEC-0044
 feature: document_operators
-status: accepted
+status: implemented
 owner: query-team
 appetite_days: 6
 boundaries:

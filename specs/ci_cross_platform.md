@@ -1,7 +1,7 @@
 ---
 id: SPEC-0033
 feature: ci_cross_platform
-status: accepted
+status: implemented
 owner: platform-team
 appetite_days: 3
 boundaries:

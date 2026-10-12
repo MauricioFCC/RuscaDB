@@ -1,7 +1,7 @@
 ---
 id: SPEC-0022
 feature: mvcc_soft_delete
-status: accepted
+status: implemented
 owner: storage-team
 appetite_days: 5
 boundaries:

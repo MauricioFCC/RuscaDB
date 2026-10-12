@@ -1,7 +1,7 @@
 ---
 id: SPEC-0035
 feature: blob_gc
-status: accepted
+status: implemented
 owner: storage-team
 appetite_days: 4
 boundaries:

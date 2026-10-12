@@ -1,7 +1,7 @@
 ---
 id: SPEC-0015
 feature: query_extensions
-status: accepted
+status: implemented
 owner: query-team
 appetite_days: 6
 boundaries:

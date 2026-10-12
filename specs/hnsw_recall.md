@@ -1,7 +1,7 @@
 ---
 id: SPEC-0034
 feature: hnsw_recall
-status: accepted
+status: implemented
 owner: search-team
 appetite_days: 3
 boundaries:

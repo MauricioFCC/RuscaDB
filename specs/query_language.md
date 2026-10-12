@@ -1,7 +1,7 @@
 ---
 id: SPEC-0005
 feature: query_language
-status: accepted
+status: implemented
 owner: query-team
 appetite_days: 8
 boundaries:

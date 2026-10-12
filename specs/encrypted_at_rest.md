@@ -1,7 +1,7 @@
 ---
 id: SPEC-0013
 feature: encrypted_at_rest
-status: accepted
+status: implemented
 owner: security-team
 appetite_days: 8
 boundaries:

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0020
 feature: btree
-status: accepted
+status: implemented
 owner: storage-team
 appetite_days: 8
 boundaries:

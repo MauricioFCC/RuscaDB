@@ -1,7 +1,7 @@
 ---
 id: SPEC-0031
 feature: mvp_suite
-status: accepted
+status: implemented
 owner: product-team
 appetite_days: 5
 boundaries:

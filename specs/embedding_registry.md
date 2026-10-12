@@ -1,7 +1,7 @@
 ---
 id: SPEC-0032
 feature: embedding_registry
-status: accepted
+status: implemented
 owner: ai-team
 appetite_days: 5
 boundaries:

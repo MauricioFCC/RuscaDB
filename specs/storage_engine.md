@@ -1,7 +1,7 @@
 ---
 id: SPEC-0003
 feature: storage_engine
-status: accepted
+status: implemented
 owner: storage-team
 appetite_days: 8
 boundaries:

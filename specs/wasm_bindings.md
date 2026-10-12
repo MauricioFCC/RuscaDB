@@ -1,7 +1,7 @@
 ---
 id: SPEC-0023
 feature: wasm_bindings
-status: accepted
+status: implemented
 owner: platform-team
 appetite_days: 6
 boundaries:

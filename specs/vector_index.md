@@ -1,7 +1,7 @@
 ---
 id: SPEC-0006
 feature: vector_index
-status: accepted
+status: implemented
 owner: index-team
 appetite_days: 10
 boundaries:
