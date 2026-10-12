@@ -362,6 +362,7 @@ apunta a la nueva versión. Todo lo demás es recuperable por replay del WAL.
 | ADR-010 | Directorio auto-descriptivo (`manifest.json`+`data/`+`wal/`+`index/`+`blobs/`) | archivo único monolítico | +paralelismo/recovery por partes; −no es «un solo fichero» (empaquetado opcional) |
 | ADR-011 | C-ABI estable (`ruscadb-ffi`) + drivers finos | reimplementar por lenguaje; gRPC | +un core; −herencia de límites del ABI C |
 | ADR-012 | API síncrona + `rayon`; `tokio` solo para I/O interno | async-first; threads puros | +API simple para embebido; −menos orquestación async fina |
+| ADR-013 | **Spike `TableProvider` opcional** de DataFusion (feature `datafusion`, OFF por defecto) que expone filas nativas al planner de DataFusion; el motor propio RQL se mantiene | reemplazar RQL completo por DataFusion; adaptador a mano sin DataFusion; no evaluar | +paridad SQL demostrada (AC-0060-02/04) costeando solo quien lo habilita: árbol 34→894 crates (+860), artefacto 779 KB→133 MiB, build frío ~340 s; −la CI `--all-features` compila el spike (~6 min la primera vez, amortizado por rust-cache) |
 
 ### 4.7 Fitness functions arquitectónicas (CI T1)
 
@@ -774,7 +775,7 @@ actualizada.
 | Líneas futuras (inspiradas en la literatura y cursos del sector sobre IA en producción; sin spec aún) | ⏳ | hardening operativo + shadow reads, retrieval híbrido con rerank, gates de ingesta + registry, caché semántico + coste por query, audit + RBAC, pipeline de blobs, MCP server |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |
-| **Motor SQL DataFusion (ADR-001)** | ⏳ | **Desviado**: el parser y el executor de RQL son propios y hand-written (`ruscadb-query`), en lugar de extender **DataFusion** como preveía ADR-001. Se mantiene como decisión de diseño pendiente de revisión (revalidar ADR-001 antes de escalar el planner). |
+| **Motor SQL DataFusion (ADR-001)** | ✅ | **Resuelto (ADR-013)**: el motor propio RQL se mantiene como decisión consciente y el overlap con ADR-001 se cierra con un spike `TableProvider` opcional (feature `datafusion`, OFF por defecto, SPEC-0060) que demuestra paridad SQL sin cambiar el runtime por defecto. |
 
 ---
 

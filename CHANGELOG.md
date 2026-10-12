@@ -55,7 +55,10 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   blob 1 MiB, group-commit WAL c=64, latencia HNSW k=10) con baseline
   versionada (`benches/baselines/initial.md`), job `benches` alert-only en
   nightly y guard que exige su presencia.
-- **SPEC-0060** (aceptada, pendiente): revalidación ADR-001.
+- **SPEC-0060**: revalidación de ADR-001 con un spike `TableProvider` de
+  DataFusion detrás de la feature `datafusion` (OFF por defecto, árbol
+  34→894 crates): paridad de scan y differential `WHERE`/`ORDER BY`/proyección
+  probados, y veredicto ADR-013 publicado en la tabla §4.6 del roadmap.
 
 ### Changed
 

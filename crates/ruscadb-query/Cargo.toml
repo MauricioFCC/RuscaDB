@@ -18,9 +18,23 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 ruscadb-core = { workspace = true }
+# Spike SPEC-0060: DataFusion como librería embebida detrás de la feature
+# `datafusion` (OFF por defecto; NF-0060-01: ni dependencia ni build default).
+datafusion = { workspace = true, optional = true }
+# `MemorySourceConfig`/`DataSourceExec` no están re-exportados por el crate
+# meta `datafusion` (SPEC-0060): mismo camino que `MemTable` upstream.
+datafusion-datasource = { workspace = true, optional = true }
+# El trait `TableProvider` usa `#[async_trait]` en la implementación del spike.
+async-trait = { workspace = true, optional = true }
+
+[features]
+# Habilita el spike del TableProvider (AC-0060-02/04). Fuera del árbol por
+# defecto (AC-0060-03 lo verifica con `cargo tree -e normal`).
+datafusion = ["dep:datafusion", "dep:datafusion-datasource", "dep:async-trait"]
 
 [dev-dependencies]
 proptest = { workspace = true }
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
 insta = { workspace = true }
+tokio = { workspace = true }

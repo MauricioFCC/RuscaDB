@@ -60,6 +60,7 @@ ALLOWED: dict[str, set[str]] = {
         "ruscadb-fvs",
         "ruscadb-wal",
         "ruscadb-crypto",
+        "ruscadb-ts",
     },
     "ruscadb-testkit": {"ruscadb-core"},
     "ruscadb-crypto": {"ruscadb-core"},

@@ -12,6 +12,9 @@ pub mod ast;
 pub mod lexer;
 pub mod limits;
 mod parser;
+// Spike DataFusion (SPEC-0060): solo tras `--features datafusion`.
+#[cfg(feature = "datafusion")]
+pub mod provider;
 
 pub use ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, Delete, Explain, Expr, HavingCondition, Insert,
