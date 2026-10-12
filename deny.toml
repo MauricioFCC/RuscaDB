@@ -27,6 +27,14 @@ allow = [
     "ISC",
     "Unicode-3.0",
     "Zlib",
+    # bzip2-1.0.6 (libbz2-rs-sys ← compression-codecs ← datafusion-datasource):
+    # licencia tipo BSD del bzip2 original, permisiva y FSF-classed; entra con la
+    # feature opcional `datafusion` (SPEC-0060). Revisión 2026-10-12.
+    "bzip2-1.0.6",
+    # CC0-1.0 (tiny-keccak ← const-random ← ahash ← arrow-array): dedicación a
+    # dominio público (FSF Free/Libre); keccak para la semilla aleatoria de ahash.
+    # Revisión 2026-10-12.
+    "CC0-1.0",
 ]
 
 [bans]
