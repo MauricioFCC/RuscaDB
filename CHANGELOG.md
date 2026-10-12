@@ -65,6 +65,18 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   (`set_shadow_reads`/`shadow_report`): cada KNN se re-verifica contra el
   oráculo exacto `ruscadb_vector::distance` sin alterar el resultado servido.
 
+### Retrospectiva
+
+- Roadmap §2.6: ritual de **retrospectiva de frontera** formalizado — se
+  ejecuta cada 3 specs/refactors (cadencia mínima) con gatillos adelantados
+  (técnica nueva, cambio de ADR, dolor técnico) y salida acotada (veredictos
+  sobre §3, specs/ADRs/SLOs encaminados, registro aquí).
+- Primera edición (ciclo SPEC-0060/0061/0062 + SSOT): auditoría de frontera con
+  3 especialistas → 25+ hallazgos priorizados (P1: filas de trazabilidad §7.5
+  falsas, desviaciones SSOT Lance/redb/Candle sin ADR, T3 crash-recovery sin
+  job, `verification.md`/README desactualizados). Pendientes P1 se ejecutan
+  como P0 del siguiente lote.
+
 ### Changed
 
 - RQL ampliado de forma incremental: `SELECT`/`WHERE`/`LIMIT` (SPEC-0005) →

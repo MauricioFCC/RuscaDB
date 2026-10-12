@@ -166,9 +166,43 @@ postcondición no se cumple (bloqueo False-DONE / SPE).
 | SER (Spec Execution Rate) | AC que pasan / total | 1.00 antes de sign-off |
 | TCI_agentic | tareas sin intervención humana / intentadas | ≥ 0.80 (trend ↑) |
 
+### 2.6 Retrospectiva de frontera (cada 3 refactors, cadencia mínima)
+
+Cada **3 specs/refactors cerrados** se detiene el ciclo para una retrospectiva
+de frontera corta (RSF/FRS reaplicado): parar ANTES de que un desvío se vuelva
+tedioso de corregir, comprobando tres cosas con evidencia:
+
+1. **¿Salió una forma nueva de hacerlo?** — estado del arte 2026: la tabla §3
+   se revisita y se actualiza con fuente + fecha (papers, benchmarks, lanzamientos).
+2. **¿Cambió el requerimiento por algo del diseño interno?** — decisiones de
+   implementación recientes (ADRs §4.6, refactors) que mutan supuestos previos:
+   revalidar vecinas, no solo la tocada.
+3. **¿Dónde duele mantener?** — crates repetidos, SLOs sin medición, tests
+   lentos/flaky: señal de que toca spec de deuda antes de seguir.
+
+**Gatillos de ejecución adelantada** (la cadencia fija es el mínimo, no el techo):
+técnica de frontera citable nueva; cambio de ADR (§4.6); subida de dolor técnico
+(SLO sin medir, test lento, crate duplicado).
+
+**Salida del ciclo** (dirigida, evidencia > afirmación, máximo ~1 h de trabajo):
+1. Veredicto por tema revisitado — `mantener | experimentar | adoptar | descartar` —
+   con la tabla §3 actualizada (fuente y fecha).
+2. Acciones encaminadas a spec SDD: gaps de frontera (p. ej. híbrido con rerank,
+   caché semántico, cuantización data-oblivious) o deuda detectada.
+3. ADR nuevo si el veredicto cambia una decisión (§4.6).
+4. Cierre de SLO sin medición (§7.4) con job/test real.
+5. Registro en CHANGELOG (`### Retrospectiva` en `Unreleased`).
+
+**Reglas:** no bloquea features en curso (se programa entre lotes); si el ciclo
+detecta desviación grave de SSOT (docs ≠ código), el fix es P0 y se ejecuta
+antes de reanudar el lote.
+
 ---
 
 ## 3. Investigación de frontera (RSF/FRS) — evidencia
+
+> Esta tabla se **revalida en cada retrospectiva de frontera** (§2.6, cadencia
+> mínima: cada 3 refactors): las filas llevan veredicto y fecha de revisión.
 
 | Tema | Hallazgo clave 2026 | Fuente | Decisión que motiva |
 |---|---|---|---|
