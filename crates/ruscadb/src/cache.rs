@@ -1,0 +1,254 @@
+//! Caché semántico de KNN + coste por query (SPEC-0065).
+//!
+//! El caché reutiliza respuestas de consultas KNN semánticamente iguales:
+//! clave = embedding de consulta, hit si `cos(consulta, clave) >= 0.8`. Con el
+//! modo **OFF** (por defecto) las claves se sondean y almacenan sin alterar
+//! resultados ni costar nada en hits/misses; con **ON** se sirven hits y se
+//! contabilizan métricas. El coste por query acumula consultas, filas y tiempo
+//! de la fachada (independiente del caché).
+
+use crate::database::Database;
+use crate::executor::Row;
+
+/// Umbral de coseno para el hit semántico (Gupta et al. 2024 ~0.8).
+const SEMANTIC_CACHE_THRESHOLD: f64 = 0.8;
+
+/// Métricas del caché semántico (SPEC-0065).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CacheMetrics {
+    /// Consultas servidas desde el caché (solo con el modo habilitado).
+    pub hits: u64,
+    /// Consultas no servidas (solo con el modo habilitado).
+    pub misses: u64,
+    /// Entradas almacenadas (sondean también en OFF).
+    pub entries: usize,
+}
+
+/// Reporte de coste por query (SPEC-0065).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CostReport {
+    /// Consultas ejecutadas por la fachada.
+    pub queries: u64,
+    /// Suma de filas devueltas (incluidas las servidas por caché).
+    pub rows_returned: u64,
+    /// Nanosegundos acumulados en ejecución.
+    pub nanos: u64,
+}
+
+/// Entrada del caché: clave vectorial y resultado servido.
+pub(crate) struct CacheEntry {
+    /// Vector de consulta (clave).
+    vector: Vec<f32>,
+    /// Filas devueltas para esa clave.
+    rows: Vec<Row>,
+}
+
+/// Estado interno del caché semántico (SPEC-0065).
+#[derive(Default)]
+pub(crate) struct SemanticCache {
+    /// Modo habilitado (OFF por defecto).
+    pub(crate) enabled: bool,
+    /// Entradas almacenadas.
+    entries: Vec<CacheEntry>,
+    /// Hits contabilizados con ON.
+    hits: u64,
+    /// Misses contabilizados con ON.
+    misses: u64,
+}
+
+impl Database {
+    /// Habilita o deshabilita el servicio de hits del caché semántico.
+    ///
+    /// En OFF las claves siguen sondearse/almacenarse (para calentar el caché)
+    /// pero no se sirven hits ni se contabilizan métricas.
+    ///
+    /// Args:
+    ///     enabled: `true` activa hits y métricas.
+    pub fn set_semantic_cache(&mut self, enabled: bool) {
+        self.semantic_cache.enabled = enabled;
+    }
+    /// Métricas acumuladas del caché semántico.
+    ///
+    /// Returns:
+    ///     Hits/misses (solo contados con ON) y número de entradas.
+    pub fn semantic_cache_metrics(&self) -> CacheMetrics {
+        CacheMetrics {
+            hits: self.semantic_cache.hits,
+            misses: self.semantic_cache.misses,
+            entries: self.semantic_cache.entries.len(),
+        }
+    }
+
+    /// Vacía el caché y resetea sus métricas (conserva el modo habilitado).
+    pub fn clear_semantic_cache(&mut self) {
+        self.semantic_cache.entries.clear();
+        self.semantic_cache.hits = 0;
+        self.semantic_cache.misses = 0;
+    }
+
+    /// Reporte de coste por query acumulado.
+    ///
+    /// Returns:
+    ///     Copia del [`CostReport`] vigente.
+    pub fn cost_report(&self) -> CostReport {
+        self.cost_report
+    }
+
+    /// Pone a cero el reporte de coste.
+    pub fn reset_cost_report(&mut self) {
+        self.cost_report = CostReport::default();
+    }
+
+    /// Busca un hit semántico para el vector de consulta (solo con ON).
+    ///
+    /// Args:
+    ///     vector: Vector de consulta parseado del RQL.
+    ///
+    /// Returns:
+    ///     Las filas cacheadas si `cos(vector, clave) >= umbral` (hit), o
+    ///     `None` si no (miss). Contabiliza la métrica correspondiente.
+    pub(crate) fn cache_lookup(&mut self, vector: &[f32]) -> Option<Vec<Row>> {
+        let hit = self
+            .semantic_cache
+            .entries
+            .iter()
+            .find(|entry| cosine(vector, &entry.vector) >= SEMANTIC_CACHE_THRESHOLD);
+        match hit {
+            Some(entry) => {
+                self.semantic_cache.hits += 1;
+                Some(entry.rows.clone())
+            }
+            None => {
+                self.semantic_cache.misses += 1;
+                None
+            }
+        }
+    }
+
+    /// Almacena (o actualiza) la clave y su resultado.
+    ///
+    /// Se invoca con o sin el modo habilitado: permite calentar el caché y
+    /// garantizar hits futuros (AC-0065-01/05).
+    ///
+    /// Args:
+    ///     vector: Vector de consulta (clave).
+    ///     rows: Filas servidas por el motor.
+    pub(crate) fn cache_store(&mut self, vector: Vec<f32>, rows: Vec<Row>) {
+        if let Some(entry) = self
+            .semantic_cache
+            .entries
+            .iter_mut()
+            .find(|entry| cosine(&vector, &entry.vector) >= SEMANTIC_CACHE_THRESHOLD)
+        {
+            entry.rows = rows;
+            return;
+        }
+        self.semantic_cache
+            .entries
+            .push(CacheEntry { vector, rows });
+    }
+
+    /// Acumula una consulta ejecutada en el reporte de coste.
+    ///
+    /// Args:
+    ///     rows_returned: Filas devueltas (o servidas por caché).
+    ///     nanos: Nanosegundos de la ejecución.
+    pub(crate) fn note_execution(&mut self, rows_returned: usize, nanos: u64) {
+        self.cost_report.queries += 1;
+        self.cost_report.rows_returned += rows_returned as u64;
+        self.cost_report.nanos += nanos;
+    }
+}
+
+/// Similitud de coseno entre dos vectores.
+///
+/// Args:
+///     a: Primer vector.
+///     b: Segundo vector.
+///
+/// Returns:
+///     El coseno en `[-1.0, 1.0]` (0 si alguno es el vector nulo).
+fn cosine(a: &[f32], b: &[f32]) -> f64 {
+    let dot: f64 = a.iter().zip(b).map(|(x, y)| *x as f64 * *y as f64).sum();
+    let norm_a: f64 = a
+        .iter()
+        .map(|x| (*x as f64) * (*x as f64))
+        .sum::<f64>()
+        .sqrt();
+    let norm_b: f64 = b
+        .iter()
+        .map(|x| (*x as f64) * (*x as f64))
+        .sum::<f64>()
+        .sqrt();
+    if norm_a == 0.0 || norm_b == 0.0 {
+        0.0
+    } else {
+        dot / (norm_a * norm_b)
+    }
+}
+
+/// Extrae el vector de consulta de una sentencia KNN, si la hay.
+///
+/// Localiza `KNN` y toma el primer `[...]` posterior; si no parsea números
+/// devuelve `None` (la query no es cacheable).
+///
+/// Args:
+///     query: Texto RQL.
+///
+/// Returns:
+///     El vector de consulta como `f32`, o `None` si no es KNN cacheable.
+pub(crate) fn extract_knn_vector(query: &str) -> Option<Vec<f32>> {
+    let marker = query.rfind("KNN")?;
+    let rest = &query[marker + "KNN".len()..];
+    let start = rest.find('[')?;
+    let tail = &rest[start + 1..];
+    let end = tail.find(']')?;
+    let body = &tail[..end];
+    let values: Vec<f32> = body
+        .split(',')
+        .filter_map(|part| part.trim().parse::<f32>().ok())
+        .collect();
+    if values.is_empty() {
+        None
+    } else {
+        Some(values)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    /// Un KNN con vector se extrae correctamente.
+    #[test]
+    fn extracts_knn_vector() {
+        let query = "SELECT * FROM items KNN embedding <|2|> [0.1, 0.2, 0.3]";
+        assert_eq!(extract_knn_vector(query), Some(vec![0.1, 0.2, 0.3]));
+    }
+
+    /// Una query sin KNN no es cacheable.
+    #[test]
+    fn non_knn_is_not_cacheable() {
+        assert_eq!(extract_knn_vector("SELECT * FROM items"), None);
+        assert_eq!(
+            extract_knn_vector("SELECT * FROM t WHERE MATCH(a, '[x]')"),
+            None
+        );
+    }
+
+    /// El coseno de vectores idénticos es 1 y de ortogonales es 0.
+    #[test]
+    fn cosine_bounds() {
+        let a = [1.0_f32, 0.0];
+        let b = [0.0_f32, 1.0];
+        assert_eq!(cosine(&a, &a), 1.0);
+        assert!(cosine(&a, &b).abs() < 1e-9);
+    }
+
+    /// Un error de parseo en los valores devuelve `None` (no cacheable).
+    #[test]
+    fn malformed_knn_vector_is_not_cacheable() {
+        assert_eq!(extract_knn_vector("SELECT * FROM t KNN v <|1|> [xx]"), None);
+    }
+}

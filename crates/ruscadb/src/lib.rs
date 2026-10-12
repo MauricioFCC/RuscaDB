@@ -8,9 +8,12 @@
 
 #![forbid(unsafe_code)]
 
+mod auth;
 mod batch;
 mod blob;
+mod blob_pipeline;
 mod builder;
+mod cache;
 mod catalog;
 mod database;
 mod delete;
@@ -18,6 +21,7 @@ mod dml;
 mod document;
 mod encryption;
 mod executor;
+mod gates;
 mod gc;
 mod hardening;
 mod heap;
@@ -28,12 +32,16 @@ mod join;
 mod table_api;
 mod ts_api;
 
+pub use auth::{AuditEntry, Role};
+pub use blob_pipeline::{BlobJobResult, PipelineStatus};
 pub use builder::DatabaseBuilder;
+pub use cache::{CacheMetrics, CostReport};
 
 pub use catalog::{Catalog, ColumnDef, ColumnType, IndexDef, TableDef};
 pub use database::{Database, DbConfig};
 pub use encryption::EncryptionConfig;
 pub use executor::{Plan, Row};
+pub use gates::IngestionPolicy;
 pub use hardening::{IntegrityReport, ShadowDivergence, ShadowReport};
 pub use hybrid::{HybridHit, HybridStage, HybridWeights};
 pub use ruscadb_core::{

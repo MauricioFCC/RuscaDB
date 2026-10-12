@@ -72,6 +72,22 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   late-interaction por overlap de términos (proxy de MaxSim, TRF
   arXiv:2508.01405), degradación graceful a BM25/KNN puros (`Bm25Only`/
   `KnnOnly`) y API aditiva sin tocar `execute`.
+- **SPEC-0064**: gates de ingesta + registry persistible —
+  `IngestionPolicy { max_record_bytes, require_registry }` (por defecto abierta)
+  con rechazo `ResourceLimit`/`InvalidConfig`, y `ModelRegistry` persistido en
+  `<data>.models.json` (sobrevive al reopen).
+- **SPEC-0065**: caché semántico de KNN (hit por coseno ≥ 0.8 sobre el
+  embedding de consulta; OFF por defecto) + `CostReport` (queries, filas y
+  nanos acumulados, reseteable).
+- **SPEC-0066**: RBAC por rol de instancia (`Read`/`Write`/`Admin`, default
+  Admin) con `RuscaError::PermissionDenied` accionable + audit en memoria
+  (OFF por defecto, `audit_trail`/`clear_audit`).
+- **SPEC-0067**: pipeline de blobs — cola FIFO (`blob_pipeline_enqueue`/
+  `drain`/`status`) con análisis síncrono (tamaño, media type inferido,
+  `chunk_count` a 4 KiB) sin mutar el blob.
+- **SPEC-0068**: crate **`ruscadb-mcp`** (22.º crate del workspace) — servidor
+  MCP por **stdio** (JSON-RPC 2.0) con tools `query`/`tables`/
+  `integrity_check`; sin dependencias de red (solo `serde_json`).
 
 ### Retrospectiva
 
@@ -91,6 +107,12 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   AC/555 tests); README (555 tests, feature `datafusion` opcional); CHANGELOG
   (SPEC-0061, 62 specs, typo). SPEC-0063 `hybrid_retrieval` aprobada e
   **implementada** en este ciclo (RRF + re-scoring overlap, API aditiva).
+- Segunda edición (ciclo SPEC-0063..0068): **las 5 líneas futuras restantes
+  implementadas** — gates de ingesta + registry persistible, caché semántico +
+  coste por query, audit + RBAC, pipeline de blobs y servidor MCP stdio (crate
+  nuevo `ruscadb-mcp`). Veredictos: RRF/MaxSim en producción (reranker ONNX
+  real queda opcional); auditoría y caché en memoria (persistencia futura);
+  MCP por stdio preserva la identidad «sin red».
 
 ### Changed
 

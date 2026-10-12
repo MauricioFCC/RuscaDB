@@ -64,6 +64,13 @@ pub enum RuscaError {
     #[error("configuración inválida: {0}")]
     InvalidConfig(String),
 
+    /// Permiso denegado por el rol de instancia (SPEC-0066, RBAC).
+    #[error("permiso denegado para '{action}': el rol de la instancia no autoriza esta operación")]
+    PermissionDenied {
+        /// Operación denegada (WHAT + WHERE).
+        action: String,
+    },
+
     /// La consulta no se pudo analizar sintácticamente.
     #[error("error de sintaxis en posición {position}: {message}")]
     ParseError {

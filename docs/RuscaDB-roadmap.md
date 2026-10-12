@@ -812,10 +812,11 @@ actualizada.
 
 ## Estado de implementación
 
-> Actualizado con el loop SPEC-0051..0062 (todas implementadas y trazadas),
-> incluido el spike DataFusion SPEC-0060 (ADR-013), el gate T2 SPEC-0061 y el
-> hardening operativo SPEC-0062 (integridad + shadow reads).
-> Los estados de `specs/*.md` están normalizados a `implemented` (62/62) y el
+> Actualizado con el loop SPEC-0051..0068 (todas implementadas y trazadas),
+> incluido el spike DataFusion SPEC-0060 (ADR-013), el gate T2 SPEC-0061, el
+> hardening operativo SPEC-0062, el híbrido SPEC-0063 y las 5 líneas futuras
+> restantes (SPEC-0064..0068).
+> Los estados de `specs/*.md` están normalizados a `implemented` (68/68) y el
 > contrato SDD (`cargo xtask contract`) los valida bidireccionalmente.
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
@@ -825,14 +826,14 @@ actualizada.
 | Área | Estado | Evidencia (specs) |
 |---|---|---|
 | F0 — Fundación (workspace, gates T1/T3, `unsafe`, supply chain) | ✅ | SPEC-0016, SPEC-0033, SPEC-0046, SPEC-0061 |
-| F1 — Storage/WAL/MVCC (dominio, buffer pool, WAL, snapshot isolation) | ✅ | SPEC-0001, SPEC-0002, SPEC-0003, SPEC-0004, SPEC-0018, SPEC-0019, SPEC-0022, SPEC-0025, SPEC-0027, SPEC-0053, SPEC-0055, SPEC-0056 |
-| F2 — Query engine / RQL (parser, IR, DML, analítica) | ✅ | SPEC-0005, SPEC-0012, SPEC-0015, SPEC-0017, SPEC-0036, SPEC-0040, SPEC-0043, SPEC-0044, SPEC-0051, SPEC-0052, SPEC-0054, SPEC-0063 |
+| F1 — Storage/WAL/MVCC (dominio, buffer pool, WAL, snapshot isolation) | ✅ | SPEC-0001, SPEC-0002, SPEC-0003, SPEC-0004, SPEC-0018, SPEC-0019, SPEC-0022, SPEC-0025, SPEC-0027, SPEC-0053, SPEC-0055, SPEC-0056, SPEC-0064 |
+| F2 — Query engine / RQL (parser, IR, DML, analítica) | ✅ | SPEC-0005, SPEC-0012, SPEC-0015, SPEC-0017, SPEC-0036, SPEC-0040, SPEC-0043, SPEC-0044, SPEC-0051, SPEC-0052, SPEC-0054, SPEC-0063, SPEC-0065 |
 | F3 — Índices y grafos (HNSW, FVS/iFVS, CSR, BM25, B+tree) | ✅ | SPEC-0006, SPEC-0007, SPEC-0014, SPEC-0020, SPEC-0021, SPEC-0024, SPEC-0034, SPEC-0037, SPEC-0041, SPEC-0047, SPEC-0048, SPEC-0058 |
-| F4 — Multimodal / IA / time-series | ✅ | SPEC-0008, SPEC-0009, SPEC-0029, SPEC-0032, SPEC-0035, SPEC-0038, SPEC-0039, SPEC-0049, SPEC-0057 |
-| F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026 |
-| F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062 |
+| F4 — Multimodal / IA / time-series | ✅ | SPEC-0008, SPEC-0009, SPEC-0029, SPEC-0032, SPEC-0035, SPEC-0038, SPEC-0039, SPEC-0049, SPEC-0057, SPEC-0067 |
+| F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026, SPEC-0068 |
+| F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062, SPEC-0066 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
-| Líneas futuras (inspiradas en la literatura y cursos del sector sobre IA en producción; sin spec aún) | ⏳ | retrieval híbrido con rerank, gates de ingesta + registry, caché semántico + coste por query, audit + RBAC, pipeline de blobs, MCP server |
+| Líneas futuras (sin spec aún) | ⏳ | reranker cross-encoder real (feature `onnx`) sobre el híbrido SPEC-0063; persistencia de caché semántico/audit en disco; overflow pages del heap; tools de escritura/recursos en el servidor MCP |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |
 | **Motor SQL DataFusion (ADR-001)** | ✅ | **Resuelto (ADR-013)**: el motor propio RQL se mantiene como decisión consciente y el overlap con ADR-001 se cierra con un spike `TableProvider` opcional (feature `datafusion`, OFF por defecto, SPEC-0060) que demuestra paridad SQL sin cambiar el runtime por defecto. |

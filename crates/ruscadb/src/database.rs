@@ -17,7 +17,11 @@ use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
 use ruscadb_txn::{CURRENT_SCHEMA_VERSION, Manifest, Snapshot, TxId, TxnManager};
 use ruscadb_wal::{Lsn, RecordKind, Wal};
 
+use crate::auth::{AuditEntry, Role};
+use crate::blob_pipeline::BlobPipeline;
+use crate::cache::{CostReport, SemanticCache};
 use crate::encryption::EncryptionConfig;
+use crate::gates::IngestionPolicy;
 use crate::hardening::ShadowReport;
 use crate::heap::RowLocator;
 use crate::indexes::TableIndexes;
@@ -99,6 +103,22 @@ pub struct Database {
     pub(crate) shadow_enabled: bool,
     /// Acumulador del modo shadow (SPEC-0062): verificación de índices en vivo.
     pub(crate) shadow: ShadowReport,
+    /// Política de ingesta configurable (SPEC-0064).
+    pub(crate) policy: IngestionPolicy,
+    /// Ruta del registro de modelos persistible `<data>.models.json` (SPEC-0064).
+    pub(crate) models_path: PathBuf,
+    /// Caché semántico de KNN (SPEC-0065): OFF por defecto.
+    pub(crate) semantic_cache: SemanticCache,
+    /// Coste por query acumulado (SPEC-0065).
+    pub(crate) cost_report: CostReport,
+    /// Rol de instancia para RBAC (SPEC-0066): Admin por defecto.
+    pub(crate) role: Role,
+    /// Captura de auditoría habilitada (SPEC-0066): OFF por defecto.
+    pub(crate) audit_enabled: bool,
+    /// Trail de auditoría en memoria (SPEC-0066).
+    pub(crate) audit: Vec<AuditEntry>,
+    /// Pipeline de blobs (SPEC-0067): cola FIFO de análisis.
+    pub(crate) blob_pipeline: BlobPipeline,
 }
 
 impl Database {
@@ -158,7 +178,16 @@ impl Database {
             blobs,
             shadow_enabled: false,
             shadow: ShadowReport::default(),
+            policy: IngestionPolicy::default(),
+            models_path: config.data_path.with_extension("models.json"),
+            semantic_cache: SemanticCache::default(),
+            cost_report: CostReport::default(),
+            role: Role::default(),
+            audit_enabled: false,
+            audit: Vec::new(),
+            blob_pipeline: BlobPipeline::default(),
         };
+        database.restore_registry()?;
         let applied = database.replay()?;
         database.last_lsn = applied;
         database.manifest.checkpoint_lsn = applied;

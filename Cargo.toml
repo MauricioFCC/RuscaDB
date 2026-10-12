@@ -27,6 +27,7 @@ members = [
     "crates/ruscadb",
     "crates/ruscadb-testkit",
     "crates/ruscadb-crypto",
+    "crates/ruscadb-mcp",
     "crates/xtask",
 ]
 

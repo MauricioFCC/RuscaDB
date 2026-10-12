@@ -2984,6 +2984,7 @@ dependencies = [
  "ruscadb-txn",
  "ruscadb-vector",
  "ruscadb-wal",
+ "serde_json",
  "tempfile",
  "zeroize",
 ]
@@ -3073,6 +3074,14 @@ dependencies = [
  "proptest",
  "rstest",
  "ruscadb-core",
+]
+
+[[package]]
+name = "ruscadb-mcp"
+version = "0.1.0"
+dependencies = [
+ "ruscadb",
+ "serde_json",
 ]
 
 [[package]]

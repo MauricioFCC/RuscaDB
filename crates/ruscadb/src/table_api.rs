@@ -68,7 +68,13 @@ impl Database {
         metric: Metric,
         version: u32,
     ) -> Result<(), RuscaError> {
-        self.registry.register(model_id, dim, metric, version)
+        // RBAC (SPEC-0066): registrar modelos es administración.
+        self.require_admin("register_model")?;
+        self.registry.register(model_id, dim, metric, version)?;
+        // Persistencia del registry (SPEC-0064): <data>.models.json.
+        self.persist_registry()?;
+        self.note_audit("register_model", model_id);
+        Ok(())
     }
 
     /// Inserta una fila con solo escalares (azúcar sobre [`Database::insert_record`]).
@@ -146,6 +152,10 @@ impl Database {
         };
         record.meta.created_tx = tx;
         record.meta.lsn = self.wal.next_lsn();
+        // RBAC (SPEC-0066): escribir datos requiere rol Write o superior.
+        self.require_write("insert")?;
+        // Gates de ingesta configurados (SPEC-0064): tamaño y registry.
+        self.enforce_ingestion_gates(table, &record)?;
         apply_registry(self, &mut record)?;
         let mut catalog = Catalog::load(self)?;
         let definition = catalog.get(table)?.clone();
@@ -160,6 +170,7 @@ impl Database {
         if is_auto_commit {
             self.txn.commit(tx)?;
         }
+        self.note_audit("insert", table);
         Ok(record.id)
     }
 
@@ -232,6 +243,56 @@ impl Database {
     ///     [`RuscaError::ParseError`] si el texto no parsea;
     ///     errores de esquema del ejecutor en otro caso.
     pub fn execute_at(&mut self, query: &str, snapshot: &Snapshot) -> Result<Vec<Row>, RuscaError> {
+        let started = std::time::Instant::now();
+        // RBAC (SPEC-0066): las sentencias DML requieren rol Write o superior.
+        if Self::is_write_statement(query) {
+            self.require_write("execute")?;
+        }
+        let query_vector = crate::cache::extract_knn_vector(query);
+        // Caché semántico (SPEC-0065): sirve hits solo con el modo ON.
+        let rows = {
+            if self.semantic_cache.enabled {
+                if let Some(vector) = &query_vector {
+                    if let Some(hit) = self.cache_lookup(vector) {
+                        hit
+                    } else {
+                        let rows = self.execute_dispatch(query, snapshot)?;
+                        self.cache_store(vector.clone(), rows.clone());
+                        rows
+                    }
+                } else {
+                    self.execute_dispatch(query, snapshot)?
+                }
+            } else {
+                let rows = self.execute_dispatch(query, snapshot)?;
+                if let Some(vector) = &query_vector {
+                    self.cache_store(vector.clone(), rows.clone());
+                }
+                rows
+            }
+        };
+        let nanos = started.elapsed().as_nanos() as u64;
+        self.note_execution(rows.len(), nanos);
+        self.note_audit("execute", query);
+        Ok(rows)
+    }
+
+    /// Despacha la sentencia RQL (SELECT/INSERT/UPDATE/DELETE).
+    ///
+    /// Args:
+    ///     query: Texto RQL.
+    ///     snapshot: Vista fija de visibilidad.
+    ///
+    /// Returns:
+    ///     Filas visibles (o `{"affected": N}` para DML).
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si el texto no parsea.
+    fn execute_dispatch(
+        &mut self,
+        query: &str,
+        snapshot: &Snapshot,
+    ) -> Result<Vec<Row>, RuscaError> {
         match parse_statement(query)? {
             Statement::Select(select) => execute_select_at(self, &select, snapshot),
             Statement::Insert(insert) => self.execute_insert(&insert),

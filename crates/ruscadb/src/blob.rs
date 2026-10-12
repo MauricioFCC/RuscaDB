@@ -42,8 +42,12 @@ impl Database {
     ///     [`RuscaError::InvalidConfig`] si no hay blob store configurado;
     ///     [`RuscaError::Io`] si falla la escritura en disco.
     pub fn put_blob(&mut self, bytes: &[u8]) -> Result<BlobHash, RuscaError> {
+        // RBAC (SPEC-0066): subir blobs es escritura.
+        self.require_write("put_blob")?;
         let store = self.blobs.as_mut().ok_or_else(blob_store_not_configured)?;
-        store.put(bytes)
+        let hash = store.put(bytes)?;
+        self.note_audit("put_blob", &hash.0);
+        Ok(hash)
     }
 
     /// Lee el contenido completo del blob identificado por `hash`.
@@ -76,6 +80,8 @@ impl Database {
     ///     hay blob store configurado;
     ///     [`RuscaError::Io`] si falla el recorrido del directorio o el borrado.
     pub fn gc_blobs(&mut self) -> Result<usize, RuscaError> {
+        // RBAC (SPEC-0066): el GC es administración.
+        self.require_admin("gc_blobs")?;
         if self.active_tx.is_some() {
             return Err(RuscaError::InvalidConfig(
                 "no se puede ejecutar gc_blobs con una transacción activa (barrier R7): \

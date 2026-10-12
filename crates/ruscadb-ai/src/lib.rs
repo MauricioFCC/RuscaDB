@@ -467,6 +467,17 @@ impl ModelRegistry {
     pub fn version_of(&self, model_id: &str) -> Option<u32> {
         self.models.get(model_id).map(|spec| spec.version)
     }
+
+    /// Lista las specs registradas (SPEC-0064, persistencia).
+    ///
+    /// Returns:
+    ///     Pares `(model_id, spec)` en orden de registro.
+    pub fn entries(&self) -> Vec<(String, ModelSpec)> {
+        self.models
+            .iter()
+            .map(|(model_id, spec)| (model_id.clone(), *spec))
+            .collect()
+    }
 }
 
 #[cfg(test)]
