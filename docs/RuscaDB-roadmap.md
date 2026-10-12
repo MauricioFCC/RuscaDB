@@ -812,12 +812,13 @@ actualizada.
 
 ## Estado de implementación
 
-> Actualizado con el loop SPEC-0051..0071 (todas implementadas y trazadas),
+> Actualizado con el loop SPEC-0051..0075 (todas implementadas y trazadas),
 > incluidos el spike DataFusion SPEC-0060 (ADR-013), el gate T2 SPEC-0061, el
 > hardening operativo SPEC-0062, el híbrido SPEC-0063, las líneas futuras
-> SPEC-0064..0068 y las correcciones de la retrospectiva 3 (SPEC-0069..0071:
-> coherencia de caché, endurecimiento del camino de escritura, robustez).
-> Los estados de `specs/*.md` están normalizados a `implemented` (71/71) y el
+> SPEC-0064..0068, las correcciones de la retrospectiva 3 (SPEC-0069..0071) y
+> las 4 líneas de frontera de la retrospectiva 4 (SPEC-0072..0075: ColBERT con
+> hash embeddings, audit persistente, overflow pages, MCP write/resources).
+> Los estados de `specs/*.md` están normalizados a `implemented` (75/75) y el
 > contrato SDD (`cargo xtask contract`) los valida bidireccionalmente.
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
@@ -834,7 +835,7 @@ actualizada.
 | F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026, SPEC-0068 |
 | F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062, SPEC-0066 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
-| Líneas futuras (sin spec aún) | ⏳ | reranker cross-encoder real (feature `onnx`) sobre el híbrido SPEC-0063; persistencia de caché semántico/audit en disco; overflow pages del heap; tools de escritura/recursos en el servidor MCP |
+| Líneas futuras (sin spec aún) | ⏳ | modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016); persistencia del caché semántico (bajo valor: cada mutación invalida); free-list de páginas del heap; tools MCP de escritura avanzadas (update/delete por tool) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |
 | **Motor SQL DataFusion (ADR-001)** | ✅ | **Resuelto (ADR-013)**: el motor propio RQL se mantiene como decisión consciente y el overlap con ADR-001 se cierra con un spike `TableProvider` opcional (feature `datafusion`, OFF por defecto, SPEC-0060) que demuestra paridad SQL sin cambiar el runtime por defecto. |

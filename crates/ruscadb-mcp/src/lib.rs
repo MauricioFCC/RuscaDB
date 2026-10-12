@@ -7,6 +7,9 @@
 use ruscadb::{Database, ScalarValue};
 use serde_json::{Value, json};
 
+/// Esquema de URI de los recursos de tabla MCP (SPEC-0075).
+const TABLE_URI_SCHEME: &str = "ruscadb://table/";
+
 /// Código JSON-RPC: parámetros inválidos.
 const ERR_INVALID_PARAMS: i64 = -32602;
 /// Código JSON-RPC: método no encontrado.
@@ -20,18 +23,40 @@ const ERR_PARSE: i64 = -32700;
 pub struct McpServer {
     /// Base de datos servida por el servidor.
     db: Database,
+    /// Modo escritura opt-in (SPEC-0075): `false` = solo lectura.
+    read_write: bool,
 }
 
 impl McpServer {
-    /// Crea un servidor sobre una base ya abierta.
+    /// Crea un servidor **de solo lectura** sobre una base ya abierta.
     ///
     /// Args:
     ///     db: Base de datos (fachada `ruscadb`) a servir.
     ///
     /// Returns:
-    ///     El servidor listo para procesar mensajes.
+    ///     El servidor listo para procesar mensajes (DML rechazado).
     pub fn new(db: Database) -> Self {
-        Self { db }
+        Self {
+            db,
+            read_write: false,
+        }
+    }
+
+    /// Crea un servidor con **escritura opt-in** (SPEC-0075).
+    ///
+    /// La escritura sigue delegando el permiso real al RBAC de la `Database`
+    /// (SPEC-0066): con rol `Read` las escrituras devuelven `PermissionDenied`.
+    ///
+    /// Args:
+    ///     db: Base de datos a servir.
+    ///
+    /// Returns:
+    ///     El servidor con DML y tool `insert` habilitados.
+    pub fn read_write(db: Database) -> Self {
+        Self {
+            db,
+            read_write: true,
+        }
     }
 
     /// Procesa un mensaje JSON-RPC 2.0 y devuelve la respuesta serializada.
@@ -74,8 +99,10 @@ impl McpServer {
             return String::new();
         };
         match request.get("method").and_then(Value::as_str) {
-            Some("tools/list") => ok_response(id, json!({ "tools": tool_catalog() })),
+            Some("tools/list") => ok_response(id, json!({ "tools": self.tool_catalog() })),
             Some("tools/call") => self.call_tool(request, id),
+            Some("resources/list") => self.list_resources(id),
+            Some("resources/read") => self.read_resource(request, id),
             Some(other) => error_response(
                 id,
                 ERR_METHOD_NOT_FOUND,
@@ -130,20 +157,46 @@ impl McpServer {
                         "la tool 'query' requiere 'arguments.sql' (string)".to_string(),
                     );
                 };
-                // El transporte MCP es de solo lectura (SPEC-0070): el DML se
-                // rechaza en el servidor, independientemente del rol heredado.
-                if is_write_sql(sql) {
+                // El transporte MCP es de solo lectura salvo opt-in (SPEC-0070/0075).
+                if is_write_sql(sql) && !self.read_write {
                     return error_response(
                         id,
                         ERR_SERVER,
-                        "permiso denegado: el servidor MCP es de solo lectura (usa el SDK \
-                         embebido para escribir)"
+                        "permiso denegado: el servidor MCP es de solo lectura (usa \
+                         McpServer::read_write o el SDK embebido para escribir)"
                             .to_string(),
                     );
                 }
                 match self.db.execute(sql) {
                     Ok(rows) => ok_response(id, json!({ "rows": rows_to_json(&rows) })),
                     Err(error) => error_response(id, ERR_SERVER, format!("query falló: {error}")),
+                }
+            }
+            "insert" if self.read_write => {
+                let Some(table) = arguments.get("table").and_then(Value::as_str) else {
+                    return error_response(
+                        id,
+                        ERR_INVALID_PARAMS,
+                        "la tool 'insert' requiere 'arguments.table' (string)".to_string(),
+                    );
+                };
+                let Some(values) = arguments.get("values").and_then(Value::as_object) else {
+                    return error_response(
+                        id,
+                        ERR_INVALID_PARAMS,
+                        "la tool 'insert' requiere 'arguments.values' (objeto columna->valor)"
+                            .to_string(),
+                    );
+                };
+                let scalars: ruscadb::ScalarMap = values
+                    .iter()
+                    .map(|(column, value)| (column.clone(), json_to_scalar(value)))
+                    .collect();
+                match self.db.insert(table, scalars) {
+                    Ok(record) => {
+                        ok_response(id, json!({ "inserted": true, "id": format!("{record}") }))
+                    }
+                    Err(error) => error_response(id, ERR_SERVER, format!("insert falló: {error}")),
                 }
             }
             "tables" => match self.db.tables() {
@@ -171,27 +224,130 @@ impl McpServer {
             ),
         }
     }
+
+    /// Lista las tablas como recursos MCP (`ruscadb://table/<name>`).
+    ///
+    /// Args:
+    ///     id: Identificador del request (ecoado).
+    ///
+    /// Returns:
+    ///     La respuesta con `result.resources`.
+    fn list_resources(&mut self, id: Value) -> String {
+        match self.db.tables() {
+            Ok(tables) => {
+                let resources: Vec<Value> = tables
+                    .iter()
+                    .map(|name| {
+                        json!({
+                            "uri": format!("{TABLE_URI_SCHEME}{name}"),
+                            "name": name,
+                        })
+                    })
+                    .collect();
+                ok_response(id, json!({ "resources": resources }))
+            }
+            Err(error) => error_response(id, ERR_SERVER, format!("resources/list falló: {error}")),
+        }
+    }
+
+    /// Lee un recurso de tabla y devuelve sus filas como JSON.
+    ///
+    /// Args:
+    ///     request: Request JSON-RPC (con `params.uri`).
+    ///     id: Identificador del request (ecoado).
+    ///
+    /// Returns:
+    ///     La respuesta con `result.contents[0].text` (filas serializadas).
+    fn read_resource(&mut self, request: &Value, id: Value) -> String {
+        let Some(uri) = request
+            .get("params")
+            .and_then(|params| params.get("uri"))
+            .and_then(Value::as_str)
+        else {
+            return error_response(
+                id,
+                ERR_INVALID_PARAMS,
+                "resources/read requiere 'params.uri' (string)".to_string(),
+            );
+        };
+        let Some(table) = uri.strip_prefix(TABLE_URI_SCHEME) else {
+            return error_response(
+                id,
+                ERR_INVALID_PARAMS,
+                format!("uri desconocido '{uri}': se espera '{TABLE_URI_SCHEME}<tabla>'"),
+            );
+        };
+        let sql = format!("SELECT * FROM {table}");
+        match self.db.execute(&sql) {
+            Ok(rows) => ok_response(
+                id,
+                json!({
+                    "contents": [{
+                        "uri": uri,
+                        "mimeType": "application/json",
+                        "text": rows_to_json(&rows).to_string(),
+                    }]
+                }),
+            ),
+            Err(error) => error_response(
+                id,
+                ERR_INVALID_PARAMS,
+                format!("recurso '{uri}' no legible: {error}"),
+            ),
+        }
+    }
+
+    /// Catálogo de tools expuesto por `tools/list`.
+    ///
+    /// Returns:
+    ///     Array JSON con `name` y `description` de cada tool; incluye `insert`
+    ///     solo en modo escritura (SPEC-0075).
+    fn tool_catalog(&self) -> Value {
+        let mut tools = vec![
+            json!({
+                "name": "query",
+                "description": "Ejecuta una sentencia RQL (SELECT) y devuelve las filas como objetos."
+            }),
+            json!({
+                "name": "tables",
+                "description": "Lista los nombres de tabla del catálogo."
+            }),
+            json!({
+                "name": "integrity_check",
+                "description": "Verifica WAL, heap e índice vectorial y reporta banderas de integridad."
+            }),
+        ];
+        if self.read_write {
+            tools.push(json!({
+                "name": "insert",
+                "description": "Inserta una fila (arguments.table y arguments.values columna->valor)."
+            }));
+        }
+        Value::Array(tools)
+    }
 }
 
-/// Catálogo de tools expuesto por `tools/list`.
+/// Convierte un valor JSON a un escalar del dominio (tool `insert`).
+///
+/// Args:
+///     value: Valor JSON (número, string, bool o null).
 ///
 /// Returns:
-///     Array JSON con `name` y `description` de cada tool.
-fn tool_catalog() -> Value {
-    json!([
-        {
-            "name": "query",
-            "description": "Ejecuta una sentencia RQL (SELECT) y devuelve las filas como objetos."
-        },
-        {
-            "name": "tables",
-            "description": "Lista los nombres de tabla del catálogo."
-        },
-        {
-            "name": "integrity_check",
-            "description": "Verifica WAL, heap e índice vectorial y reporta banderas de integridad."
+///     El `ScalarValue` equivalente.
+fn json_to_scalar(value: &Value) -> ScalarValue {
+    match value {
+        Value::Null => ScalarValue::Null,
+        Value::Bool(inner) => ScalarValue::Bool(*inner),
+        Value::Number(inner) => {
+            if let Some(int) = inner.as_i64() {
+                ScalarValue::Int(int)
+            } else {
+                ScalarValue::Float(inner.as_f64().unwrap_or_default())
+            }
         }
-    ])
+        Value::String(inner) => ScalarValue::Text(inner.clone()),
+        other => ScalarValue::Text(other.to_string()),
+    }
 }
 
 /// Indica si una sentencia SQL es de escritura (guard del transporte MCP).
@@ -296,19 +452,6 @@ mod tests {
         let parsed: Value = serde_json::from_str(&response).expect("json");
         assert_eq!(parsed["error"]["code"], json!(ERR_PARSE));
         assert!(parsed.get("result").is_none());
-    }
-
-    /// El catálogo expone exactamente tres tools con descripción.
-    #[test]
-    fn catalog_has_three_tools() {
-        let catalog = tool_catalog();
-        let tools = catalog.as_array().expect("array");
-        assert_eq!(tools.len(), 3);
-        assert!(
-            tools
-                .iter()
-                .all(|tool| tool["description"].as_str().is_some_and(|d| !d.is_empty()))
-        );
     }
 
     /// Los escalares se mapean a tipos JSON nativos.

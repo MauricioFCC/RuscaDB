@@ -42,6 +42,8 @@ ruscadb-crypto = { workspace = true }
 postcard = { workspace = true }
 # Persistencia del ModelRegistry en <data>.models.json (SPEC-0064).
 serde_json = { workspace = true }
+# CRC32C por línea del audit persistido (SPEC-0073).
+crc32c = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]

@@ -22,6 +22,8 @@ use crate::heap::heap_scan;
 const RRF_K_RECIPROCAL: u32 = 60;
 /// Multiplicador para pedir N > k candidatos por vía antes de fusionar.
 const RRF_CANDIDATES_MULTIPLIER: usize = 4;
+/// Dimensión de los token-embeddings deterministas (SPEC-0072).
+const TOKEN_DIM: usize = 32;
 
 /// Etapa que determinó el orden final de un hit híbrido (SPEC-0063).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,20 +83,101 @@ fn tokenize(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Cuenta términos de la consulta presentes en el documento (late interaction).
+/// Hash FNV-1a de 64 bits (base determinista de los token-embeddings).
 ///
 /// Args:
-///     query_tokens: Términos de la consulta de texto.
-///     text: Texto del documento candidato.
+///     bytes: Bytes del token.
 ///
 /// Returns:
-///     El número de términos compartidos (overlap).
-fn overlap_terms(query_tokens: &[String], text: &str) -> usize {
-    let document = tokenize(text);
+///     El hash FNV-1a.
+fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+/// Mezclador splitmix64 (expansión de una semilla a 64 bits de calidad).
+///
+/// Args:
+///     seed: Semilla.
+///
+/// Returns:
+///     El valor mezclado.
+fn splitmix64(seed: u64) -> u64 {
+    let mut value = seed.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    value ^ (value >> 31)
+}
+
+/// Token-embedding determinista por hash (hash embeddings, Svenstrup 2017).
+///
+/// Proyecta el token a `TOKEN_DIM` componentes en `[-1, 1]` normalizados L2;
+/// sin modelo entrenado ni estado (mismo token → mismo vector).
+///
+/// Args:
+///     token: Término (en minúsculas).
+///
+/// Returns:
+///     El vector unitario del token (cero si el token es vacío).
+fn token_embedding(token: &str) -> [f32; TOKEN_DIM] {
+    let mut vector = [0.0_f32; TOKEN_DIM];
+    let seed = fnv1a(token.as_bytes());
+    for (index, component) in vector.iter_mut().enumerate() {
+        let mixed = splitmix64(seed.wrapping_add(index as u64));
+        let byte = (mixed & 0xff) as f32;
+        *component = byte / 127.5 - 1.0;
+    }
+    let norm: f32 = vector.iter().map(|value| value * value).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        for component in &mut vector {
+            *component /= norm;
+        }
+    }
+    vector
+}
+
+/// Producto punto de dos token-embeddings normalizados (coseno).
+///
+/// Args:
+///     left: Primer vector unitario.
+///     right: Segundo vector unitario.
+///
+/// Returns:
+///     El coseno en `[-1, 1]`.
+fn dot(left: &[f32; TOKEN_DIM], right: &[f32; TOKEN_DIM]) -> f32 {
+    left.iter().zip(right).map(|(a, b)| a * b).sum()
+}
+
+/// MaxSim de late-interaction (ColBERT): `Σ_i max_j cos(q_i, d_j)`.
+///
+/// Args:
+///     query_tokens: Términos de la consulta.
+///     doc_tokens: Términos del documento.
+///
+/// Returns:
+///     El score MaxSim (0 si algún lado está vacío); continuo, no entero.
+fn maxsim(query_tokens: &[String], doc_tokens: &[String]) -> f32 {
+    if query_tokens.is_empty() || doc_tokens.is_empty() {
+        return 0.0;
+    }
+    let doc_vectors: Vec<[f32; TOKEN_DIM]> = doc_tokens
+        .iter()
+        .map(|token| token_embedding(token))
+        .collect();
     query_tokens
         .iter()
-        .filter(|term| document.contains(term))
-        .count()
+        .map(|query_token| {
+            let query_vector = token_embedding(query_token);
+            doc_vectors
+                .iter()
+                .map(|doc_vector| dot(&query_vector, doc_vector))
+                .fold(f32::MIN, f32::max)
+        })
+        .sum()
 }
 
 /// Ranking por vía de cada candidato (posición 1-based).
@@ -296,18 +379,26 @@ fn rescore_or_keep(
     // monotonía de la lista devuelta.
     let depth = k;
     let top: Vec<(RecordId, f32)> = fused.iter().take(depth).copied().collect();
-    let mut ranked: Vec<(usize, usize)> = top
+    let mut ranked: Vec<(usize, f32)> = top
         .iter()
         .enumerate()
         .map(|(position, (id, _))| {
-            let overlap = texts.get(id).map_or(0, |text| overlap_terms(&tokens, text));
-            (position, overlap)
+            // MaxSim real (SPEC-0072) sobre los token-embeddings del documento.
+            let score = texts
+                .get(id)
+                .map_or(0.0, |text| maxsim(&tokens, &tokenize(text)));
+            (position, score)
         })
         .collect();
-    ranked.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    ranked.sort_by(|left, right| {
+        right
+            .1
+            .total_cmp(&left.1)
+            .then_with(|| left.0.cmp(&right.0))
+    });
     let reordered: Vec<(RecordId, f32)> = ranked
         .iter()
-        .map(|(position, overlap)| (top[*position].0, *overlap as f32))
+        .map(|(position, score)| (top[*position].0, *score))
         .collect();
     let changed = top
         .iter()
@@ -326,6 +417,49 @@ fn rescore_or_keep(
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+
+    /// AC-0072-01 — MaxSim premia la cobertura de términos de la consulta.
+    #[test]
+    // @spec AC-0072-01
+    fn test_ac_0072_01_maxsim_rewards_coverage() {
+        let query = tokenize("alfa beta gamma");
+        let three = maxsim(&query, &tokenize("alfa beta gamma"));
+        let two = maxsim(&query, &tokenize("alfa beta"));
+        let one = maxsim(&query, &tokenize("alfa"));
+        assert!(
+            three > two && two > one,
+            "la cobertura debe ordenar los scores: {three} > {two} > {one}"
+        );
+    }
+
+    /// AC-0072-02 — la repetición de un término no infla el score (max por término).
+    #[test]
+    // @spec AC-0072-02
+    fn test_ac_0072_02_maxsim_ignores_repetition() {
+        let query = tokenize("alfa beta");
+        let repeated = maxsim(&query, &tokenize("alfa alfa alfa beta"));
+        let plain = maxsim(&query, &tokenize("alfa beta"));
+        assert_eq!(
+            repeated, plain,
+            "el max por término ignora las apariciones repetidas"
+        );
+    }
+
+    /// AC-0072-04 — el score es determinista entre llamadas (sin estado).
+    #[test]
+    // @spec AC-0072-04
+    fn test_ac_0072_04_maxsim_is_deterministic() {
+        let query = tokenize("gato perro");
+        let document = tokenize("gato duerme");
+        let first = maxsim(&query, &document);
+        let second = maxsim(&query, &document);
+        assert_eq!(first.to_bits(), second.to_bits(), "bit a bit idéntico");
+        assert_eq!(
+            token_embedding("gato"),
+            token_embedding("gato"),
+            "mismo token → mismo vector"
+        );
+    }
 
     /// La fusión RRF puntúa más al candidato presente en ambas vías.
     #[test]

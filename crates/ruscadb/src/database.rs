@@ -121,6 +121,8 @@ pub struct Database {
     pub(crate) audit_epoch: std::time::Instant,
     /// Último timestamp emitido en el audit (SPEC-0070).
     pub(crate) audit_last_nanos: u64,
+    /// Ruta del audit persistido `<data>.audit.jsonl` (SPEC-0073).
+    pub(crate) audit_path: PathBuf,
     /// Pipeline de blobs (SPEC-0067): cola FIFO de análisis.
     pub(crate) blob_pipeline: BlobPipeline,
 }
@@ -191,9 +193,11 @@ impl Database {
             audit: Vec::new(),
             audit_epoch: std::time::Instant::now(),
             audit_last_nanos: 0,
+            audit_path: config.data_path.with_extension("audit.jsonl"),
             blob_pipeline: BlobPipeline::default(),
         };
         database.restore_registry()?;
+        database.restore_audit()?;
         let applied = database.replay()?;
         database.last_lsn = applied;
         database.manifest.checkpoint_lsn = applied;

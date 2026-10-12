@@ -3,9 +3,13 @@
 //! Formato de página: `[slot_count u16 LE | slots (offset u16, len u16)* |
 //! filas]`; las filas (`postcard(Record)` con solo `scalars` poblados) crecen
 //! desde el final de la página. El localizador de una fila es `(PageId,
-//! slot)`. Una fila mayor que la página se rechaza con
-//! [`RuscaError::InvalidConfig`] (límite documentado: 4 KiB por fila,
-//! cabida máxima de `4090` bytes serializados).
+//! slot)`.
+//!
+//! **Overflow pages (SPEC-0074)**: una fila mayor que `MAX_ROW_BYTES` se
+//! escribe como una *cadena* de páginas de desbordamiento
+//! (`[OVERFLOW_MAGIC u32 | next u64 | len u16 | chunk]`) y en el slot base
+//! queda un *stub* (`[STUB_MAGIC u32 | total_len u64 | first_page u64]`).
+//! `heap_read` reconstruye la fila siguiendo la cadena.
 
 use ruscadb_core::{Record, RuscaError};
 use ruscadb_storage::{PAGE_SIZE, Page, PageId};
@@ -24,6 +28,21 @@ const SLOT_SIZE: usize = 4;
 
 /// Cabida máxima de una fila serializada en una página de 4 KiB.
 const MAX_ROW_BYTES: usize = PAGE_SIZE - COUNT_SIZE - SLOT_SIZE;
+
+/// Marca de un stub de desbordamiento en el slot base (`"RVST"`).
+const STUB_MAGIC: u32 = 0x5256_5354;
+
+/// Marca de una página de desbordamiento (`"RVOF"`).
+const OVERFLOW_MAGIC: u32 = 0x5256_4f46;
+
+/// Tamaño del stub: magic (4) + total_len (8) + first_page (8).
+const STUB_BYTES: usize = 20;
+
+/// Cabecera de una página de overflow: magic (4) + next (8) + len (2).
+const OVERFLOW_HEADER: usize = 14;
+
+/// Bytes útiles por página de overflow.
+const OVERFLOW_CHUNK: usize = PAGE_SIZE - OVERFLOW_HEADER;
 
 /// Inserta un registro en el heap de la tabla.
 ///
@@ -48,10 +67,21 @@ pub(crate) fn heap_insert(
     table_name: &str,
     record: &Record,
 ) -> Result<RowLocator, RuscaError> {
-    let bytes = serialize_row(record)?;
+    let raw = encode_record(record)?;
+    // Overflow (SPEC-0074): si la fila no cabe, se escribe una cadena de
+    // páginas de desbordamiento y el slot base guarda un stub.
+    let bytes = if raw.len() > MAX_ROW_BYTES {
+        let first = write_overflow_chain(database, catalog, table_name, &raw)?;
+        stub_for(raw.len(), first.0)
+    } else {
+        raw
+    };
     let existing: Vec<u64> = catalog.get(table_name)?.pages.clone();
     for raw in existing.iter().rev() {
         let page = database.read_page(PageId(*raw))?;
+        if is_overflow_page(page.data()) {
+            continue;
+        }
         if let Some(slot) = try_insert_into(&page, &bytes)? {
             let table = catalog.get_mut(table_name)?;
             finish_insert(database, table, &page, *raw, &bytes, slot)?;
@@ -85,6 +115,23 @@ pub(crate) fn heap_read(
             locator.1, locator.0.0
         ))
     })?;
+    let bytes = slot_bytes(page.data(), *offset, *length)?;
+    // Overflow (SPEC-0074): el slot puede ser un stub que apunta a la cadena.
+    if is_stub(bytes) {
+        let total_len = u64::from_le_bytes(
+            bytes[4..12]
+                .try_into()
+                .map_err(|_| corrupt_heap("stub de overflow truncado"))?,
+        ) as usize;
+        let first = u64::from_le_bytes(
+            bytes[12..20]
+                .try_into()
+                .map_err(|_| corrupt_heap("stub de overflow truncado"))?,
+        );
+        let payload = read_overflow_chain(database, first, total_len)?;
+        return postcard::from_bytes(&payload)
+            .map_err(|error| corrupt_heap(&format!("payload de overflow no decodifica: {error}")));
+    }
     decode_row(page.data(), *offset, *length)
 }
 
@@ -104,10 +151,20 @@ pub(crate) fn heap_read(
 ///     [`RuscaError::InvalidConfig`] si la fila serializada no cabe en 4 KiB.
 pub(crate) fn heap_update(
     database: &mut Database,
+    catalog: &mut Catalog,
+    table_name: &str,
     locator: RowLocator,
     record: &Record,
 ) -> Result<(), RuscaError> {
-    let bytes = serialize_row(record)?;
+    let raw = encode_record(record)?;
+    // Overflow (SPEC-0074): la fila nueva puede necesitar una cadena nueva; se
+    // registra en el catálogo del llamador (que la persistirá con `save`).
+    let bytes = if raw.len() > MAX_ROW_BYTES {
+        let first = write_overflow_chain(database, catalog, table_name, &raw)?;
+        stub_for(raw.len(), first.0)
+    } else {
+        raw
+    };
     let page = database.read_page(locator.0)?;
     let slots = parse_slots(page.data())?;
     let target = locator.1 as usize;
@@ -149,7 +206,25 @@ pub(crate) fn heap_remove(
             locator.1, locator.0.0
         )));
     }
-    let removed = decode_row(page.data(), slots[target].0, slots[target].1)?;
+    let removed_bytes = slot_bytes(page.data(), slots[target].0, slots[target].1)?;
+    // Overflow (SPEC-0074): si el slot era un stub, el registro se reconstruye.
+    let removed = if is_stub(removed_bytes) {
+        let total_len = u64::from_le_bytes(
+            removed_bytes[4..12]
+                .try_into()
+                .map_err(|_| corrupt_heap("stub de overflow truncado"))?,
+        ) as usize;
+        let first = u64::from_le_bytes(
+            removed_bytes[12..20]
+                .try_into()
+                .map_err(|_| corrupt_heap("stub de overflow truncado"))?,
+        );
+        let payload = read_overflow_chain(database, first, total_len)?;
+        postcard::from_bytes(&payload)
+            .map_err(|error| corrupt_heap(&format!("payload de overflow no decodifica: {error}")))?
+    } else {
+        decode_row(page.data(), slots[target].0, slots[target].1)?
+    };
     let rebuilt = rebuild_without(page.data(), &slots, locator.0, target)?;
     database.write_page(&rebuilt)?;
     Ok(removed)
@@ -233,17 +308,150 @@ fn write_slot(out: &mut [u8], slot: usize, offset: usize, length: usize) {
 ///
 /// Errors:
 ///     [`RuscaError::InvalidConfig`] si la serialización falla o no cabe.
-fn serialize_row(record: &Record) -> Result<Vec<u8>, RuscaError> {
-    let bytes = postcard::to_allocvec(record).map_err(|error| {
+/// Serializa un registro SIN imponer el límite de página (SPEC-0074).
+///
+/// Args:
+///     record: Registro a serializar.
+///
+/// Returns:
+///     Los bytes `postcard(Record)`.
+///
+/// Errors:
+///     [`RuscaError::InvalidConfig`] si la serialización falla.
+fn encode_record(record: &Record) -> Result<Vec<u8>, RuscaError> {
+    postcard::to_allocvec(record).map_err(|error| {
         RuscaError::InvalidConfig(format!("la fila no se pudo serializar: {error}"))
-    })?;
-    if bytes.len() > MAX_ROW_BYTES {
-        return Err(RuscaError::InvalidConfig(format!(
-            "la fila serializada ocupa {} bytes y supera el límite de {MAX_ROW_BYTES} por página de 4 KiB (reduce columnas o el documento)",
-            bytes.len()
+    })
+}
+
+/// Construye el stub de desbordamiento para un slot base.
+///
+/// Args:
+///     total_len: Longitud total de la fila serializada.
+///     first_page: Primera página de la cadena de desbordamiento.
+///
+/// Returns:
+///     Los 20 bytes del stub.
+fn stub_for(total_len: usize, first_page: u64) -> Vec<u8> {
+    let mut stub = Vec::with_capacity(STUB_BYTES);
+    stub.extend_from_slice(&STUB_MAGIC.to_le_bytes());
+    stub.extend_from_slice(&(total_len as u64).to_le_bytes());
+    stub.extend_from_slice(&first_page.to_le_bytes());
+    stub
+}
+
+/// Indica si los bytes de un slot son un stub de desbordamiento.
+///
+/// Args:
+///     bytes: Bytes del slot.
+///
+/// Returns:
+///     `true` si empieza con [`STUB_MAGIC`] y tiene el tamaño del stub.
+fn is_stub(bytes: &[u8]) -> bool {
+    bytes.len() == STUB_BYTES && bytes[0..4] == STUB_MAGIC.to_le_bytes()
+}
+
+/// Indica si una página es una página de desbordamiento.
+///
+/// Args:
+///     data: Bytes de la página.
+///
+/// Returns:
+///     `true` si empieza con [`OVERFLOW_MAGIC`].
+fn is_overflow_page(data: &[u8]) -> bool {
+    data.len() >= 4 && data[0..4] == OVERFLOW_MAGIC.to_le_bytes()
+}
+
+/// Escribe una cadena de páginas de desbordamiento con el payload completo.
+///
+/// Args:
+///     database: Base abierta.
+///     catalog: Catálogo (asignador *bump* + tabla).
+///     table_name: Tabla destino (las páginas se registran en `pages`).
+///     raw: Payload completo serializado.
+///
+/// Returns:
+///     El `PageId` de la primera página de la cadena.
+///
+/// Errors:
+///     [`RuscaError::TableNotFound`] si la tabla no existe;
+///     [`RuscaError::Io`] si falla la escritura.
+fn write_overflow_chain(
+    database: &mut Database,
+    catalog: &mut Catalog,
+    table_name: &str,
+    raw: &[u8],
+) -> Result<PageId, RuscaError> {
+    let chunks: Vec<&[u8]> = raw.chunks(OVERFLOW_CHUNK).collect();
+    let mut pages = Vec::with_capacity(chunks.len());
+    for _ in 0..chunks.len() {
+        let fresh = catalog.alloc_page();
+        catalog.get_mut(table_name)?.pages.push(fresh.0);
+        pages.push(fresh);
+    }
+    for index in (0..chunks.len()).rev() {
+        let next = pages.get(index + 1).map_or(0, |page| page.0);
+        let mut page = Page::new(pages[index]);
+        let out = page.data_mut();
+        out[0..4].copy_from_slice(&OVERFLOW_MAGIC.to_le_bytes());
+        out[4..12].copy_from_slice(&next.to_le_bytes());
+        out[12..14].copy_from_slice(&(chunks[index].len() as u16).to_le_bytes());
+        out[OVERFLOW_HEADER..OVERFLOW_HEADER + chunks[index].len()].copy_from_slice(chunks[index]);
+        database.write_page(&page)?;
+    }
+    Ok(pages[0])
+}
+
+/// Reconstruye el payload siguiendo una cadena de desbordamiento.
+///
+/// Args:
+///     database: Base abierta.
+///     first_page: Primera página de la cadena.
+///     total_len: Longitud total esperada del payload.
+///
+/// Returns:
+///     El payload completo serializado.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si la cadena es inválida o no cuadra.
+fn read_overflow_chain(
+    database: &mut Database,
+    first_page: u64,
+    total_len: usize,
+) -> Result<Vec<u8>, RuscaError> {
+    let mut payload = Vec::with_capacity(total_len);
+    let mut current = first_page;
+    while current != 0 {
+        let page = database.read_page(PageId(current))?;
+        let data = page.data();
+        if !is_overflow_page(data) {
+            return Err(corrupt_heap(&format!(
+                "la página {current} no es de desbordamiento"
+            )));
+        }
+        let next = u64::from_le_bytes(
+            data[4..12]
+                .try_into()
+                .map_err(|_| corrupt_heap("cabecera de overflow truncada"))?,
+        );
+        let len = u16::from_le_bytes(
+            data[12..14]
+                .try_into()
+                .map_err(|_| corrupt_heap("cabecera de overflow truncada"))?,
+        ) as usize;
+        let chunk = data
+            .get(OVERFLOW_HEADER..OVERFLOW_HEADER + len)
+            .ok_or_else(|| corrupt_heap("chunk de overflow fuera de la página"))?;
+        payload.extend_from_slice(chunk);
+        current = next;
+    }
+    if payload.len() != total_len {
+        return Err(corrupt_heap(&format!(
+            "la cadena de desbordamiento devuelve {} bytes y se esperaban {total_len}",
+            payload.len()
         )));
     }
-    Ok(bytes)
+    Ok(payload)
 }
 
 /// Reempaqueta la página sustituyendo el slot `target` por `replacement`.
@@ -365,12 +573,32 @@ fn collect_page_rows(
     rows: &mut Vec<(RowLocator, Record)>,
 ) -> Result<(), RuscaError> {
     let page = database.read_page(id)?;
+    // Las páginas de desbordamiento no contienen filas (SPEC-0074).
+    if is_overflow_page(page.data()) {
+        return Ok(());
+    }
     let slots = parse_slots(page.data())?;
     for (slot, (offset, length)) in slots.iter().enumerate() {
-        rows.push((
-            (id, slot as u32),
-            decode_row(page.data(), *offset, *length)?,
-        ));
+        let bytes = slot_bytes(page.data(), *offset, *length)?;
+        let record = if is_stub(bytes) {
+            let total_len = u64::from_le_bytes(
+                bytes[4..12]
+                    .try_into()
+                    .map_err(|_| corrupt_heap("stub de overflow truncado"))?,
+            ) as usize;
+            let first = u64::from_le_bytes(
+                bytes[12..20]
+                    .try_into()
+                    .map_err(|_| corrupt_heap("stub de overflow truncado"))?,
+            );
+            let payload = read_overflow_chain(database, first, total_len)?;
+            postcard::from_bytes(&payload).map_err(|error| {
+                corrupt_heap(&format!("payload de overflow no decodifica: {error}"))
+            })?
+        } else {
+            decode_row(page.data(), *offset, *length)?
+        };
+        rows.push(((id, slot as u32), record));
     }
     Ok(())
 }
@@ -530,21 +758,30 @@ mod tests {
         panic!("no se encontró un registro de {target} bytes");
     }
 
-    /// SPEC-0022 — `serialize_row` acepta exactamente `MAX_ROW_BYTES` y rechaza
-    /// un byte más (BVA del límite de página).
+    /// Frontera de página (SPEC-0074 supersede el rechazo de SPEC-0022): una
+    /// fila de exactamente `MAX_ROW_BYTES` se serializa normal; una mayor se
+    /// marca como overflow con un stub de 20 bytes.
     #[test]
     fn test_ac_0022_serialize_row_size_boundary() {
         let exact = record_of_serialized_len(MAX_ROW_BYTES);
-        assert!(
-            serialize_row(&exact).is_ok(),
-            "una fila de exactamente {MAX_ROW_BYTES} bytes cabe"
+        assert_eq!(
+            encode_record(&exact).expect("serializa").len(),
+            MAX_ROW_BYTES,
+            "una fila de exactamente {MAX_ROW_BYTES} bytes cabe sin overflow"
         );
         let over = record_of_serialized_len(MAX_ROW_BYTES + 1);
+        let raw = encode_record(&over).expect("serializa");
         assert!(
-            serialize_row(&over).is_err(),
-            "una fila de {} bytes debe rechazarse",
-            MAX_ROW_BYTES + 1
+            raw.len() > MAX_ROW_BYTES,
+            "el fixture debe superar la página: {}",
+            raw.len()
         );
+        let stub = stub_for(raw.len(), PageId(7).0);
+        assert!(
+            is_stub(&stub),
+            "una fila mayor que la página se marca con un stub de overflow"
+        );
+        assert_eq!(stub.len(), STUB_BYTES);
     }
 
     /// Página ranurada sintética con dos filas en `(offset, bytes)`.

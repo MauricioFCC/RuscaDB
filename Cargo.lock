@@ -2965,6 +2965,7 @@ dependencies = [
 name = "ruscadb"
 version = "0.1.0"
 dependencies = [
+ "crc32c",
  "criterion",
  "postcard",
  "pretty_assertions",

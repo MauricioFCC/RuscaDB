@@ -101,6 +101,19 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   (scores en una sola escala), registry atómico sin estado parcial (y ruta
   correcta `<data>.models.json`, sin doble extensión), contador de jobs
   saturante y **batch JSON-RPC** en el servidor MCP.
+- **SPEC-0072**: reranker real por **late-interaction** (ColBERT-style) con
+  **hash embeddings** deterministas (Svenstrup 2017): `MaxSim(q,d) = Σᵢ maxⱼ
+  cos(qᵢ,dⱼ)` sustituye el proxy de overlap, sin runtime externo (coherente
+  con ADR-016).
+- **SPEC-0073**: audit **persistente** append-only en `<data>.audit.jsonl`
+  (patrón WAL: CRC32C por línea, tolerancia a corrupción, rotación por tamaño),
+  cargado al abrir.
+- **SPEC-0074**: **overflow pages del heap** — filas mayores que la página
+  (4 KiB) se guardan como cadena de páginas de desbordamiento con stub en el
+  slot base (round-trip, update/delete y replay WAL verificados).
+- **SPEC-0075**: MCP con **escritura opt-in** (`McpServer::read_write`, RBAC
+  propagado) y **resources** (`ruscadb://table/<name>` con `resources/list` y
+  `resources/read`).
 
 ### Retrospectiva
 
@@ -135,6 +148,12 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   aserción) en SPEC-0069..0071; quedan como líneas futuras: reranker ONNX real,
   persistencia de caché/audit, overflow pages del heap y tools MCP de
   escritura.
+- Cuarta edición (ciclo SPEC-0072..0075): **las 4 líneas futuras restantes
+  implementadas** con técnicas de frontera — late-interaction con hash
+  embeddings (reranker real sin runtime externo), audit persistente con CRC,
+  overflow pages del heap (y el bug de asignador que el test descubrió en
+  `heap_update`), y MCP con escritura opt-in + resources. Cierra el roadmap
+  §Estado: no quedan líneas futuras con spec pendiente.
 
 ### Changed
 

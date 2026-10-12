@@ -67,7 +67,7 @@ impl Database {
             None => (self.txn.begin(), true),
         };
         let deleted = stamp_deleted(record, tx, self.wal.next_lsn());
-        heap_update(self, locator, &deleted)?;
+        heap_update(self, &mut catalog, table, locator, &deleted)?;
         remove_secondary_entry(self, &mut catalog, table, &deleted, locator)?;
         if let Some(indexes) = self.indexes.get_mut(table) {
             indexes.remove_record(&deleted);

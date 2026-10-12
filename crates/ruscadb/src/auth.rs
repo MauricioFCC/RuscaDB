@@ -9,6 +9,11 @@ use ruscadb_core::RuscaError;
 
 use crate::database::Database;
 
+/// Tope del fichero de audit antes de rotar (SPEC-0073).
+pub(crate) const MAX_AUDIT_BYTES: u64 = 1_048_576;
+/// Máximo de entradas cargadas en memoria al abrir (SPEC-0073).
+pub(crate) const MAX_AUDIT_ENTRIES: usize = 10_000;
+
 /// Rol de instancia de la base (SPEC-0066).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -88,7 +93,20 @@ impl Database {
     pub fn clear_audit(&mut self) -> Result<(), RuscaError> {
         self.require_admin("clear_audit")?;
         self.audit.clear();
+        // Coherencia con la persistencia (SPEC-0073): el fichero también se vacía.
+        let path = self.audit_path().to_path_buf();
+        if path.exists() {
+            std::fs::write(&path, b"")?;
+        }
         Ok(())
+    }
+
+    /// Ruta del fichero de audit persistido (SPEC-0073).
+    ///
+    /// Returns:
+    ///     La ruta `<data>.audit.jsonl` vigente.
+    pub(crate) fn audit_path(&self) -> &std::path::Path {
+        &self.audit_path
     }
 
     /// Requiere rol `Write` o superior para operaciones de escritura.
@@ -145,6 +163,102 @@ impl Database {
         self.audit.push(AuditEntry {
             action: action.to_string(),
             detail: detail.to_string(),
+            nanos,
+        });
+        // Persistencia append-only (SPEC-0073): mejor esfuerzo, el trail en
+        // memoria sigue siendo la fuente inmediata.
+        if let Err(error) = self.append_audit_line(action, detail, nanos) {
+            self.audit_push_error(&error);
+        }
+    }
+
+    /// Añade una línea al fichero de audit (con rotación por tamaño).
+    ///
+    /// Formato: `{"action":..,"detail":..,"nanos":N}\t<crc32c>\n`.
+    ///
+    /// Args:
+    ///     action: Operación auditada.
+    ///     detail: Detalle libre.
+    ///     nanos: Timestamp monótono.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla la escritura o la rotación.
+    fn append_audit_line(&self, action: &str, detail: &str, nanos: u64) -> Result<(), RuscaError> {
+        use std::io::Write;
+        let path = self.audit_path();
+        if path.metadata().map(|meta| meta.len()).unwrap_or(0) > MAX_AUDIT_BYTES {
+            let rotated = std::path::PathBuf::from(format!("{}.1", path.display()));
+            std::fs::rename(path, rotated)?;
+        }
+        let payload = serde_json::json!({
+            "action": action,
+            "detail": detail,
+            "nanos": nanos,
+        });
+        let payload_text = payload.to_string();
+        let crc = crc32c::crc32c(payload_text.as_bytes());
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
+        file.write_all(format!("{payload_text}\t{crc}\n").as_bytes())?;
+        file.flush()?;
+        Ok(())
+    }
+
+    /// Carga el audit persistido al abrir la base (descarta líneas corruptas).
+    ///
+    /// Args:
+    ///     self: Base recién abierta.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si el fichero existe pero no se puede leer.
+    pub(crate) fn restore_audit(&mut self) -> Result<(), RuscaError> {
+        let path = self.audit_path().to_path_buf();
+        if !path.exists() {
+            return Ok(());
+        }
+        let content = std::fs::read_to_string(&path)?;
+        for line in content.lines().take(MAX_AUDIT_ENTRIES) {
+            let Some((payload_text, crc_text)) = line.split_once('\t') else {
+                continue; // Línea sin CRC: corrupta, se descarta.
+            };
+            let Ok(expected) = crc_text.trim().parse::<u32>() else {
+                continue;
+            };
+            if crc32c::crc32c(payload_text.as_bytes()) != expected {
+                continue; // CRC alterado: línea corrupta.
+            }
+            let Ok(payload) = serde_json::from_str::<serde_json::Value>(payload_text) else {
+                continue;
+            };
+            let (Some(action), Some(detail), Some(nanos)) = (
+                payload.get("action").and_then(serde_json::Value::as_str),
+                payload.get("detail").and_then(serde_json::Value::as_str),
+                payload.get("nanos").and_then(serde_json::Value::as_u64),
+            ) else {
+                continue;
+            };
+            self.audit.push(AuditEntry {
+                action: action.to_string(),
+                detail: detail.to_string(),
+                nanos,
+            });
+            self.audit_last_nanos = self.audit_last_nanos.max(nanos);
+        }
+        Ok(())
+    }
+
+    /// Registra un fallo de persistencia del audit en el trail (observable).
+    ///
+    /// Args:
+    ///     error: Error de escritura del fichero.
+    fn audit_push_error(&mut self, error: &RuscaError) {
+        let nanos = self.audit_last_nanos + 1;
+        self.audit_last_nanos = nanos;
+        self.audit.push(AuditEntry {
+            action: "audit_persist_error".to_string(),
+            detail: error.to_string(),
             nanos,
         });
     }

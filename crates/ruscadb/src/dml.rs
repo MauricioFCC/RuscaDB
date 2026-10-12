@@ -209,7 +209,7 @@ fn rewrite_row(
         index_remove(database, catalog, &table.name, &old_value, locator)?;
     }
     let updated = apply_assignments(database, table, record, assignments, tx)?;
-    heap_update(database, locator, &updated)?;
+    heap_update(database, catalog, &table.name, locator, &updated)?;
     if let Some(new_value) = indexed_value(table, &updated) {
         index_insert(database, catalog, &table.name, &new_value, locator)?;
     }
