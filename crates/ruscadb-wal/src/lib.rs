@@ -336,6 +336,79 @@ pub fn read_records_with_key(
     let (records, _valid_offset) = scan_with_key(&bytes, key)?;
     Ok(records)
 }
+
+/// Resultado de la verificación estricta del WAL (SPEC-0062).
+///
+/// A diferencia de [`recover_with_key`], no trunca ni reescribe: solo clasifica
+/// la zona no decodificable como escritura rasgada legítima (crash) o como
+/// corrupción interna (frame completo con CRC inválido).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WalVerification {
+    /// Offset del final del último frame válido.
+    pub valid_offset: usize,
+    /// Bytes de cola no decodificables.
+    pub trailing_bytes: usize,
+    /// `true` si la cola es una corrupción, no una escritura rasgada.
+    pub corrupted: bool,
+    /// Offset donde comienza la corrupción (`None` si no la hay).
+    pub corrupt_offset: Option<usize>,
+}
+
+/// Verifica el WAL sin truncar, distinguiendo corrupción de cola rasgada.
+///
+/// Una cola rasgada legítima (crash a mitad de frame) no es corrupción: el
+/// frame queda incompleto. La corrupción es un frame **completo** cuyo CRC32C
+/// no valida (el byte alterado está dentro de un frame íntegro en disco).
+///
+/// Args:
+///     path: Ruta del archivo de log.
+///     key: Clave AEAD (`None` = modo claro).
+///
+/// Returns:
+///     La [`WalVerification`] con el offset válido y la clasificación de cola.
+///
+/// Raises:
+///     [`RuscaError::WalCorrupt`] ante payload versionado sin clave o AEAD
+///     inválido; [`RuscaError::Io`] si el archivo no se puede leer.
+pub fn verify(
+    path: impl AsRef<Path>,
+    key: Option<&[u8; 32]>,
+) -> Result<WalVerification, RuscaError> {
+    let bytes = std::fs::read(path.as_ref())?;
+    let (_, valid_offset) = scan_with_key(&bytes, key)?;
+    let trailing_bytes = bytes.len() - valid_offset;
+    let corrupted = trailing_bytes > 0 && is_complete_invalid_frame(&bytes, valid_offset);
+    Ok(WalVerification {
+        valid_offset,
+        trailing_bytes,
+        corrupted,
+        corrupt_offset: corrupted.then_some(valid_offset),
+    })
+}
+
+/// Indica si la cola no decodificable es un frame completo con CRC inválido.
+///
+/// Args:
+///     bytes: Contenido íntegro del archivo de log.
+///     offset: Offset donde arrancó la zona no decodificable.
+///
+/// Returns:
+///     `true` si hay un frame estructuralmente completo (longitud y CRC
+///     presentes) que no decodificó: eso es corrupción, no cola rasgada.
+fn is_complete_invalid_frame(bytes: &[u8], offset: usize) -> bool {
+    let Some(len_bytes) = bytes.get(offset..offset + LEN_SIZE) else {
+        return false;
+    };
+    let Ok(len_bytes) = <[u8; LEN_SIZE]>::try_from(len_bytes) else {
+        return false;
+    };
+    let len = u32::from_le_bytes(len_bytes) as usize;
+    if !(BODY_HEADER..=MAX_BODY).contains(&len) {
+        return false;
+    }
+    let frame_end = offset + LEN_SIZE + len + CRC_SIZE;
+    frame_end <= bytes.len()
+}
 /// Recupera el WAL truncando la cola rasgada.
 ///
 /// Args:
@@ -1044,5 +1117,96 @@ mod tests {
         let result = wal.append(1, RecordKind::Commit, &oversized);
         assert!(matches!(result, Err(RuscaError::WalCorrupt(_))));
         assert_eq!(wal.next_lsn(), 0, "no se asigna LSN si el append falla");
+    }
+
+    /// `verify` en un WAL sano: sin corrupción y sin cola no decodificable.
+    #[test]
+    fn test_verify_healthy_wal_is_not_corrupted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        {
+            let mut wal = Wal::open(&path).expect("abre");
+            wal.append(1, RecordKind::Begin, b"uno").expect("append");
+            wal.append(1, RecordKind::Commit, b"dos").expect("append");
+            wal.sync().expect("sync");
+        }
+        let verification = verify(&path, None).expect("verifica");
+        assert!(!verification.corrupted, "un WAL sano no está corrupto");
+        assert_eq!(verification.trailing_bytes, 0);
+        assert_eq!(
+            verification.corrupt_offset, None,
+            "no debe haber offset de corrupción"
+        );
+    }
+
+    /// `verify` distingue la corrupción interna (frame completo, CRC roto) de
+    /// la cola rasgada: un byte alterado en el primer frame es corrupción.
+    #[test]
+    fn test_verify_detects_mid_wal_corruption() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        {
+            let mut wal = Wal::open(&path).expect("abre");
+            wal.append(1, RecordKind::Begin, b"a").expect("append");
+            wal.append(1, RecordKind::Commit, b"b").expect("append");
+            wal.sync().expect("sync");
+        }
+        let mut raw = std::fs::read(&path).expect("lee crudo");
+        let spans = frame_spans(&raw);
+        assert_eq!(spans.len(), 2, "dos frames esperados");
+        raw[spans[0].0 + PAYLOAD_OFFSET] ^= 0xFF;
+        std::fs::write(&path, &raw).expect("escribe corrupto");
+
+        let verification = verify(&path, None).expect("verifica");
+        assert!(
+            verification.corrupted,
+            "el frame completo con CRC roto es corrupción"
+        );
+        assert_eq!(
+            verification.corrupt_offset,
+            Some(0),
+            "la corrupción empieza donde arranca el primer frame inválido"
+        );
+        assert!(
+            verification.trailing_bytes >= spans[0].1 - spans[0].0,
+            "la corrupción no se confunde con cola pequeña"
+        );
+    }
+
+    /// `verify` no confunde una cola rasgada legítima (crash a mitad de frame)
+    /// con corrupción.
+    #[test]
+    fn test_verify_torn_tail_is_not_corruption() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        {
+            let mut wal = Wal::open(&path).expect("abre");
+            wal.append(1, RecordKind::Commit, b"completo")
+                .expect("append");
+            wal.sync().expect("sync");
+        }
+        // Simula un crash a mitad de la escritura del segundo frame: 3 bytes
+        // de cabecera (longitud) sin cuerpo ni CRC.
+        let partial = [0x10u8, 0x00, 0x00];
+        use std::fs::OpenOptions;
+        use std::io::{Seek, SeekFrom, Write};
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("abre para rasgar");
+        file.seek(SeekFrom::End(0)).expect("seek al final");
+        file.write_all(&partial).expect("escribe cola rasgada");
+        drop(file);
+
+        let verification = verify(&path, None).expect("verifica");
+        assert!(
+            !verification.corrupted,
+            "una cola incompleta se trunca, no corrompe"
+        );
+        assert!(
+            verification.trailing_bytes == partial.len(),
+            "los bytes rasgados quedan contabilizados: {}",
+            verification.trailing_bytes
+        );
     }
 }

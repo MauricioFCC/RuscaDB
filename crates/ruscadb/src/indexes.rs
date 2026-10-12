@@ -74,6 +74,22 @@ impl TableIndexes {
             .is_some_and(|index| !index.is_empty())
     }
 
+    /// Número de vectores indexados en la tabla (SPEC-0062).
+    ///
+    /// Returns:
+    ///     La longitud del corpus vectorial del índice (0 si no hay ninguno).
+    pub(crate) fn vector_len(&self) -> usize {
+        self.vector.vectors.len()
+    }
+
+    /// Métrica del espacio vectorial fijada por el primer embedding (SPEC-0062).
+    ///
+    /// Returns:
+    ///     La métrica del índice, o `None` si aún no se indexó ningún vector.
+    pub(crate) fn vector_metric(&self) -> Option<Metric> {
+        self.vector.metric
+    }
+
     /// Indica si la tabla tiene al menos un nodo en el grafo (alguna arista).
     ///
     /// Returns:

@@ -18,6 +18,7 @@ use ruscadb_txn::{CURRENT_SCHEMA_VERSION, Manifest, Snapshot, TxId, TxnManager};
 use ruscadb_wal::{Lsn, RecordKind, Wal};
 
 use crate::encryption::EncryptionConfig;
+use crate::hardening::ShadowReport;
 use crate::heap::RowLocator;
 use crate::indexes::TableIndexes;
 
@@ -94,6 +95,10 @@ pub struct Database {
     /// `None` cuando `DbConfig::blob_path` no se fijó: las operaciones de blob
     /// devuelven un error accionable (no configurado).
     pub(crate) blobs: Option<BlobStore>,
+    /// Shadow reads habilitados (SPEC-0062): OFF por defecto (coste nulo).
+    pub(crate) shadow_enabled: bool,
+    /// Acumulador del modo shadow (SPEC-0062): verificación de índices en vivo.
+    pub(crate) shadow: ShadowReport,
 }
 
 impl Database {
@@ -151,6 +156,8 @@ impl Database {
             registry: ModelRegistry::new(),
             last_lsn: 0,
             blobs,
+            shadow_enabled: false,
+            shadow: ShadowReport::default(),
         };
         let applied = database.replay()?;
         database.last_lsn = applied;
@@ -404,6 +411,22 @@ impl Database {
     ///     El `TxId` activo o `None`.
     pub fn active_tx(&self) -> Option<TxId> {
         self.active_tx
+    }
+
+    /// Ruta del fichero WAL asociado a la base (SPEC-0062).
+    ///
+    /// Returns:
+    ///     La ruta del `.wal` derivada de la ruta de datos.
+    pub(crate) fn wal_path(&self) -> &Path {
+        &self.wal_path
+    }
+
+    /// Clave de cifrado del WAL, si la base se abrió cifrada (SPEC-0062).
+    ///
+    /// Returns:
+    ///     La clave XChaCha20 (`[u8; 32]`) o `None` en bases en claro.
+    pub(crate) fn encryption_key(&self) -> Option<[u8; 32]> {
+        self.encryption.as_ref().map(|encryption| *encryption.key())
     }
 }
 

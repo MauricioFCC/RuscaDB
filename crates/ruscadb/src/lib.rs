@@ -19,6 +19,7 @@ mod document;
 mod encryption;
 mod executor;
 mod gc;
+mod hardening;
 mod heap;
 mod index;
 mod indexes;
@@ -32,6 +33,7 @@ pub use catalog::{Catalog, ColumnDef, ColumnType, IndexDef, TableDef};
 pub use database::{Database, DbConfig};
 pub use encryption::EncryptionConfig;
 pub use executor::{Plan, Row};
+pub use hardening::{IntegrityReport, ShadowDivergence, ShadowReport};
 pub use ruscadb_core::{
     Edge, EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError,
     ScalarMap, ScalarValue,

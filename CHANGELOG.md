@@ -59,6 +59,11 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   DataFusion detrás de la feature `datafusion` (OFF por defecto, árbol
   34→894 crates): paridad de scan y differential `WHERE`/`ORDER BY`/proyección
   probados, y veredicto ADR-013 publicado en la tabla §4.6 del roadmap.
+- **SPEC-0062**: hardening operativo — `Database::integrity_check()` (CRC32C
+  del WAL con `ruscadb_wal::verify` que distingue corrupción de cola rasgada,
+  coherencia del heap y cobertura del índice vectorial) + shadow reads
+  (`set_shadow_reads`/`shadow_report`): cada KNN se re-verifica contra el
+  oráculo exacto `ruscadb_vector::distance` sin alterar el resultado servido.
 
 ### Changed
 

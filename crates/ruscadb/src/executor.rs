@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
-use ruscadb_core::{Record, RecordId, RuscaError, ScalarMap, ScalarValue};
+use ruscadb_core::{Metric, Record, RecordId, RuscaError, ScalarMap, ScalarValue};
 use ruscadb_query::limits::{
     DEFAULT_TIMEOUT_MILLIS, FULL_SCAN_WARN_THRESHOLD, IMPLICIT_LIMIT, check_budget,
 };
@@ -446,42 +446,96 @@ fn apply_matches(
 ///     [`RuscaError::DimensionMismatch`] si la dimensión de la consulta no
 ///     coincide con el índice.
 fn apply_knn(
-    database: &Database,
+    database: &mut Database,
     table: &TableDef,
     knn: &KnnClause,
     records: Vec<Record>,
     has_filter: bool,
 ) -> Result<Vec<Record>, RuscaError> {
-    let index = database
-        .table_indexes(&table.name)
-        .ok_or(RuscaError::MissingVector {
-            table: table.name.clone(),
-            column: knn.column.clone(),
-        })?;
-    if !index.has_vector() {
-        return Err(RuscaError::MissingVector {
-            table: table.name.clone(),
-            column: knn.column.clone(),
-        });
-    }
-    if knn.k == 0 {
+    let query: Vec<f32> = knn.query.iter().map(|value| *value as f32).collect();
+    let k = knn.k as usize;
+    if k == 0 {
         return Ok(Vec::new());
     }
-    let query: Vec<f32> = knn.query.iter().map(|value| *value as f32).collect();
-    let allowed: BTreeSet<RecordId> = records.iter().map(|record| record.id).collect();
-    let ranked = if has_filter {
-        index.ifvs_vector_search(&query, knn.k as usize, &allowed)?
-    } else {
-        index.filtered_vector_search(&query, knn.k as usize, &allowed)?
+    let (served, expected) = {
+        let index = database
+            .table_indexes(&table.name)
+            .ok_or(RuscaError::MissingVector {
+                table: table.name.clone(),
+                column: knn.column.clone(),
+            })?;
+        if !index.has_vector() {
+            return Err(RuscaError::MissingVector {
+                table: table.name.clone(),
+                column: knn.column.clone(),
+            });
+        }
+        let allowed: BTreeSet<RecordId> = records.iter().map(|record| record.id).collect();
+        let ranked = if has_filter {
+            index.ifvs_vector_search(&query, k, &allowed)?
+        } else {
+            index.filtered_vector_search(&query, k, &allowed)?
+        };
+        let served: Vec<RecordId> = ranked
+            .iter()
+            .map(|(id, _)| *id)
+            .filter(|id| allowed.contains(id))
+            .collect();
+        let expected = exact_top_k(&records, &query, k, index.vector_metric());
+        (served, expected)
     };
+    if database.shadow_reads_enabled() {
+        let label = format!("KNN {} k={k}", knn.column);
+        database.record_shadow_check(label, expected, served.clone());
+    }
     let mut by_id: BTreeMap<RecordId, Record> = records
         .into_iter()
         .map(|record| (record.id, record))
         .collect();
-    Ok(ranked
+    Ok(served
         .into_iter()
-        .filter_map(|(id, _)| by_id.remove(&id))
+        .filter_map(|id| by_id.remove(&id))
         .collect())
+}
+
+/// Top-k exacto por distancia real sobre los vectores de `records` (SPEC-0062).
+///
+/// Es el oráculo brute-force de shadow reads: usa
+/// [`ruscadb_vector::distance`] con la métrica del índice, ignora los registros
+/// sin vector o con dimensión incompatible (el índice ya rechaza esa consulta)
+/// y desempata por `RecordId` para ser determinista.
+///
+/// Args:
+///     records: Candidatos visibles (tras WHERE/MVCC).
+///     query: Vector de consulta.
+///     k: Número máximo de resultados.
+///     metric: Métrica del índice vectorial (`None` si no hay vectores).
+///
+/// Returns:
+///     Hasta `k` `RecordId` en orden de distancia ascendente.
+fn exact_top_k(
+    records: &[Record],
+    query: &[f32],
+    k: usize,
+    metric: Option<Metric>,
+) -> Vec<RecordId> {
+    let Some(metric) = metric else {
+        return Vec::new();
+    };
+    let mut scored: Vec<(f32, RecordId)> = records
+        .iter()
+        .filter_map(|record| {
+            let embedding = record.vector.as_ref()?;
+            let distance = ruscadb_vector::distance(metric, query, &embedding.values).ok()?;
+            Some((distance, record.id))
+        })
+        .collect();
+    scored.sort_by(|left, right| {
+        left.0
+            .total_cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    scored.into_iter().take(k).map(|(_, id)| id).collect()
 }
 
 /// Aplica `TRAVERSE`: recorre el grafo desde las raíces de los candidatos.
