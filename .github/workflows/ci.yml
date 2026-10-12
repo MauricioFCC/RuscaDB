@@ -2,9 +2,13 @@
 #
 # Pipeline alineado con docs/RuscaDB-roadmap.md §7.1:
 #   Lint        -> fmt + clippy -D warnings
-#   Test        -> cargo test --workspace --locked (matriz cross-platform)
+#   Test        -> cargo test --workspace --all-features --locked (matriz cross-platform)
 #   Architecture-> guards de hexagonal + unsafe (scripts/check_*.py)
 #   Security    -> cargo-deny + cargo-audit
+#
+# Crash-tests con kill real (SPEC-0056) viven en la suite unitaria T1
+# (`crates/ruscadb-wal/src/crash_tests.rs`); el recovery adversarial se cubre
+# en T3 por fuzz `wal_recover`.
 #
 # Cross-platform (SPEC-0033/SPEC-0046): el job `test` corre en paralelo sobre
 # linux/windows (strategy.matrix.os) para feedback rápido en push/PR. macOS se
@@ -14,7 +18,7 @@
 # T2 (LLM-judge) corre sobre el diff del PR. El job `mutation-diff` (MS_diff >=
 # 70 %, SPEC-0061) es la parte determinista y bloqueante de T2: muta solo el
 # diff del PR y falla bajo el umbral. T3 (regresión nightly: mutation full
-# sharded, fuzz, miri, sanitizers ASan, crash-recovery) es alert-only y
+# sharded, fuzz, miri, sanitizers ASan) es alert-only y
 # vive en `.github/workflows/nightly.yml` (SPEC-0016/SPEC-0033). Ver
 # docs/verification.md.
 

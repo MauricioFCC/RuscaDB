@@ -25,10 +25,11 @@ modelos con un único lenguaje (SQL extendido tipo SurrealQL).
 - **Seguridad release-blocking**: no se libera un MVP que procese archivos de
   terceros sin el modelo de amenazas y la política de `unsafe` de §6.
 
-**Stack frontier 2026 (veredictos únicos, §3 y §4):** Apache Arrow + **Lance**
-(columnar multimodal), **Apache DataFusion** (query engine), **HNSW/IVF**
-(vectorial), **Candle/ONNX** (embeddings locales), WAL propio + **MVCC**,
-bindings PyO3 / napi-rs / wasm-bindgen / C-FFI.
+**Stack frontier 2026 (veredictos únicos, §3 y §4):** PagedFile + heap slotted
+propios (buffer pool LRU-K, ADR-014), **RQL propio** (parser/executor
+hand-written; DataFusion solo spike opcional, ADR-013), **HNSW/IVF + iFVS**
+(vectorial), **embeddings locales propios** (ADR-016), WAL propio + **MVCC**,
+**B+tree propio** (ADR-015), bindings C-FFI / ctypes / koffi / WASM.
 
 **Garantía de calidad:** mutation score ≥ 70 % para merge y ≥ 85 % nightly,
 0 pérdida de commits ack'd tras crash, recall@10 ≥ 0.95.
@@ -60,9 +61,13 @@ Elasticsearch + Pinecone/Qdrant + Neo4j) y sincronizarlos a mano.
 
 ### 1.4 No objetivos
 
-- No reinventar el parser SQL: se extiende DataFusion (ADR-001).
-- No inventar un formato columnar: se usa Lance/Arrow (ADR-002).
-- No reimplementar RocksDB en C++: K/V en Rust nativo (ADR-003).
+- No forzar DataFusion en el runtime: el SQL extendido (RQL) es propio y
+  DataFusion queda como spike opcional probado (ADR-001 → ADR-013).
+- No depender de un formato columnar externo (Lance/Arrow): el layout físico
+  es propio (ADR-002 → ADR-014).
+- No enlazar motores C++ (RocksDB, redb) ni runtimes de IA pesados (Candle,
+  ONNX): K/V, índices y embeddings en Rust nativo propio (ADR-003/005 →
+  ADR-015/016).
 
 ---
 
@@ -94,7 +99,7 @@ intent capture → specs/<feature>.md (machine-readable) → agentic synthesis
 
 ```yaml
 ---
-id: SPEC-0012
+id: SPEC-0002
 feature: wal_durability
 status: accepted              # draft|accepted|implemented|verified|rolled_back
 owner: storage-team
@@ -103,31 +108,31 @@ boundaries:
   crates: [ruscadb-storage, ruscadb-core]
   out_of_scope: [network, bindings]
 fr:
-  - { id: FR-0012-01, desc: "cada COMMIT emite un registro WAL con CRC32C" }
-  - { id: FR-0012-02, desc: "fsync obligatorio antes de ack al caller" }
+  - { id: FR-0002-01, desc: "cada COMMIT emite un registro WAL con CRC32C" }
+  - { id: FR-0002-02, desc: "fsync obligatorio antes de ack al caller" }
 nf:
-  - { id: NF-0012-01, desc: "commit P99 < 5 ms en NVMe" }
-  - { id: NF-0012-02, desc: "recovery < 1 s por GB de WAL" }
+  - { id: NF-0002-01, desc: "commit P99 < 5 ms en NVMe" }
+  - { id: NF-0002-02, desc: "recovery < 1 s por GB de WAL" }
 acceptance_criteria:
-  - id: AC-0012-01
+  - id: AC-0002-01
     given: una base con un COMMIT confirmado
     when: el proceso es terminado con SIGKILL
     then: al reopen, la fila existe y su checksum valida
-    test: test_ac_0012_01_wal_durability_after_sigkill
-  - id: AC-0012-02
+    test: test_ac_0002_01_wal_durability_after_restart
+  - id: AC-0002-02
     given: un WAL con un registro truncado
     when: se invoca recovery
     then: el registro se descarta sin corromper el prefijo válido
-    test: test_ac_0012_02_wal_recovery_truncated_tail
+    test: test_ac_0002_02_wal_recovery_truncated_tail
 exit_criteria:
   - nextest --workspace verde
   - mutation score del diff >= 70%
   - T2 spec_fidelity >= 0.90
 rollback:
-  - flag RUSCADB_FF_WAL_V2=0
-  - down-migration en specs/migrations/0012_down.md
+  - sin flag de compatibilidad: el WAL es unico (frames CRC32C); revertir el diff
+  - down-migration: no aplica (no hay formato v2)  # corrige ref rota (retro 2026-10-12)
 sandbox:
-  - cargo nextest run -p ruscadb-storage
+  - cargo nextest run -p ruscadb-wal
 ---
 ```
 
@@ -211,13 +216,13 @@ antes de reanudar el lote.
 | Test-gen guiada por mutación | Inyectar diffs de mutantes vivos en el prompt maximiza mutation score | MutGen, arXiv:2506.02954 | Realimentar survivors |
 | Filtrado vectorial (FVS) | Ninguna estrategia (pre/post/in) domina; iFVS elige por selectividad y gana en QPS-recall | iFVS, arXiv:2607.22922 | FVS híbrida §4.4 |
 | HNSW + PCA | Reducir dimensionalidad con PCA acelera la búsqueda antes del cómputo exacto | pHNSW, ASP-DAC'26 | Refinamiento opcional |
-| Query engine | DataFusion es el motor SQL extensible en Rust con Arrow nativo; usado por Lance, InfluxDB, etc. | datafusion.apache.org | ADR-001 |
-| Columnar multimodal | Lance: append de columnas sin reescribir, zero-copy, blobs grandes, versionado | lancedb.com | ADR-002 |
+| Query engine | DataFusion es el motor SQL extensible en Rust con Arrow nativo; usado por Lance, InfluxDB, etc. | datafusion.apache.org | ADR-001 → **RQL propio** (ADR-013); DataFusion solo spike opcional |
+| Columnar multimodal | Lance: append de columnas sin reescribir, zero-copy, blobs grandes, versionado | lancedb.com | ADR-002 → **descartado**: formato propio PagedFile + heap slotted (ADR-014) |
 | Multi-modelo + SurrealQL | Grafos y vectores como records en un solo motor; `->edge->` y `embedding <|k|>` en una query | surrealdb.com | ADR-007 |
 | WAL en Rust | WAL user-space a ~IOPS del dispositivo; CRC32C + torn-write recovery + group commit | arXiv:2507.13062 | ADR-006, §4.2 |
 | Mutación Rust | `cargo-mutants` v27.1.0 (sharding, `--in-place`, `--in-diff`) | mutants.rs | CI §5 |
 | PBT Rust | `proptest` 1.11 (estrategias explícitas + shrinking) | docs.rs/proptest | §5 |
-| Embeddings multimodales | CLIP (img/texto), Whisper (audio→texto), MiniLM/e5 (texto); preferir `safetensors` | HF / Oracle 26 | ADR-005, §6 |
+| Embeddings multimodales | CLIP (img/texto), Whisper (audio→texto), MiniLM/e5 (texto); preferir `safetensors` | HF / Oracle 26 | ADR-005 → **ADR-016**: embeddings locales propios sin Candle/ONNX |
 
 ---
 
@@ -256,11 +261,11 @@ C4Container
     }
     Container(bind, "Binding layer", "PyO3/napi-rs/wasm/C-FFI", "Adapta la API al host")
     Container(facade, "ruscadb (fachada)", "Rust", "Composition root / DI")
-    Container(query, "Query engine", "DataFusion + dialecto", "SQL + grafo/vector/TS")
-    Container(storage, "Storage engine", "Lance / Arrow", "Columnar append-only + blobs")
+    Container(query, "Query engine", "RQL propio", "SQL + grafo/vector/TS (datafusion opcional, ADR-013)")
+    Container(storage, "Storage engine", "PagedFile / heap", "Páginas fijas + slots + blobs CAS (ADR-014)")
     Container(index, "Index layer", "HNSW + B-Tree/LSM", "ANN, secundarios, FTS, grafo")
     Container(wal, "WAL / Txn manager", "Rust", "Atomicidad multi-capa, MVCC")
-    Container(ai, "Ingestion / AI hooks", "Candle / ONNX", "Embeddings multimodales")
+    Container(ai, "Ingestion / AI hooks", "ruscadb-ai", "Embeddings locales propios (ADR-016)")
     Rel(bind, facade, "in-process")
     Rel(facade, query, "SQL / IR")
     Rel(facade, storage, "Read/Write")
@@ -297,18 +302,26 @@ ruscadb/
 ├── Cargo.toml                 # [workspace] resolver = "2"
 ├── crates/
 │   ├── ruscadb-core/          # dominio, ports, Record, catálogo, IR
-│   ├── ruscadb-storage/       # Lance/Arrow (StoragePort)
-│   ├── ruscadb-query/         # DataFusion + dialecto (QueryPort)
-│   ├── ruscadb-vector/        # HNSW/IVF + filtering dinámico (IndexPort)
-│   ├── ruscadb-graph/         # edges, traversal (B-Tree/LSM)
-│   ├── ruscadb-multimodal/    # blobs, chunking, orquestación
-│   ├── ruscadb-ai/            # Candle/ONNX (EmbedPort)
-│   ├── ruscadb-wal/           # WAL + MVCC (TxnPort)
+│   ├── ruscadb-storage/       # PagedFile + buffer pool LRU-K (StoragePort)
+│   ├── ruscadb-wal/           # WAL + recovery (TxnPort)
+│   ├── ruscadb-txn/           # MVCC snapshot isolation + manifiesto
+│   ├── ruscadb-query/         # RQL: lexer/parser/IR (QueryPort)
+│   ├── ruscadb-vector/        # HNSW/IVF (IndexPort)
+│   ├── ruscadb-fvs/           # filtrado vectorial híbrido (pre/in/post, iFVS)
+│   ├── ruscadb-graph/         # CSR + traversal
+│   ├── ruscadb-fts/           # índice invertido + BM25
+│   ├── ruscadb-btree/         # B+tree (índice primario, ADR-015)
+│   ├── ruscadb-ts/            # time-series (bucketing, ventanas)
+│   ├── ruscadb-multimodal/    # blob store CAS
+│   ├── ruscadb-ai/            # embeddings locales propios (ADR-016)
+│   ├── ruscadb-crypto/        # XChaCha20-Poly1305 + Argon2id
 │   ├── ruscadb-ffi/           # C ABI estable
-│   ├── ruscadb-py/            # PyO3
-│   ├── ruscadb-node/          # napi-rs
+│   ├── ruscadb-py/            # ctypes
+│   ├── ruscadb-node/          # koffi
+│   ├── ruscadb-wasm/          # WebAssembly
 │   ├── ruscadb/               # fachada (composition root)
-│   └── ruscadb-testkit/       # PBT, oráculos, mutantes, fixtures
+│   ├── ruscadb-testkit/       # PBT, oráculos, mutantes, fixtures
+│   └── xtask/                 # cargo xtask trace / contract / judge
 └── specs/                     # specs SDD machine-readable (pre-código)
 ```
 
@@ -347,11 +360,11 @@ pub struct Record {
 | Time-series | `scalars["ts"]` append-only | partición temporal en Lance |
 | Multimodal | `blob` (pointer) + `vector` | blob store CAS + HNSW |
 
-Una tabla Lance = conjunto de `Record` con el **mismo esquema Arrow**
-(`scalars` struct, `doc` Utf8/JSON, `edges` `List<Struct>`, `vector`
-`FixedSizeList<Float32,d>`, `blob` `Struct{uri,offset,len,media_type}`). **Un
-storage, cinco índices.** `RecordMeta.embedding_version` habilita versionado
-(ADR-009).
+Una tabla = conjunto de `Record` persistidos en **páginas fijas con heap
+slotted** (buffer pool LRU-K): `scalars` como mapa tipado, `doc` como payload
+JSON, `edges` como lista de aristas, `vector` como `FixedSizeList<Float32,d>`,
+`blob` como puntero al blob store CAS. **Un storage, cinco índices.**
+`RecordMeta.embedding_version` habilita versionado (ADR-009).
 
 ### 4.5 Flujo de un INSERT multimodal
 
@@ -384,11 +397,11 @@ apunta a la nueva versión. Todo lo demás es recuperable por replay del WAL.
 
 | ID | Decisión | Alternativas | Tradeoff |
 |---|---|---|---|
-| ADR-001 | **DataFusion** + un dialecto extendido (superset SurrealQL) | parser propio; SQLite VDBE; DuckDB | +planner maduro, Arrow nativo; −acoplamiento al calendario de DataFusion |
-| ADR-002 | **Lance** como formato físico y de blobs | Parquet puro; Arrow IPC; JSONL | +append sin reescritura, zero-copy, blobs; −ecosistema más joven |
-| ADR-003 | K/V y catálogo en **Rust nativo** (`redb` B-Tree + capa LSM); sin RocksDB | RocksDB (C++); sled; LMDB | +sin C++, build reproducible; −RocksDB más maduro en write-heavy |
+| ADR-001 | **RQL propio** (parser + executor hand-written en `ruscadb-query`); DataFusion evaluado y descartado como base → spike opcional probado | DataFusion + dialecto; SQLite VDBE; DuckDB | +sin dependencia externa, dialecto KNN/TRAVERSE/TS libre; −reescribir planner; ver ADR-013 |
+| ADR-002 | ~~Lance/Arrow~~ → **PagedFile + heap slotted propio** con buffer pool LRU-K (ADR-014) | Parquet puro; Arrow IPC; JSONL | +sin dependencia columnar, build reproducible; −sin cero-copy Arrow en frontera |
+| ADR-003 | ~~redb~~ → **B+tree propio** (`ruscadb-btree`) + capa MVCC propia (ADR-015) | RocksDB (C++); sled; LMDB | +sin C++, repositorio autocontenido; −RocksDB más maduro en write-heavy |
 | ADR-004 | **HNSW** primario; IVF+PQ fallback; FVS híbrida iFVS | IVF-PQ puro; DiskANN; brute-force | +recall/latencia; −RAM y borrado costoso (tombstones) |
-| ADR-005 | **Candle** por defecto; feature `onnx` opcional | ONNX Runtime; libtorch; servicio remoto | +portabilidad WASM, sin C++; −menos kernels GPU que ONNX |
+| ADR-005 | ~~Candle/ONNX~~ → **embeddings locales propios** (`ruscadb-ai`, sin runtime de terceros) (ADR-016) | ONNX Runtime; libtorch; servicio remoto | +portabilidad WASM, 0 dependencias nativas pesadas; −menos kernels GPU que ONNX |
 | ADR-006 | **WAL lógico global** + **MVCC** por manifiesto | WAL por índice; tx ligeras Lance; sin WAL | +recuperación consistente; −punto de serialización global (mitigado con group commit) |
 | ADR-007 | Un lenguaje: SQL + extensiones (`->`, `@>`, `TRAVERSE`, `KNN`, `TS`) | DSL binaria; JSON query; SurrealQL completo | +una curva, tooling SQL; −versionar la sintaxis extendida |
 | ADR-008 | **Zero-copy** en la frontera (Arrow C Data Interface) | marshalling por copia; JSON en frontera | +rendimiento/memoria; −contrato ABI de Arrow |
@@ -397,6 +410,9 @@ apunta a la nueva versión. Todo lo demás es recuperable por replay del WAL.
 | ADR-011 | C-ABI estable (`ruscadb-ffi`) + drivers finos | reimplementar por lenguaje; gRPC | +un core; −herencia de límites del ABI C |
 | ADR-012 | API síncrona + `rayon`; `tokio` solo para I/O interno | async-first; threads puros | +API simple para embebido; −menos orquestación async fina |
 | ADR-013 | **Spike `TableProvider` opcional** de DataFusion (feature `datafusion`, OFF por defecto) que expone filas nativas al planner de DataFusion; el motor propio RQL se mantiene | reemplazar RQL completo por DataFusion; adaptador a mano sin DataFusion; no evaluar | +paridad SQL demostrada (AC-0060-02/04) costeando solo quien lo habilita: árbol 34→894 crates (+860), artefacto 779 KB→133 MiB, build frío ~340 s; −la CI `--all-features` compila el spike (~6 min la primera vez, amortizado por rust-cache) |
+| ADR-014 | **Formato físico propio**: PagedFile (páginas fijas) + heap slotted + buffer pool LRU-K; blobs CAS (SHA-256) propios — ADR-002 desviado | Lance/Arrow; Parquet; JSONL | +sin dependencia columnar, layout controlado, WASM-friendly; -sin cero-copy Arrow nativo (FF-09 queda objetivo, no realidad) |
+| ADR-015 | **B+tree propio** (`ruscadb-btree`) como índice primario + MVCC por manifiesto propio — ADR-003 desviado | redb; sled; LMDB | +autocontenido, sin C++; -menos maduro que redb/LMDB en write-heavy extremo |
+| ADR-016 | **Embeddings locales propios** (`ruscadb-ai`, `safetensors`, sin Candle/ONNX) — ADR-005 desviado | Candle; ONNX Runtime; libtorch | +0 dependencias nativas, portabilidad WASM total; -menos kernels GPU; feature `onnx` vacía hasta runtime real |
 
 ### 4.7 Fitness functions arquitectónicas (CI T1)
 
@@ -762,10 +778,17 @@ Invariante inválido ⇒ **se descarta** (Best-of-N), no se repara.
 
 | Req | Spec/AC | Test | Cov (l/b) | MS | Gate |
 |---|---|---|---|---|---|
-| FR-0012-01 | AC-0012-01 | `test_ac_0012_01_wal_durability_after_sigkill` | 92/78 | 83 % | T1+T2 ✅ |
-| FR-0012-02 | AC-0012-02 | `test_ac_0012_02_wal_recovery_truncated_tail` | 88/74 | 74 % | T2 ✅ |
-| FR-0013-01 | AC-0013-01 | `test_ac_0013_01_hnsw_recall_at_10` | 90/70 | 71 % | T2 ✅ |
+| FR-0002-01 | AC-0002-01 | `test_ac_0002_01_wal_durability_after_restart` | 92/78 | 83 % | T1+T2 ✅ |
+| FR-0056-02 | AC-0056-02 | `test_ac_0056_02_kill_after_fsync_durable` | 92/78 | 83 % | T1+T2 ✅ |
+| FR-0002-02 | AC-0002-02 | `test_ac_0002_02_wal_recovery_truncated_tail` | 88/74 | 74 % | T2 ✅ |
+| FR-0034-01 | AC-0034-01 | `test_ac_0034_01_recall_at_10_meets_target` | 90/70 | 71 % | T2 ✅ |
 | (sin mapear) | — | — | — | — | **T1 ❌** |
+
+> Nota (retrospectiva 2026-10-12): revisión de la SSOT — las filas citan los
+> tests **reales** (`test_ac_0002_*`, `test_ac_0056_02`, `test_ac_0034_01`;
+> vigilar `cargo xtask trace`). Cov/MS son cifras de referencia por
+> componente; la medición viva la hacen `coverage_gate.py` y
+> `mutation_diff_gate.py` en CI (SLOs §7.4).
 
 ---
 

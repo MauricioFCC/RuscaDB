@@ -33,6 +33,7 @@ python scripts/check_core_unsafe.py    # política de unsafe y presupuestos
 
 # 4) Trazabilidad SDD (spec -> test)
 cargo xtask trace
+cargo xtask contract   # marcadores @spec y estados de specs (SPEC-0061)
 
 # 5) Config de CI/supply chain (SPEC-0016)
 python scripts/check_ci_config.py
@@ -41,6 +42,14 @@ python scripts/check_ci_config.py
 cargo deny check          # advisories + licenses + bans + sources (deny.toml)
 cargo audit               # RustSec advisories
 ```
+
+`--all-features` activa la feature opcional `datafusion` (spike `TableProvider`
+de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
+con rust-cache; el árbol normal no la incluye (AC-0060-03).
+
+Estado de referencia (retrospectiva 2026-10-12): **62 specs implementadas, 279
+AC trazados** (`cargo xtask trace`), **555 tests** (`cargo test --workspace --
+--list`, sin `--all-features`).
 
 Atajo opcional (mismos comandos, vía pre-commit):
 
@@ -212,7 +221,10 @@ smoke (`-- --test`: una pasada por bench, sin medición estadística), el
 equivalente al AC-0059-01:
 
 ```bash
-# Smoke local (< 5 min, NF-0059-01) — lo que corre el AC:
+# Comando real del job `benches` de nightly.yml (ejecuta el AC como test #[ignore]):
+cargo test -p ruscadb --test bench_smoke -- --ignored --exact test_ac_0059_01_benches_compile_and_run
+
+# Smoke local (< 5 min, NF-0059-01) — misma cobertura que el AC:
 cargo bench -p ruscadb --bench facade_smoke \
   -p ruscadb-wal --bench wal_commit \
   -p ruscadb-vector --bench knn_latency -- --test
@@ -253,6 +265,11 @@ el parseo de T1/T2/T3.
 |---|---|---|
 | `ci.yml` (matriz rápida) | SPEC-0033/SPEC-0046/AC-01 | `python scripts/check_ci_config.py`, `cargo test -p xtask` |
 | `nightly.yml` (`test-macos`) | SPEC-0046/AC-02 | idem |
+| `ci.yml` (`mutation-diff`) | SPEC-0061/T2m | `scripts/mutation_diff_gate.py` (MS_diff ≥ 70 %) |
+| `ci.yml` (`coverage`) | SPEC-0061 | `scripts/coverage_gate.py` (core ≥ 80/70) |
+| `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
+| `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |
+| `xtask contract` | SPEC-0061 | `cargo xtask contract` (marcadores + estados) |
 | `check_ci_config.py` (runners) | SPEC-0046/AC-03 | idem |
 | `nightly.yml` (sanitizers) | SPEC-0033/AC-02 | idem |
 | `nightly.yml` | SPEC-0016/AC-01 | idem |

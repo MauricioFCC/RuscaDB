@@ -16,7 +16,8 @@ relational, document, graph, vector and time-series data plus multimodal blobs i
 a single database directory, queried through **one extended-SQL language (RQL)**.
 
 > **Status: early development (`0.1.0`, unreleased).** The workspace spans
-> **21 crates** with **441 tests** (`cargo test --workspace`). The engine is
+> **21 crates** with **555 tests** (`cargo test --workspace -- --list`, without
+> `--all-features`). The engine is
 > under active construction; public APIs may change. Design source of truth:
 > [`docs/RuscaDB-roadmap.md`](docs/RuscaDB-roadmap.md) (see the *Estado de
 > implementación* section) and [`CHANGELOG.md`](CHANGELOG.md).
@@ -92,8 +93,10 @@ db.execute("EXPLAIN SELECT * FROM docs WHERE score > 0.5")?;
 
 ## Query language (RQL)
 
-A small, typed, hand-written SQL dialect (no external parser, no DataFusion
-dependency — see the roadmap's *Estado de implementación*):
+A small, typed, hand-written SQL dialect — no external parser. A DataFusion
+`TableProvider` spike (parity + differential) exists behind an optional,
+off-by-default `datafusion` feature (SPEC-0060 / ADR-013); the default runtime
+stays free of it:
 
 ```sql
 SELECT * FROM docs                                  -- projection + scan

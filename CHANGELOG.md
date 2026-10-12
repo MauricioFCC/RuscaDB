@@ -30,7 +30,7 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - **F6 — Hardening/Release**: cifrado en reposo XChaCha20-Poly1305 + Argon2id,
   endurecimiento de CI (fuzzing continuo, differential tests, cross-platform),
   SBOM y supply chain.
-- **SPEC-0001..0050**: 50 specs SDD (`specs/*.md`), cada AC trazado a un test
+- **SPEC-0001..0062**: 62 specs SDD (`specs/*.md`), cada AC trazado a un test
   `test_ac_XXXX_NN_*` verificado por `cargo xtask trace`.
 - **SPEC-0051**: `GROUP BY` multi-clave + `HAVING` (`COUNT`/`SUM`/`AVG` con
   `AND`; `HAVING` sin `GROUP BY` es `ParseError`).
@@ -51,10 +51,13 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - **SPEC-0057**: time-series cableado en la fachada (`ts_api`): `ts_bucket`
   alineado a `time_bucket` y `ts_window` deslizante con agregados
   `count/sum/min/max/avg`, columna no temporal rechazada con error accionable.
-- **SPEC-0059**: benches criterion de regressión (point-read indexado, ingest
+- **SPEC-0059**: benches criterion de regresión (point-read indexado, ingest
   blob 1 MiB, group-commit WAL c=64, latencia HNSW k=10) con baseline
   versionada (`benches/baselines/initial.md`), job `benches` alert-only en
   nightly y guard que exige su presencia.
+- **SPEC-0061**: gate T2 determinista — jobs `mutation-diff` (MS ≥ 70 % sobre
+  el diff, solo PR) y `coverage` (core ≥ 80/70) en `ci.yml` + `cargo xtask
+  contract` (marcadores `@spec` y estados de specs bidireccionales).
 - **SPEC-0060**: revalidación de ADR-001 con un spike `TableProvider` de
   DataFusion detrás de la feature `datafusion` (OFF por defecto, árbol
   34→894 crates): paridad de scan y differential `WHERE`/`ORDER BY`/proyección
@@ -74,8 +77,15 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 - Primera edición (ciclo SPEC-0060/0061/0062 + SSOT): auditoría de frontera con
   3 especialistas → 25+ hallazgos priorizados (P1: filas de trazabilidad §7.5
   falsas, desviaciones SSOT Lance/redb/Candle sin ADR, T3 crash-recovery sin
-  job, `verification.md`/README desactualizados). Pendientes P1 se ejecutan
-  como P0 del siguiente lote.
+  job, `verification.md`/README desactualizados).
+- **P0 ejecutado del lote**: roadmap §7.5 con tests reales (+nota cov de
+  referencia); ADR-014/015/016 (PagedFile/B+tree/embeddings propios) con
+  ADR-001/002/003/005 actualizados; §0/§1.4/§3/§4.2/§4.3/§4.4 alineados con la
+  realidad del workspace; comentario `ci.yml` corregido (crash-tests viven en
+  T1); `verification.md` (contract, benches real, tabla jobs, 62 specs/279
+  AC/555 tests); README (555 tests, feature `datafusion` opcional); CHANGELOG
+  (SPEC-0061, 62 specs, typo). SPEC-0063 `hybrid_retrieval` queda en `draft`→
+  `accepted` (aprobada, pendiente de TDD).
 
 ### Changed
 
