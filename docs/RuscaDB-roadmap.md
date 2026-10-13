@@ -861,11 +861,14 @@ completo + commit + CI verde antes de abrir la siguiente.
 > contrato SDD (`cargo xtask contract`) los valida bidireccionalmente.
 > **Plan de producción (2026-10-12)**: la auditoría *readiness* concluyó
 > «NO apto para producción» y abre las **Olas 0–4 (§8.1)** con 13 specs
-> SPEC-0076..0088. **Olas 0–3 y Ola 4 parcial cerradas (2026-10-13)**:
-> SPEC-0076, 0077, 0078, 0079, 0084, 0080, 0085, 0086, 0081 (group commit),
-> 0082 (gates SLO) y 0083 (embeddings estáticos + enmienda ADR-016) están
-> `implemented` y trazadas (**378 AC**); quedan 2 specs: SPEC-0087
-> (examples) y SPEC-0088 (p2_hardening), ambas Ola 4.
+> SPEC-0076..0088. **Olas 0–4 CERRADAS (2026-10-13)**: las 13 specs están
+> `implemented` y trazadas (**386 AC**), incluidas las dos últimas dentro del
+> análisis por flujos de trabajo: SPEC-0087 (examples ejecutables + guía de
+> API, smoke por subproceso) y SPEC-0088 (session/auth en MCP + keystore
+> KMS-lite con rotación). El mismo análisis (3 especialistas en paralelo)
+> dejó **P0 de proceso** no resueltos en «Líneas futuras»: releases/tags
+> automáticos, branch-coverage en el gate, job MSRV, code review
+> multi-agente y gate RED-first (CHANGELOG «Retrospectiva 5.ª»).
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
 > SDD cuyos AC están cubiertos por tests `test_ac_*` y verificados por
@@ -881,8 +884,8 @@ completo + commit + CI verde antes de abrir la siguiente.
 | F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026, SPEC-0068 |
 | F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062, SPEC-0066 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
-| **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ⏳ 11/13 ✅ | Olas 0–3 y Ola 4 parcial cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow), 0081 (group commit greedy-pipelined + FsyncPolicy + crash-harness), 0082 (gates SLO Mann-Whitney/bootstrap/A-A + slo.yml), 0083 (embeddings estáticos model2vec-rs + enmienda ADR-016). Quedan 2: 0087 (examples) y 0088 (p2_hardening), ambas Ola 4. |
-| Líneas futuras (sin spec aún) | ⏳ | modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083); persistencia del caché semántico (bajo valor: cada mutación invalida); tools MCP de escritura avanzadas (update/delete por tool) |
+| **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ✅ 13/13 | Olas 0–4 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow), 0081 (group commit greedy-pipelined + FsyncPolicy + crash-harness), 0082 (gates SLO Mann-Whitney/bootstrap/A-A + slo.yml), 0083 (embeddings estáticos model2vec-rs + enmienda ADR-016), 0087 (examples ejecutables + `docs/api_guide.md`, smoke por subproceso), 0088 (session/auth MCP `-32001` + keystore KMS-lite con rotación). **386 AC trazados**. |
+| Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0)**: automatizar releases/tags + validación CHANGELOG/commits en CI; branch-coverage en el gate de cobertura; job MSRV (1.89) en CI; code review multi-agente cableado (FF-11); gate RED-first con harness (adv. guardrails); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083); persistencia del caché semántico (bajo valor: cada mutación invalida); tools MCP de escritura avanzadas (update/delete por tool) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |
 | **Motor SQL DataFusion (ADR-001)** | ✅ | **Resuelto (ADR-013)**: el motor propio RQL se mantiene como decisión consciente y el overlap con ADR-001 se cierra con un spike `TableProvider` opcional (feature `datafusion`, OFF por defecto, SPEC-0060) que demuestra paridad SQL sin cambiar el runtime por defecto. |

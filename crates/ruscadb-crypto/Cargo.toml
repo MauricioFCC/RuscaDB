@@ -21,7 +21,13 @@ ruscadb-core = { workspace = true }
 chacha20poly1305 = { workspace = true }
 argon2 = { workspace = true }
 zeroize = { workspace = true }
+# Keystore KMS-lite (SPEC-0088): fichero JSON versionado + nonces aleatorios.
+serde = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }
+getrandom = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
 pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

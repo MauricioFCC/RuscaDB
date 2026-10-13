@@ -50,6 +50,9 @@ pub use ruscadb_core::{
     ScalarMap, ScalarValue,
 };
 pub use ruscadb_multimodal::BlobHash;
+// Keystore KMS-lite re-exportado por la fachada (SPEC-0088): los
+// adapters (p. ej. `ruscadb-mcp`) dependen solo de la composición.
+pub use ruscadb_crypto::keystore::Keystore;
 pub use ruscadb_storage::{PAGE_SIZE, Page, PageId};
 // Política de durabilidad del WAL (SPEC-0081): necesaria para configurar
 // `DbConfig::fsync_policy` desde consumidores de la fachada.

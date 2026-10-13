@@ -3,7 +3,7 @@
 Gracias por tu interés en RuscaDB. Esta guía describe cómo preparar el entorno,
 ejecutar el gate de calidad T1, el flujo *spec-first* y la convención de commits.
 
-El proyecto usa **Rust 2024 / 1.85+** (fijado en `rust-toolchain.toml`) y
+El proyecto usa **Rust 2024 / 1.89+** (fijado en `rust-toolchain.toml`) y
 Python 3.11+ solo para los *guards* de arquitectura y política de `unsafe`.
 
 ---

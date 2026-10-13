@@ -3385,9 +3385,14 @@ version = "0.1.0"
 dependencies = [
  "argon2",
  "chacha20poly1305",
+ "getrandom 0.4.3",
+ "hex",
  "pretty_assertions",
  "proptest",
  "ruscadb-core",
+ "serde",
+ "serde_json",
+ "tempfile",
  "zeroize",
 ]
 
@@ -3442,6 +3447,7 @@ version = "0.1.0"
 dependencies = [
  "ruscadb",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

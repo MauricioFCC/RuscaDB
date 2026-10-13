@@ -139,6 +139,23 @@ fn call(server: &mut McpServer, message: &str) -> Value {
     serde_json::from_str(&raw).expect("la respuesta debe ser JSON válido")
 }
 
+/// Autentica la sesión del servidor con un token recién emitido (SPEC-0088).
+///
+/// Args:
+///     server: Servidor MCP recién construido (sin sesión).
+fn authenticate(server: &mut McpServer) {
+    let token = server.issue_session_token().expect("token de sesión");
+    let message = format!(
+        r#"{{"jsonrpc":"2.0","id":0,"method":"session/auth","params":{{"token":"{token}"}}}}"#
+    );
+    let response = call(server, &message);
+    assert_eq!(
+        response["result"]["authenticated"].as_bool(),
+        Some(true),
+        "session/auth debe autenticar con el token emitido"
+    );
+}
+
 /// Extrae el mensaje textual de error de una respuesta JSON-RPC fallida.
 ///
 /// Args:
@@ -162,7 +179,8 @@ fn error_message(response: &Value) -> String {
 fn test_ac_0075_01_read_write_allows_dml() {
     let (_guard, mut database) = open_test_db("ac0075_01");
     create_items(&mut database, "items");
-    let mut server = McpServer::read_write(database);
+    let mut server = McpServer::read_write(database).expect("servidor MCP con escritura");
+    authenticate(&mut server);
 
     let insert = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query","arguments":{"sql":"INSERT INTO items (id, name) VALUES (1, 'uno')"}}}"#;
     let response = call(&mut server, insert);
@@ -202,7 +220,8 @@ fn test_ac_0075_02_read_only_still_rejects_dml() {
     database
         .insert("items", row_scalars(1, "original"))
         .expect("insert de la fila sembrada");
-    let mut server = McpServer::new(database);
+    let mut server = McpServer::new(database).expect("servidor MCP");
+    authenticate(&mut server);
 
     let insert = r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"query","arguments":{"sql":"INSERT INTO items (id, name) VALUES (2, 'dos')"}}}"#;
     let response = call(&mut server, insert);
@@ -248,7 +267,8 @@ fn test_ac_0075_03_resources_list_tables() {
     let (_guard, mut database) = open_test_db("ac0075_03");
     create_items(&mut database, "items");
     create_items(&mut database, "otros");
-    let mut server = McpServer::read_write(database);
+    let mut server = McpServer::read_write(database).expect("servidor MCP con escritura");
+    authenticate(&mut server);
 
     let response = call(
         &mut server,
@@ -304,7 +324,8 @@ fn test_ac_0075_04_resources_read_rows() {
     database
         .insert("items", row_scalars(1, "uno"))
         .expect("insert de la fila sembrada");
-    let mut server = McpServer::read_write(database);
+    let mut server = McpServer::read_write(database).expect("servidor MCP con escritura");
+    authenticate(&mut server);
 
     let message = r#"{"jsonrpc":"2.0","id":31,"method":"resources/read","params":{"uri":"ruscadb://table/items"}}"#;
     let response = call(&mut server, message);
@@ -345,7 +366,8 @@ fn test_ac_0075_05_unknown_uri_and_rbac_propagates() {
     // (a) uri desconocido → -32602 accionable.
     let (_guard_uri, mut uri_db) = open_test_db("ac0075_05_uri");
     create_items(&mut uri_db, "items");
-    let mut uri_server = McpServer::read_write(uri_db);
+    let mut uri_server = McpServer::read_write(uri_db).expect("servidor MCP con escritura");
+    authenticate(&mut uri_server);
 
     let unknown = r#"{"jsonrpc":"2.0","id":41,"method":"resources/read","params":{"uri":"ruscadb://table/nope"}}"#;
     let response = call(&mut uri_server, unknown);
@@ -363,7 +385,8 @@ fn test_ac_0075_05_unknown_uri_and_rbac_propagates() {
     let (_guard_rbac, mut rbac_db) = open_test_db("ac0075_05_rbac");
     create_items(&mut rbac_db, "items");
     rbac_db.set_role(Role::Read).expect("set_role(Read)");
-    let mut rbac_server = McpServer::read_write(rbac_db);
+    let mut rbac_server = McpServer::read_write(rbac_db).expect("servidor MCP con escritura");
+    authenticate(&mut rbac_server);
 
     let insert = r#"{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"query","arguments":{"sql":"INSERT INTO items (id, name) VALUES (1, 'uno')"}}}"#;
     let denied = call(&mut rbac_server, insert);

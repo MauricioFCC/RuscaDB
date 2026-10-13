@@ -151,4 +151,31 @@ El `unsafe` es el riesgo número uno de una DB in-process. La política es
   toolchain pinneada, SBOM CycloneDX por release y `gitleaks` en
   pre-commit/CI.
 
+---
+
+## Sesiones MCP y keystore KMS-lite (SPEC-0088)
+
+- **Autenticación por defecto**: el servidor MCP arranca **sin sesión**;
+  todo método de datos (`tools/*`, `resources/*`) devuelve `-32001` hasta
+  completar el handshake `session/auth` con un token que solo el proceso
+  padre puede emitir (`McpServer::issue_session_token`). Los mensajes de
+  error jamás contienen el token ni material de key.
+- **Tokens AEAD**: `v1.<kid>.<nonce>.<ciphertext>` — el payload
+  (`ruscadb-mcp-session-v1`) se sella con XChaCha20-Poly1305 bajo la key
+  activa del keystore; la validación es criptográfica y constante (tag
+  Poly1305), sin estado en memoria del emisor.
+- **Rotación = revocación**: `rotate()` retira la key activa; todos los
+  tokens de esa key quedan invalidados en el acto (incluso en procesos
+  posteriores si el keystore está en disco). No hay TTL: la rotación es
+  el mecanismo de revocación.
+- **KMS-lite (alcance local)**: el keystore es un fichero JSON
+  versionado (`version`, `kid`, `status`) creado con permisos **0600 en
+  unix**. Las keys viven **en claro a propósito**: cifrarlas exigiría una
+  passphrase fuera de alcance. Amenaza asumida: lectura local con
+  permisos de fichero (mismo usuario). Amenaza fuera de alcance: KMS
+  remoto/nube, rotación automática por tiempo, transporte HTTP/TLS.
+- **Modelo MCP local**: el transporte es stdio (sin red); la amenaza
+  mitigada es un cliente local que hable por el stdio del hijo sin ser
+  el padre que lo lanzó.
+
 Gracias por ayudar a mantener RuscaDB seguro.

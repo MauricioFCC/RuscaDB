@@ -140,6 +140,23 @@ fn call(server: &mut McpServer, message: &str) -> Value {
     serde_json::from_str(&raw).expect("la respuesta debe ser JSON válido")
 }
 
+/// Autentica la sesión del servidor con un token recién emitido (SPEC-0088).
+///
+/// Args:
+///     server: Servidor MCP recién construido (sin sesión).
+fn authenticate(server: &mut McpServer) {
+    let token = server.issue_session_token().expect("token de sesión");
+    let message = format!(
+        r#"{{"jsonrpc":"2.0","id":0,"method":"session/auth","params":{{"token":"{token}"}}}}"#
+    );
+    let response = call(server, &message);
+    assert_eq!(
+        response["result"]["authenticated"].as_bool(),
+        Some(true),
+        "session/auth debe autenticar con el token emitido"
+    );
+}
+
 /// AC-0070-03 — `query` con DML se rechaza y la tabla queda intacta.
 ///
 /// El `McpServer` debe forzar rol `Read`: aunque la base subyacente sea `Admin`,
@@ -154,7 +171,8 @@ fn test_ac_0070_03_mcp_query_forces_read_only() {
         .insert("items", row_scalars(1, "original"))
         .expect("insert de la fila sembrada");
 
-    let mut server = McpServer::new(database);
+    let mut server = McpServer::new(database).expect("servidor MCP");
+    authenticate(&mut server);
     let insert = r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"query","arguments":{"sql":"INSERT INTO items (id, name) VALUES (9, 'x')"}}}"#;
     let response = call(&mut server, insert);
 
@@ -204,7 +222,8 @@ fn test_ac_0070_03_mcp_query_forces_read_only() {
 // @spec AC-0070-05
 fn test_ac_0070_05_notification_gets_no_response() {
     let (_guard, database) = open_test_db("ac0070_05");
-    let mut server = McpServer::new(database);
+    let mut server = McpServer::new(database).expect("servidor MCP");
+    authenticate(&mut server);
 
     let raw = server.handle_message(r#"{"jsonrpc":"2.0","method":"tools/list"}"#);
     assert_eq!(

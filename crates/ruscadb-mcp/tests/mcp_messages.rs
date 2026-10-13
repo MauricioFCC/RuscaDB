@@ -197,12 +197,30 @@ fn call(server: &mut McpServer, message: &str) -> Value {
     serde_json::from_str(&raw).expect("la respuesta debe ser JSON válido")
 }
 
+/// Autentica la sesión del servidor con un token recién emitido (SPEC-0088).
+///
+/// Args:
+///     server: Servidor MCP recién construido (sin sesión).
+fn authenticate(server: &mut McpServer) {
+    let token = server.issue_session_token().expect("token de sesión");
+    let message = format!(
+        r#"{{"jsonrpc":"2.0","id":0,"method":"session/auth","params":{{"token":"{token}"}}}}"#
+    );
+    let response = call(server, &message);
+    assert_eq!(
+        response["result"]["authenticated"].as_bool(),
+        Some(true),
+        "session/auth debe autenticar con el token emitido"
+    );
+}
+
 /// AC-0068-01 — `tools/list` devuelve las tres tools con nombre y descripción.
 #[test]
 // @spec AC-0068-01
 fn test_ac_0068_01_tools_list_returns_tools() {
     let (_guard, database) = open_test_db("ac0068_01");
-    let mut server = McpServer::new(database);
+    let mut server = McpServer::new(database).expect("servidor MCP");
+    authenticate(&mut server);
 
     let response = call(
         &mut server,
@@ -255,7 +273,8 @@ fn test_ac_0068_02_tools_call_query_returns_rows() {
     database
         .insert("items", row_scalars(1, "uno"))
         .expect("insert de la fila sembrada");
-    let mut server = McpServer::new(database);
+    let mut server = McpServer::new(database).expect("servidor MCP");
+    authenticate(&mut server);
 
     let message = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"sql":"SELECT * FROM items"}}}"#;
     let response = call(&mut server, message);
@@ -286,7 +305,8 @@ fn test_ac_0068_02_tools_call_query_returns_rows() {
 // @spec AC-0068-03
 fn test_ac_0068_03_unknown_method_and_bad_params_error() {
     let (_guard, database) = open_test_db("ac0068_03");
-    let mut server = McpServer::new(database);
+    let mut server = McpServer::new(database).expect("servidor MCP");
+    authenticate(&mut server);
 
     let unknown = call(
         &mut server,
@@ -346,7 +366,8 @@ fn test_ac_0068_04_integrity_check_tool_reports() {
     let (_guard, mut database) = open_test_db("ac0068_04");
     create_items(&mut database, "items");
     seed_vector_rows(&mut database);
-    let mut server = McpServer::new(database);
+    let mut server = McpServer::new(database).expect("servidor MCP");
+    authenticate(&mut server);
 
     let message = r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"integrity_check","arguments":{}}}"#;
     let response = call(&mut server, message);

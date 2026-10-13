@@ -3,9 +3,15 @@
 //! Local y sin red: un proceso padre lanza el binario y habla JSON-RPC 2.0 por
 //! stdin/stdout. Expone tools de lectura e inspección (`query`, `tables`,
 //! `integrity_check`); en esta iteración no hay escritura ni recursos.
+//!
+//! **Autenticación de sesión (SPEC-0088)**: todos los métodos de datos exigen
+//! un handshake `session/auth` con token emitido por el padre vía
+//! [`McpServer::issue_session_token`]; la rotación del keystore
+//! ([`McpServer::rotate_keystore`]) invalida las sesiones en curso.
 
-use ruscadb::{Database, ScalarValue};
+use ruscadb::{Database, Keystore, RuscaError, ScalarValue};
 use serde_json::{Value, json};
+use std::path::Path;
 
 /// Esquema de URI de los recursos de tabla MCP (SPEC-0075).
 const TABLE_URI_SCHEME: &str = "ruscadb://table/";
@@ -18,6 +24,8 @@ const ERR_METHOD_NOT_FOUND: i64 = -32601;
 const ERR_SERVER: i64 = -32000;
 /// Código JSON-RPC: JSON de entrada inválido.
 const ERR_PARSE: i64 = -32700;
+/// Código JSON-RPC: sesión no autenticada o invalidada (SPEC-0088).
+const ERR_UNAUTHORIZED: i64 = -32001;
 
 /// Servidor MCP que mantiene la base y procesa mensajes JSON-RPC.
 pub struct McpServer {
@@ -25,21 +33,34 @@ pub struct McpServer {
     db: Database,
     /// Modo escritura opt-in (SPEC-0075): `false` = solo lectura.
     read_write: bool,
+    /// Keystore KMS-lite del servidor (SPEC-0088).
+    keystore: Keystore,
+    /// Token autenticado de la sesión actual (`None` = sin sesión).
+    session: Option<String>,
 }
 
 impl McpServer {
     /// Crea un servidor **de solo lectura** sobre una base ya abierta.
     ///
+    /// El servidor arranca **sin sesión autenticada**: los métodos de datos
+    /// devuelven `-32001` hasta completar `session/auth` (SPEC-0088).
+    ///
     /// Args:
     ///     db: Base de datos (fachada `ruscadb`) a servir.
     ///
     /// Returns:
-    ///     El servidor listo para procesar mensajes (DML rechazado).
-    pub fn new(db: Database) -> Self {
-        Self {
+    ///     El servidor con keystore efímero, sin sesión y DML rechazado.
+    ///
+    /// Raises:
+    ///     RuscaError::InvalidConfig: si el SO no proporciona entropía
+    ///         para la key efímera del keystore.
+    pub fn new(db: Database) -> Result<Self, RuscaError> {
+        Ok(Self {
             db,
             read_write: false,
-        }
+            keystore: Keystore::ephemeral()?,
+            session: None,
+        })
     }
 
     /// Crea un servidor con **escritura opt-in** (SPEC-0075).
@@ -51,11 +72,133 @@ impl McpServer {
     ///     db: Base de datos a servir.
     ///
     /// Returns:
-    ///     El servidor con DML y tool `insert` habilitados.
-    pub fn read_write(db: Database) -> Self {
-        Self {
+    ///     El servidor con DML y tool `insert` habilitados (sin sesión).
+    ///
+    /// Raises:
+    ///     RuscaError::InvalidConfig: si el SO no proporciona entropía
+    ///         para la key efímera del keystore.
+    pub fn read_write(db: Database) -> Result<Self, RuscaError> {
+        Ok(Self {
             db,
             read_write: true,
+            keystore: Keystore::ephemeral()?,
+            session: None,
+        })
+    }
+
+    /// Crea un servidor con **keystore persistente en disco** (SPEC-0088).
+    ///
+    /// Args:
+    ///     db: Base de datos a servir.
+    ///     path: Ruta del fichero JSON del keystore (se crea si no existe).
+    ///     read_write: `true` habilita DML (además de la sesión).
+    ///
+    /// Returns:
+    ///     El servidor cuyos tokens sobreviven a reinicios del proceso.
+    ///
+    /// Raises:
+    ///     RuscaError::InvalidConfig: keystore corrupto o sin entropía.
+    ///     RuscaError::Io: fallo leyendo o creando el fichero.
+    pub fn with_keystore(
+        db: Database,
+        path: impl AsRef<Path>,
+        read_write: bool,
+    ) -> Result<Self, RuscaError> {
+        Ok(Self {
+            db,
+            read_write,
+            keystore: Keystore::load_or_create(path)?,
+            session: None,
+        })
+    }
+
+    /// Emite un token de sesión bajo la key activa del keystore.
+    ///
+    /// El padre entrega este token al cliente (env/CLI) para que complete
+    /// `session/auth`; el servidor nunca lo genera por su cuenta.
+    ///
+    /// Returns:
+    ///     El token `v1.<kid>.<nonce>.<ciphertext>` listo para entregar.
+    ///
+    /// Raises:
+    ///     RuscaError::InvalidConfig: sin entropía o sin key activa.
+    pub fn issue_session_token(&self) -> Result<String, RuscaError> {
+        self.keystore.issue_token()
+    }
+
+    /// Rota el keystore: invalida las sesiones y emite un token nuevo.
+    ///
+    /// Returns:
+    ///     El token emitido bajo la key activa recién creada.
+    ///
+    /// Raises:
+    ///     RuscaError::InvalidConfig: sin entropía para la nueva key.
+    ///     RuscaError::Io: fallo al persistir el keystore rotado.
+    pub fn rotate_keystore(&mut self) -> Result<String, RuscaError> {
+        self.keystore.rotate()?;
+        self.session = None;
+        self.keystore.issue_token()
+    }
+
+    /// Rechaza la llamada si no hay sesión autenticada y vigente.
+    ///
+    /// Args:
+    ///     id: Identificador JSON-RPC a ecoar en el rechazo.
+    ///
+    /// Returns:
+    ///     `Some(respuesta)` con `-32001` si hay que rechazar; `None` si
+    ///     la sesión sigue siendo válida.
+    fn guard_session(&self, id: &Value) -> Option<String> {
+        match &self.session {
+            None => Some(error_response(
+                id.clone(),
+                ERR_UNAUTHORIZED,
+                "sesión no autenticada: envía 'session/auth' con el token emitido por el padre"
+                    .to_string(),
+            )),
+            Some(token) => match self.keystore.validate(token) {
+                Ok(()) => None,
+                Err(_) => Some(error_response(
+                    id.clone(),
+                    ERR_UNAUTHORIZED,
+                    "sesión invalidada por rotación de claves: vuelve a autenticar con un token nuevo"
+                        .to_string(),
+                )),
+            },
+        }
+    }
+
+    /// Completa el handshake `session/auth` con el token del cliente.
+    ///
+    /// Args:
+    ///     request: Request JSON-RPC con `params.token`.
+    ///     id: Identificador a ecoar en la respuesta.
+    ///
+    /// Returns:
+    ///     `result.authenticated = true` o error `-32001` (nunca con el
+    ///     token en el mensaje).
+    fn authenticate(&mut self, request: &Value, id: Value) -> String {
+        let token = request
+            .get("params")
+            .and_then(|params| params.get("token"))
+            .and_then(Value::as_str);
+        let Some(token) = token else {
+            return error_response(
+                id,
+                ERR_INVALID_PARAMS,
+                "session/auth requiere 'params.token' (string)".to_string(),
+            );
+        };
+        match self.keystore.validate(token) {
+            Ok(()) => {
+                self.session = Some(token.to_string());
+                ok_response(id, json!({ "authenticated": true }))
+            }
+            Err(_) => error_response(
+                id,
+                ERR_UNAUTHORIZED,
+                "token de sesión inválido o retirado".to_string(),
+            ),
         }
     }
 
@@ -98,7 +241,16 @@ impl McpServer {
         let Some(id) = request.get("id").cloned() else {
             return String::new();
         };
-        match request.get("method").and_then(Value::as_str) {
+        let method = request.get("method").and_then(Value::as_str);
+        // SPEC-0088: todo método (incluso desconocido) exige sesión salvo
+        // el propio handshake `session/auth`.
+        if method != Some("session/auth")
+            && let Some(rejection) = self.guard_session(&id)
+        {
+            return rejection;
+        }
+        match method {
+            Some("session/auth") => self.authenticate(request, id),
             Some("tools/list") => ok_response(id, json!({ "tools": self.tool_catalog() })),
             Some("tools/call") => self.call_tool(request, id),
             Some("resources/list") => self.list_resources(id),

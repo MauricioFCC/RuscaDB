@@ -28,6 +28,10 @@
 
 #![forbid(unsafe_code)]
 
+/// Keystore KMS-lite de sesiones MCP (SPEC-0088): emisión/validación de
+/// tokens AEAD con rotación de keys y persistencia versionada.
+pub mod keystore;
+
 use argon2::Argon2;
 use chacha20poly1305::{
     Key, XChaCha20Poly1305, XNonce,

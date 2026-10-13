@@ -46,12 +46,31 @@ fn open_test_db() -> (TempDb, Database) {
     (TempDb { path }, database)
 }
 
+/// Autentica la sesión del servidor con un token recién emitido (SPEC-0088).
+///
+/// Args:
+///     server: Servidor MCP recién construido (sin sesión).
+fn authenticate(server: &mut McpServer) {
+    let token = server.issue_session_token().expect("token de sesión");
+    let message = format!(
+        r#"{{"jsonrpc":"2.0","id":0,"method":"session/auth","params":{{"token":"{token}"}}}}"#
+    );
+    let raw = server.handle_message(&message);
+    let response: Value = serde_json::from_str(&raw).expect("la respuesta debe ser JSON");
+    assert_eq!(
+        response["result"]["authenticated"].as_bool(),
+        Some(true),
+        "session/auth debe autenticar con el token emitido"
+    );
+}
+
 /// AC-0071-04 — un batch JSON-RPC devuelve una respuesta por elemento.
 #[test]
 // @spec AC-0071-04
 fn test_ac_0071_04_mcp_batch_returns_array() {
     let (_guard, database) = open_test_db();
-    let mut server = McpServer::new(database);
+    let mut server = McpServer::new(database).expect("servidor MCP");
+    authenticate(&mut server);
 
     let batch = r#"[{"jsonrpc":"2.0","id":1,"method":"tools/list"},{"jsonrpc":"2.0","id":2,"method":"foo/bar"}]"#;
     let raw = server.handle_message(batch);

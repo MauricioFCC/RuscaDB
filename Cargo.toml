@@ -81,6 +81,9 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 async-trait = "0.1.89"
 sha2 = "0.11.0"
 hex = "0.4.3"
+# Entropía del SO para el keystore KMS-lite (SPEC-0088). Ya presente en el
+# árbol del lockfile vía transitive; se declara directa para `issue_token`.
+getrandom = "0.4"
 chacha20poly1305 = "0.11.0"
 argon2 = "0.6.0"
 zeroize = "1.9.1"

@@ -86,8 +86,17 @@ jobs:
         run: python scripts/check_architecture.py
       - name: unsafe policy
         run: python scripts/check_core_unsafe.py
+      # D1 (retrospectiva 5): la consistencia de esta propia config de CI
+      # se declara gate T1 en AGENTS.md/verification.md; debe correr en CI,
+      # no solo local. Valida ci.yml/nightly.yml/mutants.toml/deny.toml.
+      - name: CI config consistency
+        run: python scripts/check_ci_config.py
       - name: SDD traceability (spec -> test)
         run: cargo xtask trace
+      # D2 (retrospectiva 5): contrato bidireccional spec <-> test
+      # (K1/K2/K3) documentado como T1 pero hasta ahora solo local.
+      - name: SDD contract (test -> spec, implemented fully traced)
+        run: cargo xtask contract
 
   security:
     name: Security

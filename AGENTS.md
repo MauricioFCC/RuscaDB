@@ -9,14 +9,19 @@ testing** (`specs/<feature>.md` antes del código).
 
 - `crates/ruscadb-core/` — dominio: `Record`, `ScalarValue`, `RuscaError`, `RecordId`.
 - `crates/ruscadb-storage/` — buffer pool LRU-K + `PagedFile`.
-- `crates/ruscadb-wal/` — WAL global (frames CRC32C, recovery, cifrado SPEC-0013).
+- `crates/ruscadb-wal/` — WAL global (frames CRC32C, recovery, group commit, cifrado SPEC-0013).
 - `crates/ruscadb-query/` — RQL: lexer + parser + IR (`SELECT`/`WHERE`/`KNN`/`TRAVERSE`/`EXPLAIN`/`MATCH`).
 - `crates/ruscadb-vector/` — HNSW. `crates/ruscadb-graph/` — CSR.
+- `crates/ruscadb-fvs/` — filtro híbrido pre/in/post + iFVS. `crates/ruscadb-btree/` — B+tree ordenado.
 - `crates/ruscadb-multimodal/` — blob store CAS. `crates/ruscadb-fts/` — índice invertido + BM25.
-- `crates/ruscadb-ai/` — embeddings locales. `crates/ruscadb-crypto/` — XChaCha20-Poly1305 + Argon2id.
+- `crates/ruscadb-ai/` — embeddings locales (+ `static-embeddings`, SPEC-0083).
+- `crates/ruscadb-ts/` — time-series (bucketing, ventanas, remuestreo).
+- `crates/ruscadb-crypto/` — XChaCha20-Poly1305 + Argon2id + keystore KMS-lite (SPEC-0088).
 - `crates/ruscadb-txn/` — MVCC snapshot isolation + manifiesto.
-- `crates/ruscadb/` — **fachada / composition root** (cablea todo, `Database`).
-- `crates/ruscadb-ffi|py|node/` — bindings (C-ABI + wrappers). `crates/xtask/` — `cargo xtask trace`.
+- `crates/ruscadb-mcp/` — servidor MCP por stdio (tools/resources + `session/auth`).
+- `crates/ruscadb/` — **fachada / composition root** (cablea todo, `Database`) + `examples/` ejecutables (SPEC-0087).
+- `crates/ruscadb-ffi|py|node|wasm/` — bindings (C-ABI + wrappers). `crates/ruscadb-testkit/` — utilidades de test.
+- `crates/xtask/` — `cargo xtask trace` / `contract`.
 - `specs/` — specs SDD. `scripts/` — guards y utilidades.
 
 ## Reglas de arquitectura (hexagonal)
@@ -38,6 +43,7 @@ python scripts/check_architecture.py
 python scripts/check_core_unsafe.py
 python scripts/check_ci_config.py
 cargo xtask trace
+cargo xtask contract
 ```
 
 Cada AC de una spec debe tener un test `test_ac_XXXX_NN_*` (lo exige

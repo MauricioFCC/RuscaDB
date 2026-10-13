@@ -9,14 +9,14 @@ AI, graphs and multimedia”*.
 [![CI](https://github.com/MauricioFCC/RuscaDB/actions/workflows/ci.yml/badge.svg)](https://github.com/MauricioFCC/RuscaDB/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
-[![MSRV](https://img.shields.io/badge/MSRV-1.85-informational.svg)](rust-toolchain.toml)
+[![MSRV](https://img.shields.io/badge/MSRV-1.89-informational.svg)](rust-toolchain.toml)
 
 RuscaDB runs **in-process** (no server, no network, no daemon) and stores
 relational, document, graph, vector and time-series data plus multimodal blobs in
 a single database directory, queried through **one extended-SQL language (RQL)**.
 
 > **Status: early development (`0.1.0`, unreleased).** The workspace spans
-> **21 crates** with **555 tests** (`cargo test --workspace -- --list`, without
+> **21 crates** with **689 tests** (`cargo test --workspace -- --list`, without
 > `--all-features`). The engine is
 > under active construction; public APIs may change. Design source of truth:
 > [`docs/RuscaDB-roadmap.md`](docs/RuscaDB-roadmap.md) (see the *Estado de

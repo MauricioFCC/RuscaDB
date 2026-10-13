@@ -66,8 +66,21 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   red, sin C) que carga safetensors locales (`potion-base-8M`); `StaticEmbedder`
   implementa `Embedder` (dim fija, L2 por contrato, determinista) con error
   WHAT+WHY+WHERE si falta el modelo. **Enmienda ADR-016**: pesos estáticos
-  SÍ, runtimes (Candle/ONNX) NO. Tests sin red con fixture safetensors
+  SÍ, runtimes (Candle/ONNX) NO.   Tests sin red con fixture safetensors
   mínimo generado por el propio test.
+- **SPEC-0087** (Ola 4): examples ejecutables — tres ejemplos sobre la
+  fachada (`quickstart`, `vector_search`, `graph_traverse`) con `main`
+  sin `unwrap` (WHAT+WHY+WHERE + exit 1) y lógica en `run()`; el test de
+  humo los **ejecuta como binario real** (exit code + salidas
+  deterministas validadas) y la nueva guía `docs/api_guide.md` documenta
+  cada ejemplo con su comando `cargo run --example ...`.
+- **SPEC-0088** (Ola 4): hardening P2 — servidor MCP **sin sesión por
+  defecto**: todo método de datos devuelve `-32001` hasta el handshake
+  `session/auth`, con tokens AEAD `v1.<kid>.<nonce>.<ct>` sellados por
+  el keystore KMS-lite nuevo (`ruscadb-crypto::keystore`: rotación =
+  revocación inmediata, persistencia atómica con permisos 0600 en unix,
+  re-export `Keystore` desde la fachada); 4 AC de integración
+  (`mcp_auth.rs`) y `SECURITY.md` con el modelo de amenaza.
 - **Plan de producción Olas 0–4 (SPEC-0076..0088)**: roadmap actualizado tras
   la auditoría *production readiness* (2026-10-12, veredicto «NO apto para
   producción») y el research de frontera correspondiente (§3): lock
@@ -236,6 +249,18 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   overflow pages del heap (y el bug de asignador que el test descubrió en
   `heap_update`), y MCP con escritura opt-in + resources. Cierra el roadmap
   §Estado: no quedan líneas futuras con spec pendiente.
+- Quinta edición (ciclo SPEC-0087/0088 + análisis por flujos de trabajo):
+  revisión con **3 especialistas en paralelo** (guardian/devops/architect)
+  de todos los flujos del repo → hallazgos P0/P1 priorizados. **Aplicados**:
+  `check_ci_config.py` y `cargo xtask contract` cableados al job de
+  arquitectura de CI (D1/D2), `specs/_template.md` con placeholders seguros
+  para trace (D7), mapa de crates de AGENTS.md con los 6 crates faltantes +
+  `xtask contract` en el gate local (D8), MSRV unificado a **1.89** en
+  README/CONTRIBUTING y en `ruscadb-mcp`, el único crate que seguía en 1.85
+  (D9). **Cerradas las Olas 0–4: 13/13 specs, 386 AC trazados.** Pendientes
+  como líneas futuras: automatizar releases/tags, branch-coverage en el
+  gate, job MSRV en CI, code review multi-agente cableado y gate RED-first
+  (roadmap §Estado «Líneas futuras»).
 
 ### Changed
 
