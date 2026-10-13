@@ -16,6 +16,8 @@ mutants.out.old/
 /lcov.info
 /coverage/
 *.lcov
+# Fixtures lcov versionados de los tests de SPEC-0079 (gate multi-scope).
+!crates/xtask/tests/fixtures/**/*.lcov
 
 # ── Datos locales de RuscaDB (scratch) ───────────────────────────────────────
 *.ruscadb

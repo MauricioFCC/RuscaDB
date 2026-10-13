@@ -1,0 +1,13 @@
+TN:
+SF:/w/crates/gamma/src/lib.rs
+DA:1,1
+DA:2,1
+BRDA:1,0,0,1
+BRDA:2,0,0,1
+end_of_record
+SF:/w/crates/delta/src/lib.rs
+DA:1,1
+DA:2,1
+BRDA:1,0,0,1
+BRDA:2,0,0,1
+end_of_record

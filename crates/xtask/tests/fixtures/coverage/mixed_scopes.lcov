@@ -1,0 +1,16 @@
+TN:
+SF:/w/crates/alpha/src/lib.rs
+DA:1,1
+DA:2,1
+DA:3,1
+BRDA:1,0,0,1
+BRDA:2,0,0,1
+end_of_record
+SF:/w/crates/beta/src/lib.rs
+DA:1,1
+DA:2,0
+DA:3,0
+DA:4,0
+BRDA:1,0,0,1
+BRDA:2,0,0,0
+end_of_record
