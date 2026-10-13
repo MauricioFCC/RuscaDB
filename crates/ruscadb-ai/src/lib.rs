@@ -29,6 +29,22 @@
 //! `#[cfg(feature = "onnx")]`, de modo que las compilaciones por defecto no
 //! arrastren la dependencia. El identificador de la feature vive en
 //! [`ONNX_FEATURE`].
+//!
+//! ## Ruta estática (feature-gated, SPEC-0083)
+//!
+//! `StaticEmbedder` implementa [`Embedder`] con **embeddings estáticos**
+//! (`model2vec`, arXiv:2410.22517) cargados desde safetensors locales:
+//!
+//! ```toml
+//! [features]
+//! default = []
+//! static-embeddings = ["dep:model2vec-rs"]  # local-only; sin red ni runtimes
+//! ```
+//!
+//! y se compila con `cargo build -p ruscadb-ai --features static-embeddings`.
+//! Es la enmienda ADR-016: **pesos estáticos SÍ, runtimes NO** (Candle/ONNX
+//! siguen apagados). El build por defecto no incluye `model2vec-rs`
+//! (FR-0083-03): cero coste para quien no lo pide.
 
 #![forbid(unsafe_code)]
 
@@ -865,5 +881,113 @@ mod tests {
                 "registro vacío nunca debe rechazar"
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Embeddings estáticos model2vec (SPEC-0083, enmienda ADR-016)
+// ---------------------------------------------------------------------------
+
+/// Embedder estático `model2vec` (arXiv:2410.22517) tras la feature
+/// `static-embeddings` (default OFF, FR-0083-03).
+///
+/// Carga pesos **safetensors locales** (`config.json` + `tokenizer.json` +
+/// `model.safetensors`) con `model2vec-rs` compilado en modo `local-only`:
+/// jamás descarga en runtime (NF-0083-01, ADR-016 enmendado: pesos
+/// estáticos SÍ, runtimes neuronales NO). Mean-pool de los tokens con
+/// L2 — la normalización se re-aplica en [`Embedder::embed`] para cumplir
+/// el contrato del puerto sin importar la config del modelo.
+///
+/// Ejecutar con:
+/// `cargo build -p ruscadb-ai --features static-embeddings`.
+#[cfg(feature = "static-embeddings")]
+#[derive(Debug)]
+pub struct StaticEmbedder {
+    /// Modelo estático cargado (compartido e inmutable entre clones).
+    model: model2vec_rs::model::StaticModel,
+    /// Dimensión fija del espacio vectorial (ncols de la matriz de pesos).
+    dim: usize,
+}
+
+#[cfg(feature = "static-embeddings")]
+impl StaticEmbedder {
+    /// Carga un modelo estático desde un directorio local.
+    ///
+    /// Args:
+    ///     path: Directorio con `config.json`, `tokenizer.json` y
+    ///         `model.safetensors` (tensor 2-D `embeddings`, p.ej.
+    ///         `potion-base-8M` descargado a mano).
+    ///
+    /// Returns:
+    ///     El embedder con la dim fija leída de los pesos.
+    ///
+    /// Errors:
+    ///     [`RuscaError::InvalidConfig`] con mensaje WHAT+WHY+WHERE si el
+    ///     directorio no existe, si `model2vec-rs` rechaza el layout o si
+    ///     los pesos no traen dimensión utilizable.
+    pub fn from_local_dir<P: AsRef<std::path::Path>>(path: P) -> Result<Self, RuscaError> {
+        let dir = path.as_ref();
+        if !dir.is_dir() {
+            return Err(RuscaError::InvalidConfig(format!(
+                "WHAT: no existe el directorio del modelo estático '{}'. \
+                 WHY: StaticEmbedder solo carga safetensors locales (local-only, sin red). \
+                 WHERE: StaticEmbedder::from_local_dir (SPEC-0083); crea el directorio y coloca \
+                 config.json + tokenizer.json + model.safetensors (p.ej. potion-base-8M).",
+                dir.display()
+            )));
+        }
+        let model = model2vec_rs::model::StaticModel::from_pretrained(dir, None, None, None)
+            .map_err(|err| {
+                RuscaError::InvalidConfig(format!(
+                    "WHAT: no se pudo cargar el modelo estático desde '{}'. WHY: {err}. \
+                     WHERE: StaticEmbedder::from_local_dir (SPEC-0083); se requieren config.json + \
+                     tokenizer.json + model.safetensors válidos en ese directorio.",
+                    dir.display()
+                ))
+            })?;
+        // model2vec-rs no expone `dim()`: sondear con un encode garantiza el
+        // ncols real de la matriz de pesos (un texto sin tokens útiles ya
+        // devuelve un vector de ceros con la dim correcta).
+        let dim = model.encode_single("dim-probe").len();
+        if dim == 0 {
+            return Err(RuscaError::InvalidConfig(
+                "WHAT: el modelo estático cargado tiene dimensión 0. \
+                 WHY: la matriz de pesos 'embeddings' no tiene columnas utilizables. \
+                 WHERE: StaticEmbedder::from_local_dir (SPEC-0083); revisa el model.safetensors."
+                    .to_string(),
+            ));
+        }
+        Ok(Self { model, dim })
+    }
+}
+
+#[cfg(feature = "static-embeddings")]
+impl Embedder for StaticEmbedder {
+    /// Dimensión fija declarada por los pesos cargados.
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    /// Codifica `text` con el modelo estático y garantiza norma L2 ≤ 1.
+    ///
+    /// Args:
+    ///     text: Frase a codificar (mean-pool de sus tokens; los tokens
+    ///         desconocidos se descartan como hace el modelo subyacente).
+    ///
+    /// Returns:
+    ///     Vector de [`StaticEmbedder::dim`] componentes L2-normalizado
+    ///     (texto sin tokens útiles => vector cero, ya normalizado).
+    fn embed(&self, text: &str) -> Vec<f32> {
+        let mut vector = self.model.encode_single(text);
+        // Contrato del puerto Embedder: L2 siempre, incluso si el config del
+        // modelo trae normalize=false. La norma 0 (texto vacío) no divide.
+        vector.resize(self.dim, 0.0);
+        let norm = vector.iter().map(|value| value * value).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for value in &mut vector {
+                *value /= norm;
+            }
+        }
+        vector
     }
 }

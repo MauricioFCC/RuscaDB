@@ -51,6 +51,9 @@ pub use ruscadb_core::{
 };
 pub use ruscadb_multimodal::BlobHash;
 pub use ruscadb_storage::{PAGE_SIZE, Page, PageId};
+// Política de durabilidad del WAL (SPEC-0081): necesaria para configurar
+// `DbConfig::fsync_policy` desde consumidores de la fachada.
+pub use ruscadb_wal::FsyncPolicy;
 pub use ts_api::TsRow;
 // Vocabulario transaccional / de manifiesto para consumidores de la fachada
 // (SPEC-0019): snapshots, versiones y el manifiesto versionado.

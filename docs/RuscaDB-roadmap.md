@@ -420,7 +420,7 @@ apunta a la nueva versión. Todo lo demás es recuperable por replay del WAL.
 | ADR-013 | **Spike `TableProvider` opcional** de DataFusion (feature `datafusion`, OFF por defecto) que expone filas nativas al planner de DataFusion; el motor propio RQL se mantiene | reemplazar RQL completo por DataFusion; adaptador a mano sin DataFusion; no evaluar | +paridad SQL demostrada (AC-0060-02/04) costeando solo quien lo habilita: árbol 34→894 crates (+860), artefacto 779 KB→133 MiB, build frío ~340 s; −la CI `--all-features` compila el spike (~6 min la primera vez, amortizado por rust-cache) |
 | ADR-014 | **Formato físico propio**: PagedFile (páginas fijas) + heap slotted + buffer pool LRU-K; blobs CAS (SHA-256) propios — ADR-002 desviado | Lance/Arrow; Parquet; JSONL | +sin dependencia columnar, layout controlado, WASM-friendly; -sin cero-copy Arrow nativo (FF-09 queda objetivo, no realidad) |
 | ADR-015 | **B+tree propio** (`ruscadb-btree`) como índice primario + MVCC por manifiesto propio — ADR-003 desviado | redb; sled; LMDB | +autocontenido, sin C++; -menos maduro que redb/LMDB en write-heavy extremo |
-| ADR-016 | **Embeddings locales propios** (`ruscadb-ai`, `safetensors`, sin Candle/ONNX) — ADR-005 desviado | Candle; ONNX Runtime; libtorch | +0 dependencias nativas, portabilidad WASM total; -menos kernels GPU; feature `onnx` vacía hasta runtime real |
+| ADR-016 | **Embeddings locales propios** (`ruscadb-ai`, `safetensors`, sin Candle/ONNX) — ADR-005 desviado | Candle; ONNX Runtime; libtorch | +0 dependencias nativas, portabilidad WASM total; -menos kernels GPU; feature `onnx` vacía hasta runtime real. **Enmienda (SPEC-0083, 2026-10-13): pesos estáticos SÍ** — `model2vec-rs` 0.3 (`local-only` + `fancy-regex`, safetensors locales, jamás descarga) tras la feature `static-embeddings` (default OFF); **runtimes NO** (Candle/ONNX siguen excluidos) |
 
 ### 4.7 Fitness functions arquitectónicas (CI T1)
 
@@ -861,10 +861,11 @@ completo + commit + CI verde antes de abrir la siguiente.
 > contrato SDD (`cargo xtask contract`) los valida bidireccionalmente.
 > **Plan de producción (2026-10-12)**: la auditoría *readiness* concluyó
 > «NO apto para producción» y abre las **Olas 0–4 (§8.1)** con 13 specs
-> SPEC-0076..0088. **Olas 0–1 y Ola 2 (fase 1) cerradas (2026-10-13)**:
-> SPEC-0076, 0077, 0078, 0079, 0084, 0080, 0085 y 0086 están `implemented`
-> y trazadas (369 AC); quedan 5 specs: SPEC-0081 (Ola 2, en solitario por
-> tocar el WAL), SPEC-0082 (Ola 3) y SPEC-0087/0088/0083 (Ola 4).
+> SPEC-0076..0088. **Olas 0–3 y Ola 4 parcial cerradas (2026-10-13)**:
+> SPEC-0076, 0077, 0078, 0079, 0084, 0080, 0085, 0086, 0081 (group commit),
+> 0082 (gates SLO) y 0083 (embeddings estáticos + enmienda ADR-016) están
+> `implemented` y trazadas (**378 AC**); quedan 2 specs: SPEC-0087
+> (examples) y SPEC-0088 (p2_hardening), ambas Ola 4.
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
 > SDD cuyos AC están cubiertos por tests `test_ac_*` y verificados por
@@ -880,7 +881,7 @@ completo + commit + CI verde antes de abrir la siguiente.
 | F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026, SPEC-0068 |
 | F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062, SPEC-0066 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
-| **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ⏳ 8/13 ✅ | Olas 0–1 y Ola 2 fase 1 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow). Quedan 5: SPEC-0081 (group commit, en solitario), 0082 (gates SLO), 0087/0088/0083 (Ola 4). |
+| **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ⏳ 11/13 ✅ | Olas 0–3 y Ola 4 parcial cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow), 0081 (group commit greedy-pipelined + FsyncPolicy + crash-harness), 0082 (gates SLO Mann-Whitney/bootstrap/A-A + slo.yml), 0083 (embeddings estáticos model2vec-rs + enmienda ADR-016). Quedan 2: 0087 (examples) y 0088 (p2_hardening), ambas Ola 4. |
 | Líneas futuras (sin spec aún) | ⏳ | modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083); persistencia del caché semántico (bajo valor: cada mutación invalida); tools MCP de escritura avanzadas (update/delete por tool) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |

@@ -47,6 +47,27 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   `next_page` compartido con el heap (patrón SPEC-0071, sin colisiones por
   construcción); v1 (≤16 páginas) carga sin migración; techo residual u32
   con error actionable.
+- **SPEC-0081** (Ola 2): group commit — `FsyncPolicy{Full,Normal}` en el WAL
+  con writer thread *greedy-pipelined* (arXiv:2606.18187): `Full` (default)
+  fsync por commit idéntico al histórico; `Normal` coalesce los fsyncs
+  pendientes en grupos y ack **solo tras** el fsync de su grupo (nunca
+  confirma no durable); drenaje+unión en `Drop` sin deadlock; contador de
+  fsyncs expuesto. Crash-harness con proceso hijo real + `kill` en mitad de
+  un grupo (prefijo acknowledged completo, cola truncada).
+- **SPEC-0082** (Ola 3): gates estadísticos SLO — `slo_gate.py` (solo stdlib,
+  semilla fija) sustituye ratios de umbral fijo por Mann-Whitney direccional
+  (p < 0.002, Bonferroni ≈ 25 métricas), bootstrap pareado 10k para deltas de
+  recall y calibración A/A (noise floor de runners CV ≈ 2.7 %); contrato
+  0/1/2 ruidoso; workflow `slo.yml` en PR compara criterion de la base del
+  PR vs HEAD **en el mismo runner** (test z de Welch `--criterion-pair`);
+  fixtures versionados + tests `test_ac_0082_*`.
+- **SPEC-0083** (Ola 4): embeddings estáticos — feature `static-embeddings`
+  (default OFF) con `model2vec-rs` 0.3 (`local-only` + `fancy-regex`: sin
+  red, sin C) que carga safetensors locales (`potion-base-8M`); `StaticEmbedder`
+  implementa `Embedder` (dim fija, L2 por contrato, determinista) con error
+  WHAT+WHY+WHERE si falta el modelo. **Enmienda ADR-016**: pesos estáticos
+  SÍ, runtimes (Candle/ONNX) NO. Tests sin red con fixture safetensors
+  mínimo generado por el propio test.
 - **Plan de producción Olas 0–4 (SPEC-0076..0088)**: roadmap actualizado tras
   la auditoría *production readiness* (2026-10-12, veredicto «NO apto para
   producción») y el research de frontera correspondiente (§3): lock

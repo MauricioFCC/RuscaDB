@@ -34,7 +34,7 @@ fn crash_writer_child() {
         return;
     };
     let sync = std::env::var("RUSCADB_CRASH_SYNC").as_deref() == Ok("1");
-    let mut wal = Wal::open(Path::new(&dir).join("wal.log")).expect("open hijo");
+    let wal = Wal::open(Path::new(&dir).join("wal.log")).expect("open hijo");
     for index in 0..CRASH_RECORDS {
         wal.append(
             index as u64,
@@ -127,7 +127,7 @@ fn test_ac_0056_03_truncated_tail_discarded() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("wal.log");
     {
-        let mut wal = Wal::open(&path).expect("open");
+        let wal = Wal::open(&path).expect("open");
         for index in 0..3u64 {
             wal.append(index, RecordKind::Commit, format!("rec-{index}").as_bytes())
                 .expect("append");
@@ -155,7 +155,7 @@ fn test_ac_0056_04_replay_idempotent() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("wal.log");
     {
-        let mut wal = Wal::open(&path).expect("open");
+        let wal = Wal::open(&path).expect("open");
         for index in 0..5u64 {
             wal.append(index, RecordKind::Commit, format!("rec-{index}").as_bytes())
                 .expect("append");

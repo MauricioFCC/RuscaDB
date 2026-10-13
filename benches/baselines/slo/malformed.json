@@ -1,0 +1,5 @@
+{
+  "mode": "mann-whitney",
+  "metric": "broken",
+  "direction": "lower_is_better"
+}

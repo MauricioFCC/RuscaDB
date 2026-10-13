@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 
 use ruscadb_core::RuscaError;
+use ruscadb_wal::FsyncPolicy;
 
 use crate::database::{Database, DbConfig};
 use crate::encryption::EncryptionConfig;
@@ -31,6 +32,8 @@ pub struct DatabaseBuilder {
     encryption: Option<EncryptionConfig>,
     /// Directorio raíz del blob store (`None` = sin blobs, SPEC-0038).
     blob_path: Option<PathBuf>,
+    /// Política de fsync del WAL (SPEC-0081); `Full` por defecto.
+    fsync_policy: FsyncPolicy,
 }
 
 impl DatabaseBuilder {
@@ -44,6 +47,7 @@ impl DatabaseBuilder {
             pool_capacity: DEFAULT_POOL_CAPACITY,
             encryption: None,
             blob_path: None,
+            fsync_policy: FsyncPolicy::Full,
         }
     }
 
@@ -99,6 +103,21 @@ impl DatabaseBuilder {
         self
     }
 
+    /// Fija la política de fsync del WAL (SPEC-0081).
+    ///
+    /// Por defecto [`FsyncPolicy::Full`] (fsync por commit). Con
+    /// [`FsyncPolicy::Normal`] se habilita el group commit.
+    ///
+    /// Args:
+    ///     policy: Política de durabilidad del WAL.
+    ///
+    /// Returns:
+    ///     El builder encadenable.
+    pub fn fsync_policy(mut self, policy: FsyncPolicy) -> Self {
+        self.fsync_policy = policy;
+        self
+    }
+
     /// Construye el [`DbConfig`] equivalente y abre la base.
     ///
     /// Returns:
@@ -117,6 +136,7 @@ impl DatabaseBuilder {
         let mut config = DbConfig::new(data_path, self.pool_capacity);
         config.encryption = self.encryption;
         config.blob_path = self.blob_path;
+        config.fsync_policy = self.fsync_policy;
         Database::open(config)
     }
 }

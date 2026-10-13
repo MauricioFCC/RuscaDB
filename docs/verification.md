@@ -146,6 +146,40 @@ lcov vacío: fallo ruidoso, nunca verde silencioso. Umbrales: core es el SLO
 del roadmap (80/70); txn/wal son *hard floors* a 90 con ~6 pts de holgura
 sobre lo medido — un descenso real de cobertura los rompe, ruido legítimo no.
 
+### Gates estadísticos SLO (bloquea merge en PR, SPEC-0082)
+
+Los runners de GitHub tienen CV ≈ 2.7 %, así que gatear «latencia ≤
+baseline × 1.10» o «recall ≥ 0.93» con umbrales fijos produce falsos
+positivos. `scripts/slo_gate.py` (solo stdlib, sin red) sustituye umbrales
+por **tests de hipótesis** con contrato de salida 0/1/2 (SPEC-0079):
+
+| Modo | Test estadístico | Uso |
+| --- | --- | --- |
+| `mann-whitney` | U unilateral con continuidad y empates, **p < 0.002** (Bonferroni ≈ 25 métricas) | latencias independientes |
+| `bootstrap` | 10 000 remuestreos pareados, semilla fija, CI 99.8 % | recall@10 sobre los mismos pares de consulta |
+| `aa` | Mann-Whitney entre dos muestras de la misma build | calibración del noise floor (cero falsos positivos) |
+
+Cómo correrlo local:
+
+```bash
+python scripts/slo_gate.py benches/baselines/slo/latency_same.json      # => 0
+python scripts/slo_gate.py benches/baselines/slo/latency_regression.json # => 1
+python scripts/slo_gate.py benches/baselines/slo/malformed.json          # => 2
+# Dos corridas de criterion (misma máquina), test z de Welch direccional:
+cargo bench -p ruscadb-wal --bench wal_commit -- --sample-size 10
+cp -r target/criterion criterion_base   # (tras la corrida base)
+python scripts/slo_gate.py --criterion-pair criterion_base criterion_head --n 10
+```
+
+En CI, el workflow `.github/workflows/slo.yml` corre en cada PR: primero el
+smoke de los fixtures versionados (segundos) y después dos corridas de
+criterion — **base del PR y HEAD en el mismo runner** (comparación
+intra-máquina, sin ruido entre máquinas) — y aplica
+`--criterion-pair`. Exit `1` nombra el bench o la métrica infractor; exit `2`
+es entrada malformada o baseline ausente: fallo ruidoso, nunca verde
+silencioso. La suite `crates/ruscadb/tests/slo_gates.rs` asienta los tres
+AC con los fixtures.
+
 ---
 
 ## T3 — regression nightly (alert-only, < 60 min)

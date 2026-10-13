@@ -1,0 +1,96 @@
+# Gates estadísticos SLO — latencia de benches en PRs (SPEC-0082).
+#
+# Los runners de GitHub tienen CV ≈ 2.7 %: gatear ratios de umbral fijo
+# produce falsos positivos. Este workflow aplica la frontera (ASV/ASE'26):
+#
+#   1. Smoke determinista de los fixtures versionados (Mann-Whitney,
+#      bootstrap pareado, A/A, fallo ruidoso) — segundos, siempre.
+#   2. Corrida de criterion sobre la BASE del PR y sobre HEAD en el MISMO
+#      runner (misma clase de máquina), y gate con test z de Welch
+#      direccional (p < 0.002) vía `scripts/slo_gate.py --criterion-pair`.
+#
+# No toca `.github/workflows/ci.yml` (gate T1). Ver `specs/slo_gates.md`
+# (SPEC-0082) y la sección «Gates estadísticos SLO» de docs/verification.md.
+
+name: SLO
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: slo-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Tamaño de muestra del test z de Welch: debe coincidir con --sample-size.
+  SLO_SAMPLE_SIZE: "10"
+
+jobs:
+  slo-gate:
+    name: Gates estadísticos SLO
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # 1) Smoke de fixtures: cada salida 0/1/2 del contrato se asienta aquí
+      #    (incluida la calibración A/A y el fallo ruidoso).
+      - name: Fixture smoke (contrato 0/1/2)
+        shell: bash
+        run: |
+          set -euo pipefail
+          expect() {
+            local expected="$1"; shift
+            local out code
+            set +e
+            out="$(python scripts/slo_gate.py "$@" 2>&1)"
+            code=$?
+            set -e
+            if [ "$code" -ne "$expected" ]; then
+              echo "::error::esperaba exit $expected, salió $code en $*:"
+              echo "$out"
+              exit 1
+            fi
+            echo "OK $* -> $code"
+          }
+          expect 0 benches/baselines/slo/latency_same.json
+          expect 0 benches/baselines/slo/aa.json
+          expect 0 benches/baselines/slo/recall_noise.json
+          expect 1 benches/baselines/slo/latency_regression.json
+          expect 1 benches/baselines/slo/recall_delta.json
+          expect 2 benches/baselines/slo/malformed.json
+
+      # 2) Baseline = código base del PR, benchmarks en el MISMO runner que
+      #    HEAD: la comparación es intra-máquina (el ruido entre máquinas no
+      #    entra en el test). Benchs rápidos: sample mínimo de criterion.
+      - name: Bench baseline (base del PR)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git checkout --detach "$BASE_SHA"
+          cargo bench -- --sample-size "$SLO_SAMPLE_SIZE" \
+            --measurement-time 1 --warm-up-time 0.5
+          cp -r target/criterion criterion_base
+
+      - name: Bench HEAD (candidato)
+        run: |
+          git checkout --detach "${{ github.event.pull_request.head.sha }}"
+          cargo bench -- --sample-size "$SLO_SAMPLE_SIZE" \
+            --measurement-time 1 --warm-up-time 0.5
+          cp -r target/criterion criterion_head
+
+      # 3) Gate estadístico: test z de Welch direccional por bench
+      #    (p < 0.002); regresión => exit 1 y nombra el bench infractor.
+      - name: slo_gate --criterion-pair
+        run: |
+          python scripts/slo_gate.py --criterion-pair \
+            criterion_base criterion_head --n "$SLO_SAMPLE_SIZE"

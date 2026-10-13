@@ -15,7 +15,7 @@ use ruscadb_core::{RecordId, RuscaError};
 use ruscadb_multimodal::BlobStore;
 use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
 use ruscadb_txn::{Manifest, Snapshot, TxId, TxnManager};
-use ruscadb_wal::{Lsn, RecordKind, Wal};
+use ruscadb_wal::{FsyncPolicy, Lsn, RecordKind, Wal};
 
 use crate::auth::{AuditEntry, Role};
 use crate::blob_pipeline::BlobPipeline;
@@ -45,10 +45,19 @@ pub struct DbConfig {
     /// ruta. El cifrado del blob store queda fuera de alcance en esta iteración:
     /// el store se abre siempre en modo claro.
     pub blob_path: Option<PathBuf>,
+    /// Política de fsync del WAL (SPEC-0081). Por defecto [`FsyncPolicy::Full`]
+    /// (fsync por commit, comportamiento histórico).
+    ///
+    /// Con [`FsyncPolicy::Normal`] el commit espera el ack del grupo de
+    /// group commit antes de publicar las páginas.
+    pub fsync_policy: FsyncPolicy,
 }
 
 impl DbConfig {
     /// Crea una configuración de apertura (sin cifrado ni blob store).
+    ///
+    /// La política de fsync por defecto es [`FsyncPolicy::Full`] (idéntica al
+    /// comportamiento histórico, SPEC-0081, NF-0081-03).
     ///
     /// Args:
     ///     data_path: Ruta del archivo de páginas.
@@ -59,6 +68,7 @@ impl DbConfig {
             pool_capacity,
             encryption: None,
             blob_path: None,
+            fsync_policy: FsyncPolicy::Full,
         }
     }
 }
@@ -151,6 +161,10 @@ impl Database {
     /// (SPEC-0076) **antes** de tocar el fichero de datos; el lock se libera al
     /// dropearse la `Database`.
     ///
+    /// La política de fsync del WAL la fija [`DbConfig::fsync_policy`]
+    /// (SPEC-0081): [`FsyncPolicy::Full`] (default) fsync-ea por commit;
+    /// [`FsyncPolicy::Normal`] agrupa los commits en un writer thread.
+    ///
     /// Args:
     ///     config: Configuración de apertura.
     ///
@@ -174,8 +188,10 @@ impl Database {
         let lock = LockGuard::acquire(&config.data_path)?;
         let file = PagedFile::open(&config.data_path)?;
         let wal = match config.encryption.as_ref() {
-            Some(encryption) => Wal::open_encrypted(&wal_path, encryption.key())?,
-            None => Wal::open(&wal_path)?,
+            Some(encryption) => {
+                Wal::open_encrypted_with(&wal_path, encryption.key(), config.fsync_policy)?
+            }
+            None => Wal::open_with(&wal_path, config.fsync_policy)?,
         };
         let (manifest, is_new) = load_or_create_manifest(&manifest_path)?;
         // Blob store opcional (SPEC-0038): se abre en claro (el cifrado del
@@ -451,6 +467,26 @@ impl Database {
     ///     El LSN del último commit aplicado (`0` en una base nueva).
     pub fn last_lsn(&self) -> Lsn {
         self.last_lsn
+    }
+
+    /// Número de fsyncs del WAL realizados hasta ahora (SPEC-0081).
+    ///
+    /// Con [`DbConfig::fsync_policy`] = [`FsyncPolicy::Normal`] crece una vez
+    /// por **grupo** de group commit (no por commit), lo que permite medir el
+    /// coalescing (AC-0081-02).
+    ///
+    /// Returns:
+    ///     El conteo monótono de `fsync` ejecutados sobre el WAL de la base.
+    pub fn sync_count(&self) -> u64 {
+        self.wal.sync_count()
+    }
+
+    /// Política de fsync del WAL con la que se abrió la base (SPEC-0081).
+    ///
+    /// Returns:
+    ///     La [`FsyncPolicy`] activa.
+    pub fn fsync_policy(&self) -> FsyncPolicy {
+        self.wal.policy()
     }
 
     /// Inicia una transacción MVCC explícita y la marca como activa.

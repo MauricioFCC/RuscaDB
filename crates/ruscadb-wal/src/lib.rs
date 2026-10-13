@@ -43,6 +43,11 @@
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use ruscadb_core::RuscaError;
 
@@ -141,13 +146,123 @@ pub struct RecoveryOutcome {
     pub truncated_bytes: u64,
 }
 
+/// Política de durabilidad (`fsync`) del WAL (SPEC-0081).
+///
+/// - [`FsyncPolicy::Full`] (por defecto): fsync del WAL **antes** de confirmar
+///   cada commit; comportamiento histórico, durable commit a commit.
+/// - [`FsyncPolicy::Normal`]: *group commit* — un writer thread agrupa de forma
+///   *greedy* las peticiones de fsync pendientes y las sirve con un único
+///   `fsync` por grupo. Los commits entrantes se coalescen (menos fsyncs que
+///   commits) y el ack de cada uno llega **solo** tras el fsync de su grupo.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FsyncPolicy {
+    /// fsync por commit (comportamiento histórico, por defecto).
+    #[default]
+    Full,
+    /// Group commit con writer thread (coalescing greedy + pipeline).
+    Normal,
+}
+
+/// Ventana de agrupación *greedy* del writer thread de group commit (SPEC-0081).
+///
+/// Tras recibir la primera petición de un grupo, el writer espera hasta esta
+/// ventana para incorporar las peticiones que lleguen: los commits concurrentes
+/// se coalescen en un solo `fsync`. Acota el retardo añadido por lote.
+const GROUP_WINDOW: Duration = Duration::from_millis(2);
+
+/// Resultado del fsync de un grupo, clonable para todos sus waiters.
+///
+/// `std::io::Error` no es `Clone`: se transporta `(kind, mensaje)` y cada
+/// waiter reconstruye un [`RuscaError::Io`] equivalente.
+type FlushOutcome = Result<(), (std::io::ErrorKind, String)>;
+
+/// Petición de fsync dirigida al writer thread de group commit.
+struct FlushRequest {
+    /// Canal por el que se entrega el ack tras el fsync del grupo.
+    ack: Sender<FlushOutcome>,
+}
+
+/// Coordinador del group commit (`FsyncPolicy::Normal`).
+struct GroupCommit {
+    /// Canal de peticiones; dropearlo señaliza al writer para terminar.
+    request_tx: Option<Sender<FlushRequest>>,
+    /// Handle del writer thread; se une en [`Drop`] (sin deadlock).
+    handle: Option<JoinHandle<()>>,
+}
+
+impl GroupCommit {
+    /// Envía una petición de fsync y espera su ack (durabilidad del grupo).
+    ///
+    /// Returns:
+    ///     `Ok(())` cuando el grupo que contiene esta petición ya es durable.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si el writer no está disponible, si el fsync del
+    ///     grupo falla o si el writer termina antes de entregar el ack.
+    fn flush(&self) -> Result<(), RuscaError> {
+        let Some(request_tx) = self.request_tx.as_ref() else {
+            return Err(RuscaError::Io(std::io::Error::other(
+                "group commit: writer no disponible",
+            )));
+        };
+        let (ack_tx, ack_rx) = mpsc::channel();
+        request_tx.send(FlushRequest { ack: ack_tx }).map_err(|_| {
+            RuscaError::Io(std::io::Error::other(
+                "group commit: writer terminó antes de encolar la petición",
+            ))
+        })?;
+        match ack_rx.recv() {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err((kind, message))) => Err(RuscaError::Io(std::io::Error::new(kind, message))),
+            Err(_) => Err(RuscaError::Io(std::io::Error::other(
+                "group commit: writer terminó antes del ack",
+            ))),
+        }
+    }
+}
+
+impl Drop for GroupCommit {
+    /// Drena el writer (dropeando el canal) y lo une sin deadlock.
+    fn drop(&mut self) {
+        self.request_tx.take();
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+/// Mecanismo de fsync activo: en línea (`Full`) o writer thread (`Normal`).
+enum Fsync {
+    /// Handle dedicado para el fsync síncrono por commit (`Full`).
+    Inline(File),
+    /// Coordinator del writer thread (`Normal`).
+    Group(GroupCommit),
+}
+
+/// Escritor serializado del log: archivo y siguiente LSN.
+///
+/// El `Mutex` permite `append(&self)` (uso concurrente) y garantiza que los
+/// frames se escriban íntegros y en orden, sin entrelazar bytes entre hilos.
+struct Appender {
+    /// Archivo del WAL (escrituras de `append`).
+    file: File,
+    /// Siguiente LSN a asignar.
+    next_lsn: Lsn,
+}
+
 /// Write-Ahead Log de un único escritor (embebido).
 pub struct Wal {
-    file: File,
+    /// Escritor serializado (permite `&self` y uso concurrente entre hilos).
+    appender: Mutex<Appender>,
     path: PathBuf,
-    next_lsn: Lsn,
     /// Clave AEAD opcional (`None` = modo claro). Se borra en [`Drop`].
     key: Option<[u8; 32]>,
+    /// Política de fsync activa.
+    policy: FsyncPolicy,
+    /// Mecanismo de fsync (`Inline` síncrono o writer thread de group commit).
+    fsync: Fsync,
+    /// Contador de fsyncs realizados (SPEC-0081, AC-0081-02).
+    sync_count: Arc<AtomicU64>,
 }
 
 impl std::fmt::Debug for Wal {
@@ -155,7 +270,8 @@ impl std::fmt::Debug for Wal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Wal")
             .field("path", &self.path)
-            .field("next_lsn", &self.next_lsn)
+            .field("next_lsn", &self.next_lsn())
+            .field("policy", &self.policy)
             .field("encrypted", &self.key.is_some())
             .finish()
     }
@@ -172,19 +288,25 @@ impl Drop for Wal {
     }
 }
 
-/// Apertura compartida de [`Wal::open`] y [`Wal::open_encrypted`].
+/// Apertura compartida por los constructores de [`Wal`].
 ///
 /// Args:
 ///     path: Ruta del archivo de log.
 ///     key: Clave AEAD (`None` = modo claro).
+///     policy: Política de fsync ([`FsyncPolicy::Full`] o [`FsyncPolicy::Normal`]).
 ///
 /// Returns:
 ///     El WAL abierto, con `next_lsn` continuando la secuencia previa.
 ///
 /// Raises:
 ///     [`RuscaError::WalCorrupt`] si el recovery con clave falla (sin truncar);
-///     [`RuscaError::Io`] si falla el acceso a disco.
-fn open_impl(path: impl AsRef<Path>, key: Option<[u8; 32]>) -> Result<Wal, RuscaError> {
+///     [`RuscaError::Io`] si falla el acceso a disco o no se puede lanzar el
+///     writer thread de group commit.
+fn open_impl(
+    path: impl AsRef<Path>,
+    key: Option<[u8; 32]>,
+    policy: FsyncPolicy,
+) -> Result<Wal, RuscaError> {
     let path = path.as_ref().to_path_buf();
     let mut file = OpenOptions::new()
         .read(true)
@@ -195,16 +317,109 @@ fn open_impl(path: impl AsRef<Path>, key: Option<[u8; 32]>) -> Result<Wal, Rusca
     let outcome = scan_and_truncate_with_key(&mut file, key.as_ref())?;
     let next_lsn = outcome.records.last().map_or(0, |record| record.lsn + 1);
     file.seek(SeekFrom::End(0))?;
+    let sync_count = Arc::new(AtomicU64::new(0));
+    let fsync = match policy {
+        // `Full`: handle dedicado (mismo objeto de archivo) para el fsync.
+        FsyncPolicy::Full => Fsync::Inline(file.try_clone()?),
+        // `Normal`: el writer thread fsync-ea sobre su propio handle.
+        FsyncPolicy::Normal => Fsync::Group(spawn_group_commit(
+            file.try_clone()?,
+            Arc::clone(&sync_count),
+        )?),
+    };
     Ok(Wal {
-        file,
+        appender: Mutex::new(Appender { file, next_lsn }),
         path,
-        next_lsn,
         key,
+        policy,
+        fsync,
+        sync_count,
     })
+}
+
+/// Lanza el writer thread del group commit y devuelve su coordinador.
+///
+/// Args:
+///     fsync_file: Handle (clon) dedicado al `fsync` del writer thread.
+///     counter: Contador compartido de fsyncs del grupo.
+///
+/// Returns:
+///     El [`GroupCommit`] con el canal y el handle del writer.
+///
+/// Errors:
+///     [`RuscaError::Io`] si el sistema no puede crear el hilo.
+fn spawn_group_commit(
+    fsync_file: File,
+    counter: Arc<AtomicU64>,
+) -> Result<GroupCommit, RuscaError> {
+    let (request_tx, request_rx) = mpsc::channel();
+    let handle = std::thread::Builder::new()
+        .name("ruscadb-wal-flush".to_string())
+        .spawn(move || flush_worker(request_rx, fsync_file, counter))
+        .map_err(RuscaError::Io)?;
+    Ok(GroupCommit {
+        request_tx: Some(request_tx),
+        handle: Some(handle),
+    })
+}
+
+/// Bucle del writer thread: agrupa peticiones *greedy* y hace un fsync por grupo.
+///
+/// Coalescing: tras la primera petición de un grupo, drena las ya pendientes y
+/// espera hasta [`GROUP_WINDOW`] para incorporar las que lleguen (los commits
+/// concurrentes comparten un único `fsync`). Pipeline: mientras el `fsync` del
+/// grupo N corre, el canal sigue recibiendo las peticiones del grupo N+1, que se
+/// sirven en la siguiente iteración. Termina cuando el canal se cierra (drop
+/// del coordinador), tras servir el grupo en curso.
+///
+/// Args:
+///     request_rx: Canal receptor de peticiones de fsync.
+///     fsync_file: Handle dedicado usado solo para `fsync`.
+///     counter: Contador compartido de fsyncs del grupo.
+fn flush_worker(request_rx: Receiver<FlushRequest>, fsync_file: File, counter: Arc<AtomicU64>) {
+    let mut disconnected = false;
+    while !disconnected {
+        let Ok(first) = request_rx.recv() else {
+            break;
+        };
+        let mut group = vec![first];
+        // Coalescing greedy: todo lo ya pendiente entra en el mismo grupo.
+        while let Ok(request) = request_rx.try_recv() {
+            group.push(request);
+        }
+        // Ventana de agrupación: captura los commits que llegan en paralelo.
+        let deadline = Instant::now() + GROUP_WINDOW;
+        loop {
+            let now = Instant::now();
+            if now >= deadline {
+                break;
+            }
+            match request_rx.recv_timeout(deadline - now) {
+                Ok(request) => group.push(request),
+                Err(RecvTimeoutError::Timeout) => break,
+                Err(RecvTimeoutError::Disconnected) => {
+                    disconnected = true;
+                    break;
+                }
+            }
+        }
+        // Un solo fsync sirve a todo el grupo; el ack se emite después.
+        let outcome: FlushOutcome = fsync_file
+            .sync_data()
+            .map_err(|error| (error.kind(), error.to_string()));
+        if outcome.is_ok() {
+            counter.fetch_add(1, Ordering::SeqCst);
+        }
+        for request in group {
+            let _ = request.ack.send(outcome.clone());
+        }
+    }
 }
 
 impl Wal {
     /// Abre (o crea) el WAL y ejecuta el recovery del tail rasgado.
+    ///
+    /// Usa [`FsyncPolicy::Full`] (fsync por commit), el comportamiento histórico.
     ///
     /// Args:
     ///     path: Ruta del archivo de log.
@@ -215,7 +430,25 @@ impl Wal {
     /// Errors:
     ///     [`RuscaError::Io`] si falla el acceso a disco.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, RuscaError> {
-        open_impl(path, None)
+        open_impl(path, None, FsyncPolicy::Full)
+    }
+
+    /// Abre (o crea) el WAL con una política de fsync explícita (SPEC-0081).
+    ///
+    /// [`FsyncPolicy::Full`] conserva el comportamiento de [`Wal::open`];
+    /// [`FsyncPolicy::Normal`] habilita group commit (coalescing + pipeline).
+    ///
+    /// Args:
+    ///     path: Ruta del archivo de log.
+    ///     policy: Política de durabilidad.
+    ///
+    /// Returns:
+    ///     El WAL abierto, con `next_lsn` continuando la secuencia previa.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla el acceso a disco o el writer thread.
+    pub fn open_with(path: impl AsRef<Path>, policy: FsyncPolicy) -> Result<Self, RuscaError> {
+        open_impl(path, None, policy)
     }
 
     /// Abre (o crea) el WAL en modo cifrado (SPEC-0013, AC-0013-01).
@@ -236,13 +469,38 @@ impl Wal {
     ///     [`RuscaError::WalCorrupt`] si hay frames cifrados ilegibles con esta
     ///     clave; [`RuscaError::Io`] si falla el acceso a disco.
     pub fn open_encrypted(path: impl AsRef<Path>, key: &[u8; 32]) -> Result<Self, RuscaError> {
-        open_impl(path, Some(*key))
+        open_impl(path, Some(*key), FsyncPolicy::Full)
+    }
+
+    /// Abre (o crea) el WAL cifrado con una política de fsync explícita (SPEC-0081).
+    ///
+    /// Combina el cifrado de [`Wal::open_encrypted`] con la política de
+    /// [`Wal::open_with`] (p. ej. group commit en reposo cifrado).
+    ///
+    /// Args:
+    ///     path: Ruta del archivo de log.
+    ///     key: Clave simétrica de 32 B (XChaCha20-Poly1305 vía `ruscadb-crypto`).
+    ///     policy: Política de durabilidad.
+    ///
+    /// Returns:
+    ///     El WAL abierto, con `next_lsn` continuando la secuencia previa.
+    ///
+    /// Errors:
+    ///     [`RuscaError::WalCorrupt`] si hay frames cifrados ilegibles con esta
+    ///     clave; [`RuscaError::Io`] si falla el acceso a disco o el writer thread.
+    pub fn open_encrypted_with(
+        path: impl AsRef<Path>,
+        key: &[u8; 32],
+        policy: FsyncPolicy,
+    ) -> Result<Self, RuscaError> {
+        open_impl(path, Some(*key), policy)
     }
 
     /// Añade un registro al WAL y devuelve su LSN.
     ///
     /// El registro queda **escrito** pero no necesariamente durable hasta
-    /// llamar a [`Wal::sync`].
+    /// llamar a [`Wal::sync`]. Es seguro llamarlo desde varios hilos: el
+    /// `Mutex` interno serializa los `append` (frames íntegros y LSN en orden).
     ///
     /// En modo cifrado el `payload` se sella con el nonce del LSN asignado; el
     /// límite de tamaño incluye el sobrecoste del envelope (45 B).
@@ -258,15 +516,11 @@ impl Wal {
     /// Errors:
     ///     [`RuscaError::WalCorrupt`] si el payload excede el tamaño máximo por
     ///     frame; [`RuscaError::Io`] si falla la escritura.
-    pub fn append(
-        &mut self,
-        tx_id: u64,
-        kind: RecordKind,
-        payload: &[u8],
-    ) -> Result<Lsn, RuscaError> {
+    pub fn append(&self, tx_id: u64, kind: RecordKind, payload: &[u8]) -> Result<Lsn, RuscaError> {
+        let mut appender = self.lock_appender()?;
         let stored: Vec<u8> = match self.key.as_ref() {
             None => payload.to_vec(),
-            Some(key) => seal_payload(key, self.next_lsn, payload),
+            Some(key) => seal_payload(key, appender.next_lsn, payload),
         };
         if BODY_HEADER + stored.len() > MAX_BODY {
             return Err(RuscaError::WalCorrupt(format!(
@@ -276,23 +530,51 @@ impl Wal {
             )));
         }
         let record = WalRecord {
-            lsn: self.next_lsn,
+            lsn: appender.next_lsn,
             tx_id,
             kind,
             payload: stored,
         };
-        self.file.write_all(&frame::encode(&record))?;
-        self.next_lsn += 1;
+        appender.file.write_all(&frame::encode(&record))?;
+        appender.next_lsn += 1;
         Ok(record.lsn)
+    }
+
+    /// Toma el lock del escritor o falla con error accionable si está envenenado.
+    ///
+    /// Returns:
+    ///     El guard del [`Appender`] serializado.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si un panic previo envenenó el mutex.
+    fn lock_appender(&self) -> Result<MutexGuard<'_, Appender>, RuscaError> {
+        self.appender.lock().map_err(|_| {
+            RuscaError::Io(std::io::Error::other(
+                "wal: el mutex del appender quedó envenenado por un panic previo",
+            ))
+        })
     }
 
     /// Fuerza la durabilidad de todo lo escrito (fsync de datos).
     ///
+    /// Con [`FsyncPolicy::Full`] hace `fsync` en línea. Con
+    /// [`FsyncPolicy::Normal`] delega en el writer thread: la llamada retorna
+    /// **solo** cuando el grupo que contiene esta petición ya es durable.
+    ///
     /// Returns:
     ///     `Ok(())` cuando los datos están en disco.
-    pub fn sync(&mut self) -> Result<(), RuscaError> {
-        self.file.sync_data()?;
-        Ok(())
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla el `fsync` (o el writer thread no está).
+    pub fn sync(&self) -> Result<(), RuscaError> {
+        match &self.fsync {
+            Fsync::Inline(file) => {
+                file.sync_data()?;
+                self.sync_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+            Fsync::Group(group) => group.flush(),
+        }
     }
 
     /// Ruta del archivo de log.
@@ -302,7 +584,29 @@ impl Wal {
 
     /// Último LSN asignado más uno (el siguiente a usar).
     pub fn next_lsn(&self) -> Lsn {
-        self.next_lsn
+        match self.appender.lock() {
+            Ok(appender) => appender.next_lsn,
+            Err(poisoned) => poisoned.into_inner().next_lsn,
+        }
+    }
+
+    /// Política de fsync activa del WAL (SPEC-0081).
+    ///
+    /// Returns:
+    ///     La [`FsyncPolicy`] con la que se abrió el WAL.
+    pub fn policy(&self) -> FsyncPolicy {
+        self.policy
+    }
+
+    /// Número de fsyncs realizados hasta ahora (SPEC-0081, AC-0081-02).
+    ///
+    /// Con [`FsyncPolicy::Normal`] crece una vez por **grupo** (no por commit),
+    /// lo que permite medir el coalescing del group commit.
+    ///
+    /// Returns:
+    ///     El conteo monótono de `fsync` ejecutados sobre el WAL.
+    pub fn sync_count(&self) -> u64 {
+        self.sync_count.load(Ordering::SeqCst)
     }
 
     /// Fuerza un checkpoint del WAL y lo hace durable (SPEC-0080).
@@ -320,7 +624,7 @@ impl Wal {
     ///     [`RuscaError::Io`] si falla la escritura o el `fsync`.
     pub fn checkpoint(&mut self) -> Result<Lsn, RuscaError> {
         // Span de frontera (SPEC-0080): checkpoint real del WAL.
-        let span = tracing::debug_span!("checkpoint", lsn = self.next_lsn);
+        let span = tracing::debug_span!("checkpoint", lsn = self.next_lsn());
         let _entered = span.enter();
         let lsn = self.append(0, RecordKind::Checkpoint, &[])?;
         self.sync()?;
@@ -856,7 +1160,7 @@ mod tests {
         ];
         let payloads = sample_payloads();
         {
-            let mut wal = Wal::open_encrypted(&path, &key).expect("abre cifrado");
+            let wal = Wal::open_encrypted(&path, &key).expect("abre cifrado");
             for (index, payload) in payloads.iter().enumerate() {
                 let lsn = wal
                     .append(index as u64, kinds[index % kinds.len()], payload)
@@ -873,7 +1177,7 @@ mod tests {
         for (record, expected) in records.iter().zip(payloads.iter()) {
             assert_eq!(&record.payload, expected);
         }
-        let mut wal = Wal::open_encrypted(&path, &key).expect("reabre");
+        let wal = Wal::open_encrypted(&path, &key).expect("reabre");
         assert_eq!(wal.next_lsn(), payloads.len() as u64);
         wal.append(99, RecordKind::Abort, b"post").expect("append");
         assert_eq!(wal.next_lsn(), payloads.len() as u64 + 1);
@@ -889,7 +1193,7 @@ mod tests {
         let path = dir.path().join("wal.log");
         let key = test_key();
         {
-            let mut wal = Wal::open_encrypted(&path, &key).expect("abre cifrado");
+            let wal = Wal::open_encrypted(&path, &key).expect("abre cifrado");
             wal.append(7, RecordKind::Commit, b"dato").expect("append");
             wal.sync().expect("sync");
         }
@@ -924,7 +1228,7 @@ mod tests {
         let path = dir.path().join("wal.log");
         let key = test_key();
         {
-            let mut wal = Wal::open_encrypted(&path, &key).expect("abre");
+            let wal = Wal::open_encrypted(&path, &key).expect("abre");
             wal.append(1, RecordKind::Commit, b"integro")
                 .expect("append");
             wal.sync().expect("sync");
@@ -956,7 +1260,7 @@ mod tests {
         let path = dir.path().join("wal.log");
         let key = test_key();
         {
-            let mut wal = Wal::open_encrypted(&path, &key).expect("abre");
+            let wal = Wal::open_encrypted(&path, &key).expect("abre");
             wal.append(1, RecordKind::Begin, b"uno").expect("append");
             wal.append(1, RecordKind::Commit, b"dos").expect("append");
             wal.sync().expect("sync");
@@ -976,7 +1280,7 @@ mod tests {
     fn test_encrypted_append_rejects_oversized_with_overhead() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
-        let mut wal = Wal::open_encrypted(&path, &test_key()).expect("abre");
+        let wal = Wal::open_encrypted(&path, &test_key()).expect("abre");
         let limit = MAX_BODY - BODY_HEADER - ENVELOPE_OVERHEAD;
         wal.append(1, RecordKind::Commit, &vec![0x55u8; limit])
             .expect("ajuste exacto ok");
@@ -1003,7 +1307,7 @@ mod tests {
             let path = dir.path().join("wal.log");
             let mut expected = Vec::new();
             {
-                let mut wal = Wal::open_encrypted(&path, &key).expect("abre");
+                let wal = Wal::open_encrypted(&path, &key).expect("abre");
                 for (index, len) in lens.iter().enumerate() {
                     let payload = vec![(index + 1) as u8; *len];
                     wal.append(index as u64, kinds[index % kinds.len()], &payload)
@@ -1029,7 +1333,7 @@ mod tests {
     fn test_clear_payload_starting_with_0x01_is_plaintext() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
-        let mut wal = Wal::open(&path).expect("abre");
+        let wal = Wal::open(&path).expect("abre");
         wal.append(1, RecordKind::Commit, b"\x01corto")
             .expect("append");
         wal.sync().expect("sync");
@@ -1043,7 +1347,7 @@ mod tests {
         // Un claro largo que empieza por 0x01 (forma de un commit de 1
         // página) sigue siendo claro: solo el magic RCE1 marca cifrado.
         let single_page_commit = vec![0x01u8; ENVELOPE_OVERHEAD];
-        let mut wal = Wal::open(&path).expect("reabre");
+        let wal = Wal::open(&path).expect("reabre");
         wal.append(2, RecordKind::Commit, &single_page_commit)
             .expect("append");
         wal.sync().expect("sync");
@@ -1059,7 +1363,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
         {
-            let mut wal = Wal::open(&path).expect("abre");
+            let wal = Wal::open(&path).expect("abre");
             wal.append(1, RecordKind::Commit, b"row-1").expect("append");
             wal.sync().expect("sync");
         }
@@ -1076,7 +1380,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
         let valid_len = {
-            let mut wal = Wal::open(&path).expect("abre");
+            let wal = Wal::open(&path).expect("abre");
             wal.append(1, RecordKind::Begin, b"a").expect("append");
             wal.append(1, RecordKind::Commit, b"b").expect("append");
             wal.sync().expect("sync");
@@ -1105,7 +1409,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
         {
-            let mut wal = Wal::open(&path).expect("abre");
+            let wal = Wal::open(&path).expect("abre");
             wal.append(1, RecordKind::Begin, b"a").expect("append");
             wal.append(1, RecordKind::Commit, b"b").expect("append");
             wal.sync().expect("sync");
@@ -1134,7 +1438,7 @@ mod tests {
     fn test_append_rejects_oversized_payload() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
-        let mut wal = Wal::open(&path).expect("abre");
+        let wal = Wal::open(&path).expect("abre");
         let oversized = vec![0u8; MAX_BODY];
         let result = wal.append(1, RecordKind::Commit, &oversized);
         assert!(matches!(result, Err(RuscaError::WalCorrupt(_))));
@@ -1147,7 +1451,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
         {
-            let mut wal = Wal::open(&path).expect("abre");
+            let wal = Wal::open(&path).expect("abre");
             wal.append(1, RecordKind::Begin, b"uno").expect("append");
             wal.append(1, RecordKind::Commit, b"dos").expect("append");
             wal.sync().expect("sync");
@@ -1168,7 +1472,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
         {
-            let mut wal = Wal::open(&path).expect("abre");
+            let wal = Wal::open(&path).expect("abre");
             wal.append(1, RecordKind::Begin, b"a").expect("append");
             wal.append(1, RecordKind::Commit, b"b").expect("append");
             wal.sync().expect("sync");
@@ -1202,7 +1506,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("wal.log");
         {
-            let mut wal = Wal::open(&path).expect("abre");
+            let wal = Wal::open(&path).expect("abre");
             wal.append(1, RecordKind::Commit, b"completo")
                 .expect("append");
             wal.sync().expect("sync");
@@ -1230,5 +1534,123 @@ mod tests {
             "los bytes rasgados quedan contabilizados: {}",
             verification.trailing_bytes
         );
+    }
+
+    /// `FsyncPolicy::Full` es la política por defecto (NF-0081-03).
+    #[test]
+    fn test_fsync_policy_defaults_to_full() {
+        assert_eq!(FsyncPolicy::default(), FsyncPolicy::Full);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let wal = Wal::open(dir.path().join("wal.log")).expect("abre");
+        assert_eq!(wal.policy(), FsyncPolicy::Full);
+        assert_eq!(wal.sync_count(), 0, "sin fsyncs previos");
+    }
+
+    /// Con `Full` cada `sync` hace exactamente un fsync (contador observable).
+    #[test]
+    fn test_full_policy_counts_one_fsync_per_sync() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        let wal = Wal::open(&path).expect("abre");
+        for index in 0..3u64 {
+            wal.append(index, RecordKind::Commit, b"x").expect("append");
+            wal.sync().expect("sync");
+        }
+        assert_eq!(wal.sync_count(), 3, "un fsync por commit en Full");
+    }
+
+    /// Con `Normal` todos los acks son durables (sobreviven a reapertura).
+    #[test]
+    fn test_normal_policy_acks_are_durable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        {
+            let wal = Wal::open_with(&path, FsyncPolicy::Normal).expect("abre");
+            assert_eq!(wal.policy(), FsyncPolicy::Normal);
+            for index in 0..5u64 {
+                wal.append(index, RecordKind::Commit, format!("d-{index}").as_bytes())
+                    .expect("append");
+                wal.sync().expect("sync");
+            }
+            assert!(wal.sync_count() >= 1, "al menos un fsync por grupo");
+        }
+        let records = read_records(&path).expect("lee");
+        assert_eq!(records.len(), 5);
+        for (index, record) in records.iter().enumerate() {
+            assert_eq!(record.payload, format!("d-{index}").as_bytes());
+        }
+    }
+
+    /// Una ráfaga concurrente con `Normal` coalesce fsyncs (AC-0081-02, unit).
+    #[test]
+    fn test_normal_policy_coalesces_fsyncs_under_burst() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        let wal = std::sync::Arc::new(Wal::open_with(&path, FsyncPolicy::Normal).expect("abre"));
+        let threads = 32usize;
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(threads));
+        let mut handles = Vec::with_capacity(threads);
+        for index in 0..threads {
+            let wal = std::sync::Arc::clone(&wal);
+            let barrier = std::sync::Arc::clone(&barrier);
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                wal.append(
+                    index as u64,
+                    RecordKind::Commit,
+                    format!("rec-{index}").as_bytes(),
+                )
+                .expect("append concurrente");
+                wal.sync().expect("sync concurrente");
+            }));
+        }
+        for handle in handles {
+            handle.join().expect("join");
+        }
+        let syncs = wal.sync_count();
+        assert!(
+            syncs < threads as u64,
+            "coalescing medible: {syncs} fsyncs para {threads} commits"
+        );
+        drop(wal);
+        let records = read_records(&path).expect("lee");
+        assert_eq!(records.len(), threads, "los N acks persisten en el WAL");
+        for record in &records {
+            assert_eq!(record.kind, RecordKind::Commit);
+        }
+    }
+
+    /// El writer thread se une en `Drop` sin deadlock (NF-0081-02).
+    #[test]
+    fn test_normal_policy_drop_joins_writer_without_deadlock() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        {
+            let wal = Wal::open_with(&path, FsyncPolicy::Normal).expect("abre");
+            wal.append(1, RecordKind::Begin, b"x").expect("append");
+            // Sin `sync`: el drop debe drenar y unir el writer sin bloquearse.
+        }
+        let wal = Wal::open_with(&path, FsyncPolicy::Normal).expect("reabre");
+        assert_eq!(wal.next_lsn(), 1, "el frame escrito se recupera");
+    }
+
+    /// `Normal` en modo cifrado: roundtrip con acks durables (SPEC-0013 + 0081).
+    #[test]
+    fn test_open_encrypted_with_normal_roundtrip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        let key = test_key();
+        {
+            let wal =
+                Wal::open_encrypted_with(&path, &key, FsyncPolicy::Normal).expect("abre cifrado");
+            for index in 0..3u64 {
+                wal.append(index, RecordKind::Commit, format!("e-{index}").as_bytes())
+                    .expect("append");
+                wal.sync().expect("sync");
+            }
+        }
+        let records = read_records_with_key(&path, Some(&key)).expect("lee");
+        assert_eq!(records.len(), 3);
+        assert_eq!(records[2].payload, b"e-2");
     }
 }

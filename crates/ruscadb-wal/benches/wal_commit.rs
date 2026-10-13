@@ -26,7 +26,7 @@ fn bench_wal_group_commit(c: &mut Criterion) {
             let mut total = Duration::ZERO;
             for iteration in 0..iterations {
                 let path = dir.path().join(format!("bench-{iteration}.wal"));
-                let mut wal = Wal::open(&path).expect("wal");
+                let wal = Wal::open(&path).expect("wal");
                 let start = Instant::now();
                 for batch in 0..BATCH {
                     wal.append(batch, RecordKind::Commit, &PAYLOAD)
