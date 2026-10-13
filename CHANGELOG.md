@@ -139,6 +139,13 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   consulta se partía en `"i"`), de modo que un documento podía no recuperarse
   por sus propios términos. Ahora el lowercase se aplica **antes** de segmentar
   y los diacríticos combinantes (Mn) se descartan: `tokenize(token) == token`.
+- **Determinismo del KNN con filtro (también cazado por el proptest del CI)**:
+  `search_layer` de HNSW ordenaba solo por distancia y `post_filter_indexed`
+  hacía `take(k)` sobre ese orden, así que los empates salían en orden
+  arbitrario del `BinaryHeap` (`GOT=[0,3]` vs esperado `[0,1]`). Ahora hay
+  desempate por id de inserción, alineado con el resto de rutas (FVS/iFVS);
+  regresión determinista `knn_postfilter_ties_are_deterministic` + seed
+  proptest versionada.
 
 ### Retrospectiva
 

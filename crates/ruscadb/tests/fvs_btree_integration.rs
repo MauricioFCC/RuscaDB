@@ -1,10 +1,10 @@
-//! IntegraciÃ³n end-to-end de FVS y el Ã­ndice primario B+tree (SPEC-0024).
+//! Integración end-to-end de FVS y el índice primario B+tree (SPEC-0024).
 //!
 //! Cubre los criterios AC-0024-01..05 y una propiedad PBT: el `KNN` con filtro
 //! `WHERE` coincide siempre con la fuerza bruta restringida al filtro.
 
-// El orÃ¡culo puede fallar ruidosamente (equivalente a `allow-expect-in-tests`
-// del workspace, que no alcanza a los targets de integraciÃ³n).
+// El oráculo puede fallar ruidosamente (equivalente a `allow-expect-in-tests`
+// del workspace, que no alcanza a los targets de integración).
 #![allow(clippy::expect_used)]
 
 use proptest::prelude::*;
@@ -16,7 +16,7 @@ use ruscadb::{
 /// Abre una base temporal de pruebas con pool amplio (sin backpressure).
 ///
 /// Args:
-///     tag: Sufijo del nombre de archivo (aÃ­sla cada test).
+///     tag: Sufijo del nombre de archivo (aísla cada test).
 ///
 /// Returns:
 ///     El directorio temporal (keep-alive) y la base abierta.
@@ -75,7 +75,7 @@ fn insert_vector(database: &mut Database, id: i64, vector: &[f64]) -> RecordId {
                     metric: Metric::L2,
                 },
             )
-            .expect("embedding vÃ¡lido"),
+            .expect("embedding válido"),
         ),
         blob: None,
         meta: RecordMeta::default(),
@@ -93,7 +93,7 @@ fn int_of(row: &ruscadb::Row) -> i64 {
     }
 }
 
-/// Distancia euclÃ­dea en `f32` (orÃ¡culo de fuerza bruta).
+/// Distancia euclídea en `f32` (oráculo de fuerza bruta).
 fn l2(left: &[f64], right: &[f64]) -> f32 {
     left.iter()
         .zip(right)
@@ -102,7 +102,7 @@ fn l2(left: &[f64], right: &[f64]) -> f32 {
         .sqrt()
 }
 
-/// OrÃ¡culo: ids del top-k exacto restringido al filtro `id >= cutoff`.
+/// Oráculo: ids del top-k exacto restringido al filtro `id >= cutoff`.
 fn brute_force_filtered(
     entries: &[(i64, Vec<f64>)],
     query: &[f64],
@@ -114,12 +114,12 @@ fn brute_force_filtered(
         .filter(|(id, _)| *id >= cutoff)
         .map(|(id, vector)| (*id, l2(vector, query)))
         .collect();
-    // Orden por (distancia, id) â€” mismo desempate que FVS.
+    // Orden por (distancia, id) — mismo desempate que FVS.
     scored.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
     scored.into_iter().take(k).map(|(id, _)| id).collect()
 }
 
-/// AC-0024-01 â€” un `KNN` con filtro `WHERE` usa FVS y devuelve el top-k exacto
+/// AC-0024-01 — un `KNN` con filtro `WHERE` usa FVS y devuelve el top-k exacto
 /// restringido al filtro para selectividades baja, media y alta.
 #[test]
 // @spec AC-0024-01
@@ -153,8 +153,8 @@ fn test_ac_0024_01_knn_with_filter_uses_fvs() {
     }
 }
 
-/// FVS â€” si `PostFilter` no alcanza `k` vecinos permitidos (los mÃ¡s cercanos
-/// estÃ¡n filtrados fuera), se recalcula con `PreFilter` y devuelve el top-k
+/// FVS — si `PostFilter` no alcanza `k` vecinos permitidos (los más cercanos
+/// están filtrados fuera), se recalcula con `PreFilter` y devuelve el top-k
 /// exacto. Fuerza la rama de *fallback* de `fvs_top_k`.
 #[test]
 fn test_fvs_post_filter_under_return_falls_back_exact() {
@@ -163,7 +163,7 @@ fn test_fvs_post_filter_under_return_falls_back_exact() {
 
     // Cuatro vectores muy cercanos al query quedan fuera del filtro; el resto
     // (6/10 = 0.6) entra en `PostFilter`, cuyo sobre-muestreo top-4 no contiene
-    // ningÃºn permitido => `PostFilter` devuelve vacÃ­o y se cae a `PreFilter`.
+    // ningún permitido => `PostFilter` devuelve vacío y se cae a `PreFilter`.
     let entries: Vec<(i64, Vec<f64>)> = (0..10)
         .map(|id| {
             let vector = if id < 4 {
@@ -183,10 +183,10 @@ fn test_fvs_post_filter_under_return_falls_back_exact() {
         .expect("KNN postfilter con fallback");
     let got: Vec<i64> = rows.iter().map(int_of).collect();
     assert_eq!(got, brute_force_filtered(&entries, &[0.0, 0.0], 4, 1));
-    assert_eq!(got, vec![4], "el vecino permitido mÃ¡s cercano es el id 4");
+    assert_eq!(got, vec![4], "el vecino permitido más cercano es el id 4");
 }
 
-/// AC-0024-02 â€” el borrado localiza la fila por el Ã­ndice primario y mantiene
+/// AC-0024-02 — el borrado localiza la fila por el índice primario y mantiene
 /// coherente la estructura `RecordId -> locator`.
 #[test]
 // @spec AC-0024-02
@@ -200,7 +200,7 @@ fn test_ac_0024_02_primary_index_point_delete() {
     assert_eq!(
         database.primary_index_len("items"),
         ids.len(),
-        "el Ã­ndice primario registra cada fila insertada"
+        "el índice primario registra cada fila insertada"
     );
     let target = ids[3];
     assert!(
@@ -222,7 +222,7 @@ fn test_ac_0024_02_primary_index_point_delete() {
     assert_eq!(
         database.primary_index_len("items"),
         ids.len() - 1,
-        "el borrado retira la entrada del Ã­ndice primario"
+        "el borrado retira la entrada del índice primario"
     );
     assert!(
         !database
@@ -239,7 +239,7 @@ fn test_ac_0024_02_primary_index_point_delete() {
     );
 }
 
-/// AC-0024-03 â€” el Ã­ndice primario se reconstruye al reabrir y el point lookup
+/// AC-0024-03 — el índice primario se reconstruye al reabrir y el point lookup
 /// sigue funcionando.
 #[test]
 // @spec AC-0024-03
@@ -261,7 +261,7 @@ fn test_ac_0024_03_primary_index_survives_reopen() {
     assert_eq!(
         database.primary_index_len("items"),
         3,
-        "el Ã­ndice primario se reconstruye desde el heap al abrir"
+        "el índice primario se reconstruye desde el heap al abrir"
     );
     let record = database
         .get_record("items", &target)
@@ -285,7 +285,7 @@ fn test_ac_0024_03_primary_index_survives_reopen() {
     );
 }
 
-/// AC-0024-04 â€” tras el borrado el point lookup no ve la fila; reinsertar el
+/// AC-0024-04 — tras el borrado el point lookup no ve la fila; reinsertar el
 /// mismo id la vuelve a registrar.
 #[test]
 // @spec AC-0024-04
@@ -308,7 +308,7 @@ fn test_ac_0024_04_delete_then_reinsert_same_id() {
             .is_empty()
     );
 
-    // Reinsertar el mismo id vuelve a registrarlo en el Ã­ndice primario.
+    // Reinsertar el mismo id vuelve a registrarlo en el índice primario.
     let revived = Record {
         id,
         scalars: ScalarMap::from([
@@ -337,31 +337,31 @@ fn test_ac_0024_04_delete_then_reinsert_same_id() {
             .expect("select")
             .len(),
         1,
-        "la versiÃ³n borrada no reaparece; solo vive la nueva"
+        "la versión borrada no reaparece; solo vive la nueva"
     );
 }
 
-/// AC-0024-05 â€” fronteras: Ã­ndice vacÃ­o, filtro vacÃ­o, filtro total, `k = 0` e
-/// id ausente se manejan sin pÃ¡nicos.
+/// AC-0024-05 — fronteras: índice vacío, filtro vacío, filtro total, `k = 0` e
+/// id ausente se manejan sin pánicos.
 #[test]
 // @spec AC-0024-05
 fn test_ac_0024_05_index_edge_cases() {
     let (_dir, mut database) = open_test_db("ac24_05");
     create_items(&mut database, "items");
 
-    // Ãndice primario vacÃ­o.
+    // Índice primario vacío.
     assert_eq!(database.primary_index_len("items"), 0);
     assert!(
         database
             .get_record("items", &RecordId::new())
-            .expect("lookup vacÃ­o")
+            .expect("lookup vacío")
             .is_none()
     );
     assert!(
         !database
             .delete("items", &RecordId::new())
-            .expect("delete vacÃ­o"),
-        "borrar en un Ã­ndice vacÃ­o es no-op"
+            .expect("delete vacío"),
+        "borrar en un índice vacío es no-op"
     );
 
     let count = 6_i64;
@@ -374,13 +374,13 @@ fn test_ac_0024_05_index_edge_cases() {
     }
     assert_eq!(database.primary_index_len("items"), count as usize);
 
-    // Filtro que no selecciona nada => vacÃ­o.
+    // Filtro que no selecciona nada => vacío.
     let none = database
         .execute("SELECT * FROM items WHERE id > 100 KNN embedding <|2|> [0.0, 0.0]")
-        .expect("filtro vacÃ­o");
+        .expect("filtro vacío");
     assert!(none.is_empty());
 
-    // k = 0 con filtro total => vacÃ­o.
+    // k = 0 con filtro total => vacío.
     let zero = database
         .execute("SELECT * FROM items WHERE id >= 0 KNN embedding <|0|> [0.0, 0.0]")
         .expect("k=0");
@@ -397,7 +397,7 @@ fn test_ac_0024_05_index_edge_cases() {
         brute_force_filtered(&entries, &query, 0, count as usize)
     );
 
-    // Borrar todas deja el Ã­ndice primario vacÃ­o y el heap consultable.
+    // Borrar todas deja el índice primario vacío y el heap consultable.
     for id in &inserted {
         assert!(
             database.delete("items", id).expect("delete"),
@@ -417,7 +417,7 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(32))]
 
     /// PBT: el `KNN` con filtro coincide con la fuerza bruta filtrada para
-    /// cualquier umbral, consulta y `k` (incluye filtro vacÃ­o y `k = 0`).
+    /// cualquier umbral, consulta y `k` (incluye filtro vacío y `k = 0`).
     #[test]
     fn prop_knn_with_filter_matches_bruteforce(
         raw_vectors in prop::collection::vec(prop::collection::vec(0u32..40, 2), 1..7),
@@ -430,7 +430,7 @@ proptest! {
             .map(|vector| vector.iter().map(|value| f64::from(*value) / 2.0).collect())
             .collect();
         let query: Vec<f64> = raw_query.iter().map(|value| f64::from(*value) / 2.0).collect();
-        let cutoff = i64::from(cutoff_raw); // 0..8: cubre filtro total y filtro vacÃ­o
+        let cutoff = i64::from(cutoff_raw); // 0..8: cubre filtro total y filtro vacío
 
         let (_dir, mut database) = open_test_db("ac24_prop");
         create_items(&mut database, "items");
@@ -456,13 +456,13 @@ proptest! {
 
 /// Regresión: el `KNN` con filtro desempata distancias idénticas de forma
 /// determinista (id de inserción ascendente), no en orden arbitrario del
-/// BinaryHeap de HNSW (bug cazado por el proptest del CI: `GOT=[0,3]`).
+/// `BinaryHeap` de HNSW (bug cazado por el proptest del CI: `GOT=[0,3]`).
 #[test]
 fn knn_postfilter_ties_are_deterministic() {
     let (_dir, mut database) = open_test_db("knn_tie_regr");
     create_items(&mut database, "items");
     // Empate a 3 vías (ids 1, 2, 3 a la misma distancia de [0, 0]).
-    let vectors = vec![[7.0, 8.5], [10.0, 6.0], [6.0, 10.0], [10.0, 6.0]];
+    let vectors = [[7.0, 8.5], [10.0, 6.0], [6.0, 10.0], [10.0, 6.0]];
     let entries: Vec<(i64, Vec<f64>)> = vectors
         .iter()
         .enumerate()
