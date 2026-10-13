@@ -338,10 +338,11 @@ impl TableIndexes {
                 .graph
                 .traverse(node, Direction::Out, depth, usize::MAX)
             {
-                if let Some(record) = self.graph.from_node.get(reached as usize).copied() {
-                    if !self.deleted.contains(&record) && seen.insert(record) {
-                        ordered.push(record);
-                    }
+                if let Some(record) = self.graph.from_node.get(reached as usize).copied()
+                    && !self.deleted.contains(&record)
+                    && seen.insert(record)
+                {
+                    ordered.push(record);
                 }
             }
         }

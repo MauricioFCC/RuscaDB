@@ -320,10 +320,10 @@ impl JsonParser<'_> {
             self.index += 1;
         }
         let text = &self.input[start..self.index];
-        if !text.contains(['.', 'e', 'E']) {
-            if let Ok(integer) = text.parse::<i64>() {
-                return Ok(JsonValue::Int(integer));
-            }
+        if !text.contains(['.', 'e', 'E'])
+            && let Ok(integer) = text.parse::<i64>()
+        {
+            return Ok(JsonValue::Int(integer));
         }
         text.parse::<f64>()
             .map(JsonValue::Float)

@@ -14,7 +14,7 @@ use ruscadb_btree::BPlusTree;
 use ruscadb_core::{RecordId, RuscaError};
 use ruscadb_multimodal::BlobStore;
 use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
-use ruscadb_txn::{CURRENT_SCHEMA_VERSION, Manifest, Snapshot, TxId, TxnManager};
+use ruscadb_txn::{Manifest, Snapshot, TxId, TxnManager};
 use ruscadb_wal::{Lsn, RecordKind, Wal};
 
 use crate::auth::{AuditEntry, Role};
@@ -25,6 +25,7 @@ use crate::gates::IngestionPolicy;
 use crate::hardening::ShadowReport;
 use crate::heap::RowLocator;
 use crate::indexes::TableIndexes;
+use crate::lock::LockGuard;
 
 const COUNT_SIZE: usize = 4;
 const ID_SIZE: usize = 8;
@@ -125,6 +126,12 @@ pub struct Database {
     pub(crate) audit_path: PathBuf,
     /// Pipeline de blobs (SPEC-0067): cola FIFO de análisis.
     pub(crate) blob_pipeline: BlobPipeline,
+    /// Guard RAII del lock cross-proceso `<data>.lock` (SPEC-0076).
+    ///
+    /// Mantiene el lock exclusivo no-bloqueante mientras la `Database` viva; al
+    /// dropearse la base el lock se libera y la ruta queda reabrible. Se
+    /// adquiere en [`Database::open`] **antes** de tocar el fichero de datos.
+    _lock: LockGuard,
 }
 
 impl Database {
@@ -140,6 +147,10 @@ impl Database {
     /// abre siempre en modo claro: **el cifrado del blob store queda fuera de
     /// alcance** de esta iteración (se cableará con `open_encrypted` después).
     ///
+    /// Adquiere un lock exclusivo no-bloqueante sobre el sidecar `<data>.lock`
+    /// (SPEC-0076) **antes** de tocar el fichero de datos; el lock se libera al
+    /// dropearse la `Database`.
+    ///
     /// Args:
     ///     config: Configuración de apertura.
     ///
@@ -147,6 +158,8 @@ impl Database {
     ///     La base lista para operar.
     ///
     /// Errors:
+    ///     [`RuscaError::DatabaseInUse`] si otra instancia ya tiene abierta la
+    ///     misma base (lock `<data>.lock` ocupado);
     ///     [`RuscaError::Io`] si falla el acceso a disco;
     ///     [`RuscaError::InvalidConfig`] si `pool_capacity == 0`;
     ///     [`RuscaError::CorruptManifest`] si el manifiesto es inválido o tiene
@@ -155,6 +168,10 @@ impl Database {
     pub fn open(config: DbConfig) -> Result<Self, RuscaError> {
         let wal_path = wal_path_for(&config.data_path);
         let manifest_path = manifest_path_for(&config.data_path);
+        // Lock cross-proceso (SPEC-0076): se adquiere ANTES de tocar los datos;
+        // si otra instancia (proceso u otra apertura en este proceso) lo tiene,
+        // falla aquí con `DatabaseInUse` sin bloquear ni abrir el `.data`.
+        let lock = LockGuard::acquire(&config.data_path)?;
         let file = PagedFile::open(&config.data_path)?;
         let wal = match config.encryption.as_ref() {
             Some(encryption) => Wal::open_encrypted(&wal_path, encryption.key())?,
@@ -195,6 +212,7 @@ impl Database {
             audit_last_nanos: 0,
             audit_path: config.data_path.with_extension("audit.jsonl"),
             blob_pipeline: BlobPipeline::default(),
+            _lock: lock,
         };
         database.restore_registry()?;
         database.restore_audit()?;
@@ -485,7 +503,10 @@ fn manifest_path_for(data_path: &Path) -> PathBuf {
     data_path.with_extension("manifest.json")
 }
 
-/// Carga el manifiesto si existe o crea uno nuevo, validando la versión.
+/// Carga el manifiesto si existe o crea uno nuevo.
+///
+/// La validación de `schema_version` vive en `ruscadb-txn`
+/// (`Manifest::load`, SPEC-0077): aquí solo se propaga el error.
 ///
 /// Args:
 ///     path: Ruta del fichero `MANIFEST.json`.
@@ -494,21 +515,15 @@ fn manifest_path_for(data_path: &Path) -> PathBuf {
 ///     El manifiesto y `true` si acaba de crearse (hay que persistirlo).
 ///
 /// Errors:
-///     [`RuscaError::CorruptManifest`] si el JSON es inválido o la
-///     `schema_version` es desconocida;
+///     [`RuscaError::CorruptManifest`] si el JSON es inválido;
+///     [`RuscaError::SchemaVersionTooNew`] si la versión es más nueva que la
+///     soportada; [`RuscaError::MigrationFailed`] si falta una migración;
 ///     [`RuscaError::Io`] si el fichero existe pero no se puede leer.
 fn load_or_create_manifest(path: &Path) -> Result<(Manifest, bool), RuscaError> {
     if !path.exists() {
         return Ok((Manifest::new(), true));
     }
     let manifest = Manifest::load(path)?;
-    if manifest.schema_version != CURRENT_SCHEMA_VERSION {
-        return Err(RuscaError::CorruptManifest(format!(
-            "schema_version {} desconocida en {} (se esperaba {CURRENT_SCHEMA_VERSION})",
-            manifest.schema_version,
-            path.display()
-        )));
-    }
     Ok((manifest, false))
 }
 

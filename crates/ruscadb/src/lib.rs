@@ -29,6 +29,7 @@ mod hybrid;
 mod index;
 mod indexes;
 mod join;
+mod lock;
 mod table_api;
 mod ts_api;
 

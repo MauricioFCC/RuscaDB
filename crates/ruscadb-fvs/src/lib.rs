@@ -109,13 +109,13 @@ impl VectorSet {
     ///     [`RuscaError::DimensionMismatch`] si `vector` no tiene la dimensión
     ///     del primer vector insertado.
     pub fn insert(&mut self, id: u64, vector: Vec<f32>) -> Result<(), RuscaError> {
-        if let Some((_, first)) = self.entries.first() {
-            if first.len() != vector.len() {
-                return Err(RuscaError::DimensionMismatch {
-                    expected: first.len(),
-                    actual: vector.len(),
-                });
-            }
+        if let Some((_, first)) = self.entries.first()
+            && first.len() != vector.len()
+        {
+            return Err(RuscaError::DimensionMismatch {
+                expected: first.len(),
+                actual: vector.len(),
+            });
         }
         self.entries.push((id, vector));
         Ok(())
@@ -902,7 +902,7 @@ mod tests {
         let vectors = ifvs_vectors(200, 8, 0x0047_0001);
         let index = build_hnsw(&vectors, Metric::L2);
         // Los vecinos más cercanos (ids bajos) quedan fuera del filtro.
-        let allowed: BTreeSet<u64> = (0..200u64).filter(|id| id % 7 == 0).collect();
+        let allowed: BTreeSet<u64> = (0..200u64).filter(|id| id.is_multiple_of(7)).collect();
         let query = ifvs_vectors(1, 8, 0x0047_0002).remove(0);
 
         let got = search_ifvs(&index, &query, 5, 128, &allowed).expect("ifvs");
@@ -1007,7 +1007,9 @@ mod tests {
         assert_eq!(auto_post, explicit_post);
 
         // s = 0.05 => InFilter.
-        let allowed_in: BTreeSet<u64> = (0..total as u64).filter(|id| id % 20 == 0).collect();
+        let allowed_in: BTreeSet<u64> = (0..total as u64)
+            .filter(|id| id.is_multiple_of(20))
+            .collect();
         assert_eq!(
             choose_strategy(selectivity(allowed_in.len(), total)),
             FvsStrategy::InFilter
@@ -1036,7 +1038,7 @@ mod tests {
         let vectors = ifvs_vectors(256, 12, 0x0047_0007);
         let index = build_hnsw(&vectors, Metric::L2);
         let query = ifvs_vectors(1, 12, 0x0047_0008).remove(0);
-        let allowed: BTreeSet<u64> = (0..256u64).filter(|id| id % 3 == 0).collect();
+        let allowed: BTreeSet<u64> = (0..256u64).filter(|id| id.is_multiple_of(3)).collect();
 
         let first = search_ifvs(&index, &query, 8, 128, &allowed).expect("first");
         let second = search_ifvs(&index, &query, 8, 128, &allowed).expect("second");

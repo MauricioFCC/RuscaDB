@@ -58,12 +58,12 @@ fn infer_data_type(values: &[&ScalarValue]) -> DfResult<DataType> {
                 )));
             }
         };
-        if let Some(previous) = &kind {
-            if previous != &candidate {
-                return Err(DataFusionError::Plan(format!(
-                    "tipos mixtos en una columna del spike: {previous:?} vs {candidate:?}"
-                )));
-            }
+        if let Some(previous) = &kind
+            && previous != &candidate
+        {
+            return Err(DataFusionError::Plan(format!(
+                "tipos mixtos en una columna del spike: {previous:?} vs {candidate:?}"
+            )));
         }
         kind = Some(candidate);
     }

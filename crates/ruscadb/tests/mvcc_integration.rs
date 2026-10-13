@@ -110,8 +110,12 @@ fn test_ac_0019_02_corrupt_or_future_manifest_is_error() {
     std::fs::write(&manifest_path, future).expect("write");
     let unknown = Database::open(DbConfig::new(&path, 64));
     assert!(
-        matches!(unknown, Err(RuscaError::CorruptManifest(_))),
-        "schema_version desconocida debe dar CorruptManifest"
+        matches!(
+            unknown,
+            Err(RuscaError::SchemaVersionTooNew { found, supported })
+                if found == CURRENT_SCHEMA_VERSION + 1 && supported == CURRENT_SCHEMA_VERSION
+        ),
+        "una schema_version futura debe dar SchemaVersionTooNew (no CorruptManifest)"
     );
 }
 

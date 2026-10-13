@@ -22,9 +22,11 @@
 #![forbid(unsafe_code)]
 
 pub mod manifest;
+pub mod migration;
 pub mod mvcc;
 
 pub use manifest::{CURRENT_SCHEMA_VERSION, Manifest};
+pub use migration::{Migration, PlannedMigration, apply_migrations, plan_migrations};
 pub use mvcc::{
     NO_TX, Snapshot, TxId, TxnManager, Version, dead_versions, gc, is_obsolete, retry_on_conflict,
 };
@@ -136,16 +138,23 @@ mod tests {
     }
 
     // PBT — cualquier combinación de campos sobrevive el roundtrip.
+    //
+    // `Manifest::load` valida la versión (SPEC-0077): solo un manifiesto en
+    // `CURRENT_SCHEMA_VERSION` puede cargarse sin migración, así que la
+    // propiedad variable cubre `epoch`/`checkpoint_lsn` sobre la versión actual.
     proptest! {
         #[test]
         fn proptest_manifest_roundtrip(
-            schema_version in any::<u32>(),
             epoch in any::<u64>(),
             checkpoint_lsn in any::<u64>(),
         ) {
             let dir = tempfile::tempdir().expect("tempdir");
             let path = manifest_path(&dir);
-            let manifest = Manifest { schema_version, epoch, checkpoint_lsn };
+            let manifest = Manifest {
+                schema_version: CURRENT_SCHEMA_VERSION,
+                epoch,
+                checkpoint_lsn,
+            };
 
             manifest.store(&path).expect("store");
             let loaded = Manifest::load(&path).expect("load");
@@ -695,5 +704,188 @@ mod tests {
                 }
             }
         }
+    }
+
+    // ── SPEC-0077 — migración forward-only de esquema ────────────────────────
+
+    /// Migración ficticia 0→1 que deja una huella observable en `epoch`.
+    fn fixture_migration_touch_epoch(manifest: &mut Manifest) -> Result<(), RuscaError> {
+        manifest.epoch += 100;
+        Ok(())
+    }
+
+    /// Migración ficticia que siempre falla (camino de error de `apply`).
+    fn fixture_migration_always_fails(_manifest: &mut Manifest) -> Result<(), RuscaError> {
+        Err(RuscaError::InvalidConfig(
+            "fallo simulado de migración".to_string(),
+        ))
+    }
+
+    /// Escribe a mano un manifiesto con la versión de esquema indicada.
+    fn write_manifest(path: &std::path::Path, schema_version: u32) {
+        let body = format!(r#"{{"schema_version":{schema_version},"epoch":0,"checkpoint_lsn":0}}"#);
+        std::fs::write(path, body).expect("write manifiesto");
+    }
+
+    /// AC-0077-01 — una versión futura reporta `SchemaVersionTooNew` (no corrupción).
+    #[test] // @spec AC-0077-01
+    fn test_ac_0077_01_future_version_reports_too_new() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = manifest_path(&dir);
+        write_manifest(&path, CURRENT_SCHEMA_VERSION + 1);
+
+        let err = Manifest::load(&path).expect_err("una versión futura debe rechazarse");
+        assert!(matches!(
+            err,
+            RuscaError::SchemaVersionTooNew { found, supported }
+                if found == CURRENT_SCHEMA_VERSION + 1 && supported == CURRENT_SCHEMA_VERSION
+        ));
+    }
+
+    /// AC-0077-02 — JSON inválido sigue reportando `CorruptManifest` (sin regresión).
+    #[test] // @spec AC-0077-02
+    fn test_ac_0077_02_invalid_json_still_corrupt() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = manifest_path(&dir);
+        std::fs::write(&path, b"{ esto no es json valido ").expect("write");
+
+        let err = Manifest::load(&path).expect_err("JSON inválido debe fallar");
+        assert!(matches!(err, RuscaError::CorruptManifest(_)));
+    }
+
+    /// AC-0077-03 — una migración 0→1 se aplica y persiste de forma atómica.
+    #[test] // @spec AC-0077-03
+    fn test_ac_0077_03_migration_applies_atomically() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = manifest_path(&dir);
+        write_manifest(&path, 0);
+
+        let migrations = [Migration {
+            from: 0,
+            to: 1,
+            apply: fixture_migration_touch_epoch,
+        }];
+
+        let migrated = Manifest::load_with_migrations(&path, &migrations).expect("migrar");
+        assert_eq!(migrated.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(migrated.epoch, 100, "la migración aplicada dejó su huella");
+
+        // Persistido: una carga normal ya no necesita migrar.
+        let reloaded = Manifest::load(&path).expect("reload");
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(reloaded.epoch, 100);
+    }
+
+    /// AC-0077-04 — sin migración registrada, falla accionable y no toca el fichero.
+    #[test] // @spec AC-0077-04
+    fn test_ac_0077_04_missing_migration_fails_actionably() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = manifest_path(&dir);
+        write_manifest(&path, 0);
+        let before = std::fs::read(&path).expect("bytes antes");
+
+        let err = Manifest::load(&path).expect_err("no hay migración 0→1");
+        match err {
+            RuscaError::MigrationFailed { from, to, reason } => {
+                assert_eq!(from, 0);
+                assert_eq!(to, CURRENT_SCHEMA_VERSION);
+                assert!(!reason.is_empty(), "el motivo debe ser accionable");
+            }
+            other => panic!("se esperaba MigrationFailed, fue {other:?}"),
+        }
+
+        let after = std::fs::read(&path).expect("bytes después");
+        assert_eq!(before, after, "el fichero debe quedar intacto");
+    }
+
+    /// AC-0077-05 — `migrate_plan` es dry-run: ordena los pasos y no escribe.
+    #[test] // @spec AC-0077-05
+    fn test_ac_0077_05_migrate_plan_is_dry_run() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = manifest_path(&dir);
+        write_manifest(&path, 0);
+        let before = std::fs::read(&path).expect("bytes antes");
+
+        let migrations = [Migration {
+            from: 0,
+            to: 1,
+            apply: fixture_migration_touch_epoch,
+        }];
+        let plan = Manifest::migrate_plan(&path, &migrations).expect("plan");
+
+        assert_eq!(
+            plan,
+            vec![PlannedMigration { from: 0, to: 1 }],
+            "el plan enumera el paso 0→1"
+        );
+        let after = std::fs::read(&path).expect("bytes después");
+        assert_eq!(before, after, "el dry-run no debe escribir");
+    }
+
+    /// NF-0077-01 — un fallo de `apply` se traduce a `MigrationFailed` y no escribe.
+    #[test]
+    fn test_migration_apply_failure_keeps_original() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = manifest_path(&dir);
+        write_manifest(&path, 0);
+        let before = std::fs::read(&path).expect("bytes antes");
+
+        let migrations = [Migration {
+            from: 0,
+            to: 1,
+            apply: fixture_migration_always_fails,
+        }];
+        let err = Manifest::load_with_migrations(&path, &migrations)
+            .expect_err("apply falla debe propagarse");
+        assert!(matches!(err, RuscaError::MigrationFailed { .. }));
+
+        let after = std::fs::read(&path).expect("bytes después");
+        assert_eq!(before, after, "un fallo de migración no debe escribir");
+    }
+
+    /// `plan_migrations` ordena una cadena y detecta huecos (independiente del orden).
+    #[test]
+    fn test_plan_migrations_orders_chain_and_detects_gap() {
+        let migrations = [
+            Migration {
+                from: 1,
+                to: 2,
+                apply: fixture_migration_touch_epoch,
+            },
+            Migration {
+                from: 0,
+                to: 1,
+                apply: fixture_migration_touch_epoch,
+            },
+        ];
+
+        let plan = plan_migrations(0, &migrations, 2).expect("cadena completa");
+        assert_eq!(
+            plan,
+            vec![
+                PlannedMigration { from: 0, to: 1 },
+                PlannedMigration { from: 1, to: 2 },
+            ]
+        );
+
+        // Hueco: falta 1→2.
+        let gap = [Migration {
+            from: 0,
+            to: 1,
+            apply: fixture_migration_touch_epoch,
+        }];
+        let err = plan_migrations(0, &gap, 2).expect_err("falta el paso 1→2");
+        assert!(matches!(
+            err,
+            RuscaError::MigrationFailed { from: 1, to: 2, .. }
+        ));
+    }
+
+    /// `plan_migrations` sobre la versión actual no planifica nada (y no exige registro).
+    #[test]
+    fn test_plan_migrations_current_is_empty() {
+        let plan = plan_migrations(CURRENT_SCHEMA_VERSION, &[], CURRENT_SCHEMA_VERSION)
+            .expect("sin migraciones necesarias");
+        assert!(plan.is_empty());
     }
 }

@@ -538,10 +538,10 @@ impl<K: Ord + Clone, V: Clone> BPlusTree<K, V> {
                 Node::Leaf { values, .. } => values.pop(),
                 Node::Internal { .. } => None,
             };
-            if let Some(pair) = entry {
-                if let Node::Leaf { values, .. } = &mut self.nodes[child] {
-                    values.insert(0, pair);
-                }
+            if let Some(pair) = entry
+                && let Node::Leaf { values, .. } = &mut self.nodes[child]
+            {
+                values.insert(0, pair);
             }
         } else {
             let down_key = self.node_min(child);
@@ -573,10 +573,10 @@ impl<K: Ord + Clone, V: Clone> BPlusTree<K, V> {
                 Node::Leaf { values, .. } => Some(values.remove(0)),
                 Node::Internal { .. } => None,
             };
-            if let Some(pair) = entry {
-                if let Node::Leaf { values, .. } = &mut self.nodes[child] {
-                    values.push(pair);
-                }
+            if let Some(pair) = entry
+                && let Node::Leaf { values, .. } = &mut self.nodes[child]
+            {
+                values.push(pair);
             }
             let new_separator = match &self.nodes[right] {
                 Node::Leaf { values, .. } => values.first().map(|(key, _)| key.clone()),

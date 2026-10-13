@@ -1,16 +1,16 @@
 # Ollama local delegation — tiers por capacidad (minimiza tokens cloud)
-# Flota 2026-10-01 (RTX 4060 8GB, nombres canonicos hf.co; cada blob un solo
-# nombre, sin alias locales). Reemplazo post-BSOD VIDEO_TDR_FAILURE (0x116):
-# TODOS los tiers a num_ctx=8192, NO 16384 (el 9B + 16K + Vulkan en 8GB
-# agoto la GPU el 2026-10-01). El techo vive en gpu_guard.SAFE_CTX_MAX.
-#   fast:      Qwen3.5-4B UD-Q4_K_XL — borradores, tareas simples
-#   quality:   MiMo-V2.6-Distill-Qwen-9B IQ4_XS — calidad/agente
-#   coding:    JackOD-9B-Coder IQ4_XS — codigo agentico multi-turn (MTP)
-#   reasoning: Ornith-1.5-9B Q4_K_M — razonamiento (fuera del enum YAML)
-#   embedding: qwen3-embedding:0.6b — RAG (auto_pull lo restaura si se usa)
-#   vision:    qwen3-vl:4b — imagenes/alt-text (auto_pull lo restaura si se usa)
-# El servidor fija OLLAMA_CONTEXT_LENGTH=8192 (scripts/enable_gpu.py). El
-# harness igual envia num_ctx explicito por options (fleet_manifest.py = SSOT).
+# Flota REDUCIDA 2026-10-08 (RTX 4060 8GB, backend llama.cpp / llama-swap en
+# 127.0.0.1:11434). 4 modelos servidos por nombre corto + alias (llama-swap
+# expone ambos). Ya NO hay 9B (jackod/mimo/ornith) ni vision (qwen3-vl):
+# no caben/utilizan en 8GB con el escritorio WDDM (retirados 2026-10-08).
+#   fast:      qwen3-5-4b-gguf-ud-q4-k-xl — borradores, tareas simples
+#   quality:   phi-4-mini-instruct-q4-k-m — calidad/razonamiento general
+#   coding:    qwen2.5-coder-3b-iq4-xs — codigo agentico multi-turn
+#   embedding: qwen3-embedding-0-6b — RAG (auto_pull lo restaura si se usa)
+# num_ctx: llama-server sirve los modelos a 32768, pero el harness DECLARA
+# 8192 (techo anti-TDR `gpu_guard.SAFE_CTX_MAX`, post-BSOD VIDEO_TDR_FAILURE
+# 0x116 del 2026-10-01). El harness envia num_ctx explicito por options
+# (fleet_manifest.py = SSOT de la ventana declarada).
 ollama:
   base_url: "http://localhost:11434"
   timeout: 60
@@ -19,11 +19,10 @@ ollama:
   # demanda (y con el guard de gpu_guard.py). NO reactivar en 8GB.
   warm_on_start: []
   tiers:
-    fast:      {model: "hf.co/unsloth/Qwen3.5-4B-GGUF:UD-Q4_K_XL",                keep_alive: "0", auto_pull: true}
-    quality:   {model: "hf.co/bartowski/MiMo-V2.6-Distill-Qwen-9B-GGUF:IQ4_XS",  keep_alive: "0", auto_pull: true}
-    coding:    {model: "mannix/JackOD-9B-Coder:IQ4_XS",                         keep_alive: "0", auto_pull: true}
-    embedding: {model: "qwen3-embedding:0.6b", keep_alive: "0", auto_pull: true}
-    vision:    {model: "qwen3-vl:4b",          keep_alive: "0", auto_pull: true}
+    fast:      {model: "qwen3-5-4b-gguf-ud-q4-k-xl", keep_alive: "0", auto_pull: true}
+    quality:   {model: "phi-4-mini-instruct-q4-k-m",  keep_alive: "0", auto_pull: true}
+    coding:    {model: "qwen2.5-coder-3b-iq4-xs",     keep_alive: "0", auto_pull: true}
+    embedding: {model: "qwen3-embedding-0-6b",        keep_alive: "0", auto_pull: true}
 # Politica local-first con supervision cloud como oraculo 1% (ADR-0084/0097):
 # 99% local en destilados potentes; el cloud solo verifica muestras.
 local_first:

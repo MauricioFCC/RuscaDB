@@ -67,7 +67,7 @@ impl QueryBudget {
     ///
     /// El muestreo evita llamar al reloj en cada fila (coste ~0).
     pub(crate) fn check(&self, rows: u64) -> Result<(), RuscaError> {
-        if rows % 1024 == 0 && Instant::now() > self.deadline {
+        if rows.is_multiple_of(1024) && Instant::now() > self.deadline {
             return Err(RuscaError::QueryTimeout {
                 millis: self.millis,
             });
@@ -682,15 +682,15 @@ fn find_eq_literal(filter: Option<&Expr>, column: &str) -> Option<ScalarValue> {
 
 /// Extrae el literal si un lado es la columna y el otro un literal.
 fn eq_literal_sides(left: &Expr, right: &Expr, column: &str) -> Option<ScalarValue> {
-    if let Expr::Column(name) = left {
-        if name == column {
-            return expr_literal(right);
-        }
+    if let Expr::Column(name) = left
+        && name == column
+    {
+        return expr_literal(right);
     }
-    if let Expr::Column(name) = right {
-        if name == column {
-            return expr_literal(left);
-        }
+    if let Expr::Column(name) = right
+        && name == column
+    {
+        return expr_literal(left);
     }
     None
 }
@@ -1229,12 +1229,12 @@ fn validate_aggregate_query(table: &TableDef, select: &Select) -> Result<(), Rus
     for aggregate in having_aggregates(select) {
         let _ = aggregate_kind(table, &aggregate)?;
     }
-    if let Some(order_by) = &select.order_by {
-        if !is_aggregate_output_column(select, &order_by.column) {
-            return Err(RuscaError::ColumnNotFound {
-                column: order_by.column.clone(),
-            });
-        }
+    if let Some(order_by) = &select.order_by
+        && !is_aggregate_output_column(select, &order_by.column)
+    {
+        return Err(RuscaError::ColumnNotFound {
+            column: order_by.column.clone(),
+        });
     }
     Ok(())
 }

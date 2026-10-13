@@ -727,16 +727,16 @@ impl Parser {
             _ => return Err(self.error(format!("{EXPECTED_PREFIX}una columna o un literal"))),
         };
         self.advance();
-        if let Expr::Column(column) = &expr {
-            if self.peek() == Some(&Token::Arrow) {
-                self.advance();
-                let raw = self.expect_text()?;
-                let path = doc_path_segments(&raw).map_err(|message| self.error(message))?;
-                return Ok(Expr::DocExtract {
-                    column: column.clone(),
-                    path,
-                });
-            }
+        if let Expr::Column(column) = &expr
+            && self.peek() == Some(&Token::Arrow)
+        {
+            self.advance();
+            let raw = self.expect_text()?;
+            let path = doc_path_segments(&raw).map_err(|message| self.error(message))?;
+            return Ok(Expr::DocExtract {
+                column: column.clone(),
+                path,
+            });
         }
         Ok(expr)
     }

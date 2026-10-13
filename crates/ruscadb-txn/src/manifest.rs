@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use ruscadb_core::RuscaError;
 use serde::{Deserialize, Serialize};
 
+use crate::migration::{Migration, PlannedMigration, apply_migrations, plan_migrations};
+
 /// Versión de esquema actual del manifiesto.
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
@@ -46,24 +48,115 @@ impl Manifest {
 
     /// Carga y valida el manifiesto de `path`.
     ///
+    /// La validación distingue tres casos (SPEC-0077): JSON inválido
+    /// ([`RuscaError::CorruptManifest`]), versión futura
+    /// ([`RuscaError::SchemaVersionTooNew`]) y versión antigua sin migración
+    /// disponible ([`RuscaError::MigrationFailed`]). Equivale a
+    /// [`Manifest::load_with_migrations`] con un registro vacío.
+    ///
     /// Args:
     ///     path: Ruta del fichero `MANIFEST.json`.
     ///
     /// Returns:
-    ///     El manifiesto deserializado.
+    ///     El manifiesto deserializado en [`CURRENT_SCHEMA_VERSION`].
     ///
     /// Raises:
     ///     [`RuscaError::CorruptManifest`] si el JSON es inválido o faltan
     ///     campos obligatorios.
+    ///     [`RuscaError::SchemaVersionTooNew`] si declara una versión más nueva
+    ///     que la soportada por este binario.
+    ///     [`RuscaError::MigrationFailed`] si declara una versión antigua y no
+    ///     hay migración registrada.
     ///     [`RuscaError::Io`] si el fichero no se puede leer.
     pub fn load(path: &Path) -> Result<Self, RuscaError> {
+        Self::load_with_migrations(path, &[])
+    }
+
+    /// Carga el manifiesto aplicando migraciones forward-only si hacen falta.
+    ///
+    /// Lee y valida el manifiesto; si su versión es anterior a
+    /// [`CURRENT_SCHEMA_VERSION`], aplica la cadena de `migrations` en orden
+    /// ([`apply_migrations`]) y **persiste** el resultado de forma atómica
+    /// (`tmp` + `rename`). Si algo falla, el fichero original queda intacto.
+    ///
+    /// Args:
+    ///     path: Ruta del fichero `MANIFEST.json`.
+    ///     migrations: Registro de migraciones `[(from, to, apply)]`.
+    ///
+    /// Returns:
+    ///     El manifiesto en [`CURRENT_SCHEMA_VERSION`] (migrado y persistido si
+    ///     el fichero tenía una versión antigua).
+    ///
+    /// Raises:
+    ///     [`RuscaError::CorruptManifest`] si el JSON es inválido.
+    ///     [`RuscaError::SchemaVersionTooNew`] si la versión es futura.
+    ///     [`RuscaError::MigrationFailed`] si falta una migración o su `apply`
+    ///     falla (el fichero original queda intacto).
+    ///     [`RuscaError::Io`] si la lectura, la escritura o el `rename` fallan.
+    pub fn load_with_migrations(path: &Path, migrations: &[Migration]) -> Result<Self, RuscaError> {
+        let mut manifest = Self::read_validated(path)?;
+        if manifest.schema_version < CURRENT_SCHEMA_VERSION {
+            apply_migrations(&mut manifest, migrations, CURRENT_SCHEMA_VERSION)?;
+            manifest.store(path)?;
+        }
+        Ok(manifest)
+    }
+
+    /// Planifica (dry-run) las migraciones necesarias sin tocar el fichero.
+    ///
+    /// Lee y valida el manifiesto y calcula, sin escribir, los pasos `from -> to`
+    /// que llevarían la versión en disco hasta [`CURRENT_SCHEMA_VERSION`].
+    ///
+    /// Args:
+    ///     path: Ruta del fichero `MANIFEST.json`.
+    ///     migrations: Registro de migraciones `[(from, to, apply)]`.
+    ///
+    /// Returns:
+    ///     Los pasos ordenados `from -> to`; vacío si ya está en la versión
+    ///     actual.
+    ///
+    /// Raises:
+    ///     [`RuscaError::CorruptManifest`] si el JSON es inválido.
+    ///     [`RuscaError::SchemaVersionTooNew`] si la versión es futura.
+    ///     [`RuscaError::MigrationFailed`] si la cadena de migraciones está
+    ///     incompleta. `path` no se modifica en ningún caso.
+    ///     [`RuscaError::Io`] si el fichero no se puede leer.
+    pub fn migrate_plan(
+        path: &Path,
+        migrations: &[Migration],
+    ) -> Result<Vec<PlannedMigration>, RuscaError> {
+        let manifest = Self::read_validated(path)?;
+        plan_migrations(manifest.schema_version, migrations, CURRENT_SCHEMA_VERSION)
+    }
+
+    /// Lee y valida estructuralmente el manifiesto (JSON + versión futura).
+    ///
+    /// Args:
+    ///     path: Ruta del fichero `MANIFEST.json`.
+    ///
+    /// Returns:
+    ///     El manifiesto deserializado con `schema_version <= CURRENT_SCHEMA_VERSION`.
+    ///
+    /// Raises:
+    ///     [`RuscaError::CorruptManifest`] si el JSON es inválido o faltan campos.
+    ///     [`RuscaError::SchemaVersionTooNew`] si la versión es más nueva que la
+    ///     soportada.
+    ///     [`RuscaError::Io`] si el fichero no se puede leer.
+    fn read_validated(path: &Path) -> Result<Self, RuscaError> {
         let bytes = std::fs::read(path)?;
-        serde_json::from_slice(&bytes).map_err(|error| {
+        let manifest: Self = serde_json::from_slice(&bytes).map_err(|error| {
             RuscaError::CorruptManifest(format!(
                 "manifiesto inválido en {}: {error}",
                 path.display()
             ))
-        })
+        })?;
+        if manifest.schema_version > CURRENT_SCHEMA_VERSION {
+            return Err(RuscaError::SchemaVersionTooNew {
+                found: manifest.schema_version,
+                supported: CURRENT_SCHEMA_VERSION,
+            });
+        }
+        Ok(manifest)
     }
 
     /// Persiste el manifiesto de forma atómica.

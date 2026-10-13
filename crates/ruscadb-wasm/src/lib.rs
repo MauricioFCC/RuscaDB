@@ -532,7 +532,7 @@ fn decode_array<const SIZE: usize>(text: &str, label: &str) -> Result<[u8; SIZE]
 ///     Mensaje si la longitud es impar o hay un carácter no hexadecimal.
 fn decode_hex(text: &str) -> Result<Vec<u8>, String> {
     let chars: Vec<char> = text.chars().collect();
-    if chars.len() % 2 != 0 {
+    if !chars.len().is_multiple_of(2) {
         return Err("hex inválido: longitud impar".to_string());
     }
     let mut bytes = Vec::with_capacity(chars.len() / 2);

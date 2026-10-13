@@ -9,6 +9,15 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **SPEC-0076** (Ola 0): lock cross-proceso — `LockGuard` RAII sobre sidecar
+  `<data>.lock` con `std::fs::File::try_lock` (MSRV del workspace → 1.89);
+  segunda apertura (mismo u otro proceso) devuelve `RuscaError::DatabaseInUse`
+  con la ruta; drop libera el lock. Test multi-proceso real.
+- **SPEC-0077** (Ola 0): migración forward-only de esquema — `Manifest::load`
+  diferencia `SchemaVersionTooNew` (fichero válido, binario viejo) de
+  `CorruptManifest` y `MigrationFailed`; runner atómico `tmp+rename` con
+  registro `[(from,to,apply)]` y `migrate_plan()` dry-run. AC-0019-02
+  actualizado.
 - **Plan de producción Olas 0–4 (SPEC-0076..0088)**: roadmap actualizado tras
   la auditoría *production readiness* (2026-10-12, veredicto «NO apto para
   producción») y el research de frontera correspondiente (§3): lock

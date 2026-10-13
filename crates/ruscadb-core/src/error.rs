@@ -33,6 +33,40 @@ pub enum RuscaError {
     #[error("manifiesto corrupto: {0}")]
     CorruptManifest(String),
 
+    /// La base ya está abierta por este u otro proceso (SPEC-0076).
+    #[error(
+        "base en uso: {path} está bloqueada por otra instancia de RuscaDB; cierra ese proceso o usa otra ruta"
+    )]
+    DatabaseInUse {
+        /// Ruta del fichero de datos que ya tiene el lock exclusivo.
+        path: String,
+    },
+
+    /// El manifiesto es válido pero su versión de esquema es más nueva que la
+    /// soportada por este binario (SPEC-0077). No es corrupción: el fichero
+    /// está bien, hay que actualizar el binario.
+    #[error(
+        "esquema no soportado: el manifiesto declara schema_version {found} y este binario solo soporta {supported}; actualiza RuscaDB y no retrocedas el binario"
+    )]
+    SchemaVersionTooNew {
+        /// Versión de esquema encontrada en el manifiesto.
+        found: u32,
+        /// Versión máxima soportada por este binario.
+        supported: u32,
+    },
+
+    /// No existe (o falló) una migración de esquema desde `from` hasta `to`
+    /// (SPEC-0077). El manifiesto no se modifica si la migración falla.
+    #[error("migración de esquema no disponible: de {from} a {to}: {reason}")]
+    MigrationFailed {
+        /// Versión de origen del manifiesto.
+        from: u32,
+        /// Versión de destino requerida.
+        to: u32,
+        /// Motivo accionable (WHAT + WHY + WHERE).
+        reason: String,
+    },
+
     /// El proceso de recuperación del WAL falló.
     #[error("recovery de WAL falló: {0}")]
     WalRecoveryFailed(String),
