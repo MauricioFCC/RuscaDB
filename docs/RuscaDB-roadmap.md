@@ -223,6 +223,14 @@ antes de reanudar el lote.
 | Mutación Rust | `cargo-mutants` v27.1.0 (sharding, `--in-place`, `--in-diff`) | mutants.rs | CI §5 |
 | PBT Rust | `proptest` 1.11 (estrategias explícitas + shrinking) | docs.rs/proptest | §5 |
 | Embeddings multimodales | CLIP (img/texto), Whisper (audio→texto), MiniLM/e5 (texto); preferir `safetensors` | HF / Oracle 26 | ADR-005 → **ADR-016**: embeddings locales propios sin Candle/ONNX |
+| File locking embebido (2026-10-12) | `std::fs::File::try_lock` estabilizado en Rust 1.89 (flock POSIX / LockFileEx Windows); redb 4.0 usa locks byte-range con `DatabaseAlreadyOpen`; `fs2` muerto desde 2018 → alternativa `fs4` | doc.rust-lang.org/1.89 · redb.rs · crates.io/crates/fs4 | **SPEC-0076**: lock exclusivo en sidecar `<data>.lock` + error `DatabaseInUse` |
+| Compatibilidad de API (2026-10-12) | `#[non_exhaustive]` + sealed traits + `cargo-semver-checks` v0.51 (Action @v2, exit 100 = rojo); C-ABI versionado tipo `sqlite3_libversion()` | api-guidelines · cargo-semver-checks | **SPEC-0078**: congelar API + semver CI |
+| Migración de esquema (2026-10-12) | SQLite `user_version` forward-only («old application should refuse to run»); redb `Database::upgrade()`; separar error «versión futura» de «fichero corrupto» | sqlite.org/pragma · redb design.md | **SPEC-0077**: `SchemaVersionTooNew` + `migrate_plan()` dry-run |
+| Observabilidad embebida (2026-10-12) | `tracing` ~1.21 ns/evento sin subscriber; `metrics`+Prometheus tras feature OFF; `tracelet` OTLP 314 ns/span (3.7× más rápido que OTel) | tracing · metrics-rs · tracelet | **SPEC-0080**: spans + métricas con overhead cero por defecto |
+| Group commit (2026-10-12) | Teoría 2026: política *greedy-pipelined* (flush en cuanto el device queda libre) a ~0.1 % del óptimo → `commit_delay ≈ 0`; SQLite `synchronous=NORMAL` = fsync en checkpoint | arXiv:2606.18187 · sqlite.org/wal | **SPEC-0081**: `FsyncPolicy{Full,Normal}` + batch ack |
+| Gates SLO estadísticos (2026-10-12) | Mann-Whitney p<0.002 + CI 99 % (ASV); bootstrap pareado 10k con MDE declarado (ASE'26); CV ≈ 2.66 % en runners de GitHub → no gatear ratios fijos | asv · codspeed · ASE'26 | **SPEC-0082**: gates estadísticos en nightly |
+| Cobertura por crate (2026-10-12) | `cargo-llvm-cov` 0.9.1 (`--fail-under-lines`, merge por condiciones); gate agregado + reporte per-crate, umbral duro solo en core/txn/wal | crates.io/cargo-llvm-cov | **SPEC-0079**: política de cobertura |
+| Embeddings estáticos (2026-10-12) | Model2Vec destila sentence-transformers a embeddings estáticos; `model2vec-rs` pure-Rust + safetensors + WASM + `local-only` (potion-base-8M, 7.5 M params) | arXiv:2410.22517 · model2vec-rs | **SPEC-0083**: enmienda de ADR-016 (pesos estáticos sí, runtimes nativos no) |
 
 ---
 
@@ -803,10 +811,41 @@ Invariante inválido ⇒ **se descarta** (Best-of-N), no se repara.
 | **F4 — Multimodal/IA** (mes 4–5) | Ingesta vectorizada | `ruscadb-multimodal` + `ruscadb-ai` (Candle/ONNX), versionado de embeddings | I6 roundtrip 1.0; 0 UB en FFI; modelo no allowlisted ⇒ rechazo |
 | **F5 — Bindings** (mes 5) | Interoperabilidad | `ruscadb-ffi` (handle table), `ruscadb-py`, `ruscadb-node`, WASM | 0 UB ASan/UBSan en suite FFI; SDK Python/Node funcional |
 | **F6 — Hardening/Release** (mes 6) | Producción embebida | cifrado en reposo, SBOM, cross-platform, AdverTest continuo | MS ≥ 85 %; SLO §7.4 en verde sostenido; exit criteria §6.5 |
+| **F7 — Producción** (olas 0–4) | De MVP a estado del arte | lock cross-proceso, migración forward-only, API stability + semver CI, observabilidad, group commit, coverage por crate, gates SLO, reclusión de storage, catálogo ampliado, docs de operación, examples, hardening P2, embeddings estáticos | auditoría readiness 10/10 criterios LISTO; T1 verde sostenido; 0 riesgos abiertos de datos |
 
 Cada fase se ejecuta **spec-first**: se escriben `specs/<feature>.md` + tests
 RED antes de tocar código; el gate de fase es la matriz de trazabilidad
 actualizada.
+
+### 8.1 Plan de producción 2026 (Olas 0–4)
+
+> Origen: auditoría *production readiness* (2026-10-12) con veredicto
+> «**NO apto para producción**» (10 criterios: API ❌, IA real ❌, resto ⚠️) y
+> research de frontera correspondiente (§3, filas 2026-10-12). Cada spec se
+> escribe con `status: planned` y se implementa al entrar su ola; al cerrar,
+> se pone `implemented` con sus AC trazados.
+
+| Spec | Feature | Ola | Objetivo | Frontera 2026 |
+|---|---|:---:|---|---|
+| SPEC-0076 | `cross_process_lock` | 0 | Lock exclusivo no-bloqueante en sidecar `<data>.lock` + error `DatabaseInUse` + test multi-proceso real | std `File::try_lock` (Rust ≥1.89) |
+| SPEC-0077 | `schema_migration` | 0 | Migración forward-only: `SchemaVersionTooNew` (≠ `CorruptManifest`), runner atómico y `migrate_plan()` dry-run | SQLite `user_version` / redb `upgrade()` |
+| SPEC-0078 | `api_stability` | 1 | `#[non_exhaustive]` en enums públicos, política `#[deprecated]`, `cargo-semver-checks` en CI, `ruscadb_version()` + `RUSCADB_ABI_VERSION` en FFI | API guidelines + semver-checks v0.51 |
+| SPEC-0079 | `coverage_policy` | 1 | Gate de cobertura workspace ≥80 % + reporte per-crate + umbral duro en core/txn/wal | cargo-llvm-cov 0.9 |
+| SPEC-0084 | `ops_docs` | 1 | Docs de operación (backup/restore/upgrade) + `SECURITY.md` alineado con el código real | — |
+| SPEC-0080 | `observability` | 2 | Spans `tracing` (commit/checkpoint/page_fault/lock_wait) + `metrics` tras feature OFF (histograma de latencia, hit-rate) | tracing ~1.2 ns · metrics |
+| SPEC-0081 | `group_commit` | 2 | Writer thread + batching *greedy* + `FsyncPolicy{Full,Normal}`; crash-harness «kill durante batch» | arXiv:2606.18187 |
+| SPEC-0085 | `storage_reclamation` | 2 | Free-list de páginas del heap + GC de grafo/FTS | deuda §MVP |
+| SPEC-0086 | `catalog_scale` | 2 | Catálogo sin techo de 64 KiB / 16 páginas | — |
+| SPEC-0082 | `slo_gates` | 3 | Gates estadísticos: Mann-Whitney para latencia, bootstrap pareado para recall@10, A/A de noise floor | ASV / ASE'26 |
+| SPEC-0087 | `examples` | 4 | `examples/` ejecutables + guía de API para terceros | — |
+| SPEC-0088 | `p2_hardening` | 4 | Auth de sesión en MCP + rotación de claves (KMS-lite) | — |
+| SPEC-0083 | `static_embeddings` | 4 | Feature `static-embeddings` con `model2vec-rs` (potion-base-8M, `local-only`); enmienda de ADR-016 | arXiv:2410.22517 |
+
+**Secuencia crítica**: Ola 0 en paralelo (SPEC-0076 en la fachada ∥
+SPEC-0077 en `ruscadb-txn`) → Ola 1 en paralelo (0078 ∥ 0079 ∥ 0084) →
+Ola 2 (0080 ∥ 0085/0086, después 0081 en solitario por tocar el WAL) →
+Ola 3 (0082) → Ola 4 (0087 ∥ 0088 ∥ 0083). Cada cierre de ola exige T1
+completo + commit + CI verde antes de abrir la siguiente.
 
 ---
 
@@ -820,6 +859,9 @@ actualizada.
 > hash embeddings, audit persistente, overflow pages, MCP write/resources).
 > Los estados de `specs/*.md` están normalizados a `implemented` (75/75) y el
 > contrato SDD (`cargo xtask contract`) los valida bidireccionalmente.
+> **Plan de producción (2026-10-12)**: la auditoría *readiness* concluyó
+> «NO apto para producción» y abre las **Olas 0–4 (§8.1)** con 13 specs
+> SPEC-0076..0088 en `planned`, a cerrar secuencialmente en este loop.
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
 > SDD cuyos AC están cubiertos por tests `test_ac_*` y verificados por
@@ -835,7 +877,8 @@ actualizada.
 | F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026, SPEC-0068 |
 | F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062, SPEC-0066 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
-| Líneas futuras (sin spec aún) | ⏳ | modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016); persistencia del caché semántico (bajo valor: cada mutación invalida); free-list de páginas del heap; tools MCP de escritura avanzadas (update/delete por tool) |
+| **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ⏳ | Plan §8.1 (auditoría readiness 2026-10-12: «NO apto para producción»). 13 specs en `planned`, a cerrar en loop hasta agotar el roadmap. |
+| Líneas futuras (sin spec aún) | ⏳ | modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083); persistencia del caché semántico (bajo valor: cada mutación invalida); tools MCP de escritura avanzadas (update/delete por tool) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |
 | **Motor SQL DataFusion (ADR-001)** | ✅ | **Resuelto (ADR-013)**: el motor propio RQL se mantiene como decisión consciente y el overlap con ADR-001 se cierra con un spike `TableProvider` opcional (feature `datafusion`, OFF por defecto, SPEC-0060) que demuestra paridad SQL sin cambiar el runtime por defecto. |

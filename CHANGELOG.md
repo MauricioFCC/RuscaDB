@@ -9,6 +9,14 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Plan de producción Olas 0–4 (SPEC-0076..0088)**: roadmap actualizado tras
+  la auditoría *production readiness* (2026-10-12, veredicto «NO apto para
+  producción») y el research de frontera correspondiente (§3): lock
+  cross-proceso, migración forward-only, API stability + semver CI, coverage
+  por crate, observabilidad, group commit, gates SLO estadísticos, reclusión
+  de storage, catálogo ampliado, docs de operación, examples, hardening P2 y
+  embeddings estáticos (`model2vec-rs`).
+
 - **F0 — Fundación**: workspace Cargo hexagonal, plantilla `specs/` SDD,
   `cargo xtask trace`, gates T1/T3, presupuesto de `unsafe` y `deny.toml`.
 - **F1 — Storage/WAL/MVCC**: `ruscadb-core` (dominio), `ruscadb-storage`
