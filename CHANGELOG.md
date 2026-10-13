@@ -115,6 +115,14 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   propagado) y **resources** (`ruscadb://table/<name>` con `resources/list` y
   `resources/read`).
 
+### Fixed
+
+- **FTS (regresión cazada por el proptest del CI)**: `tokenize` no era
+  idempotente ante el lowercase Unicode (`"İ"` indexaba como `"i̇"` y la
+  consulta se partía en `"i"`), de modo que un documento podía no recuperarse
+  por sus propios términos. Ahora el lowercase se aplica **antes** de segmentar
+  y los diacríticos combinantes (Mn) se descartan: `tokenize(token) == token`.
+
 ### Retrospectiva
 
 - Roadmap §2.6: ritual de **retrospectiva de frontera** formalizado — se
