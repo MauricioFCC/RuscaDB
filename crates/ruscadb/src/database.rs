@@ -287,6 +287,12 @@ impl Database {
     ///     [`RuscaError::CorruptManifest`] si no se puede serializar el manifiesto;
     ///     [`RuscaError::InvalidConfig`] si la transacción activa no estaba en vuelo.
     pub fn commit(&mut self) -> Result<Lsn, RuscaError> {
+        // Span de frontera (SPEC-0080): cubre la operación de commit real. Sin
+        // subscriber es no-op (~1.2 ns); con él permite trazar commits.
+        let span = tracing::debug_span!("commit");
+        let _entered = span.enter();
+        #[cfg(feature = "metrics")]
+        let started = std::time::Instant::now();
         let dirty = self.pool.dirty_pages();
         let lsn = if dirty.is_empty() {
             self.wal.next_lsn()
@@ -304,6 +310,9 @@ impl Database {
         if let Some(tx) = self.active_tx.take() {
             self.txn.commit(tx)?;
         }
+        #[cfg(feature = "metrics")]
+        metrics::histogram!("ruscadb_commit_latency_seconds")
+            .record(started.elapsed().as_secs_f64());
         Ok(lsn)
     }
 

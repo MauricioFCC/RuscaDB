@@ -79,6 +79,24 @@ impl InvertedIndex {
         self.deleted.insert(*id);
     }
 
+    /// Elimina permanentemente el documento `id` (postings + tombstone).
+    ///
+    /// A diferencia de [`InvertedIndex::remove`] (borrado *lógico*, que conserva
+    /// los postings para excluirlos del ranking), este método poda los postings
+    /// del documento y descarta su tombstone. Se usa desde el GC de derivados
+    /// tras el `reap()` (SPEC-0085), cuando la fila ya no existe en el heap y
+    /// mantener sus postings sería memoria huérfana.
+    ///
+    /// Es idempotente: borrar un `id` ausente no tiene efecto.
+    ///
+    /// Args:
+    ///     id: Identificador del documento a eliminar del índice.
+    pub fn drop_document(&mut self, id: &RecordId) {
+        self.docs.remove(id);
+        self.deleted.remove(id);
+        self.drop_postings(id);
+    }
+
     /// Indica si `term` está presente en el índice vivo.
     ///
     /// Args:
@@ -99,6 +117,18 @@ impl InvertedIndex {
     ///     Cantidad de documentos no borrados.
     pub fn doc_count(&self) -> usize {
         self.docs.len()
+    }
+
+    /// Número total de postings (`doc`-`término`) almacenados.
+    ///
+    /// Incluye los postings de documentos borrados lógicamente mientras no se
+    /// compacten con [`InvertedIndex::drop_document`] (introspección del GC,
+    /// SPEC-0085).
+    ///
+    /// Returns:
+    ///     La suma de las longitudes de todas las listas de postings.
+    pub fn posting_count(&self) -> usize {
+        self.postings.values().map(Vec::len).sum()
     }
 
     /// Número de términos distintos presentes en documentos vivos.

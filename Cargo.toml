@@ -84,6 +84,14 @@ hex = "0.4.3"
 chacha20poly1305 = "0.11.0"
 argon2 = "0.6.0"
 zeroize = "1.9.1"
+# Observabilidad (SPEC-0080). `tracing` 0.1.44 es no-op sin subscriber
+# (~1.2 ns por span) por lo que va siempre-presente; `metrics` 0.24.6 queda
+# tras la feature `metrics` (OFF por defecto) y `metrics-util` 0.20.4 solo se
+# usa como dev-dependency (feature `debugging`, sin features por defecto) para
+# leer el registry en memoria en los tests.
+tracing = "0.1.44"
+metrics = "0.24.6"
+metrics-util = { version = "0.20.4", default-features = false, features = ["debugging"] }
 
 # ── Lints compartidos (cada crate activa con `[lints] workspace = true`) ──────
 [workspace.lints.rust]

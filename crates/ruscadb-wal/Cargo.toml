@@ -24,6 +24,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 ruscadb-core = { workspace = true }
 ruscadb-crypto = { workspace = true }
 crc32c = { workspace = true }
+# Spans de frontera (SPEC-0080): no-op sin subscriber, coste despreciable.
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

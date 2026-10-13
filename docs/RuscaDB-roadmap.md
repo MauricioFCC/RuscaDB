@@ -861,9 +861,10 @@ completo + commit + CI verde antes de abrir la siguiente.
 > contrato SDD (`cargo xtask contract`) los valida bidireccionalmente.
 > **Plan de producción (2026-10-12)**: la auditoría *readiness* concluyó
 > «NO apto para producción» y abre las **Olas 0–4 (§8.1)** con 13 specs
-> SPEC-0076..0088. **Olas 0–1 cerradas (2026-10-13)**: SPEC-0076, 0077, 0078,
-> 0079 y 0084 están `implemented` y trazadas (360 AC); quedan 8 specs
-> (Olas 2–4) en este loop.
+> SPEC-0076..0088. **Olas 0–1 y Ola 2 (fase 1) cerradas (2026-10-13)**:
+> SPEC-0076, 0077, 0078, 0079, 0084, 0080, 0085 y 0086 están `implemented`
+> y trazadas (369 AC); quedan 5 specs: SPEC-0081 (Ola 2, en solitario por
+> tocar el WAL), SPEC-0082 (Ola 3) y SPEC-0087/0088/0083 (Ola 4).
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
 > SDD cuyos AC están cubiertos por tests `test_ac_*` y verificados por
@@ -879,7 +880,7 @@ completo + commit + CI verde antes de abrir la siguiente.
 | F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026, SPEC-0068 |
 | F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062, SPEC-0066 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
-| **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ⏳ 5/13 ✅ | Olas 0–1 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY alineado). Quedan 8: Ola 2 (0080 ∥ 0085/0086 → 0081), Ola 3 (0082), Ola 4 (0087 ∥ 0088 ∥ 0083). |
+| **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ⏳ 8/13 ✅ | Olas 0–1 y Ola 2 fase 1 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow). Quedan 5: SPEC-0081 (group commit, en solitario), 0082 (gates SLO), 0087/0088/0083 (Ola 4). |
 | Líneas futuras (sin spec aún) | ⏳ | modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083); persistencia del caché semántico (bajo valor: cada mutación invalida); tools MCP de escritura avanzadas (update/delete por tool) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |

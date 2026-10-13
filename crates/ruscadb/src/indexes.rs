@@ -389,6 +389,67 @@ impl TableIndexes {
         }
     }
 
+    /// Poda selectiva de los índices derivados tras el `reap()` (SPEC-0085).
+    ///
+    /// **WHAT**: elimina permanentemente los rastros de los `RecordId` que el
+    /// heap ya purgó: postings del índice invertido y aristas del CSR
+    /// incidentes a sus nodos. **WHY**: los borrados lógicos dejan tombstones y
+    /// postings/aristas huérfanos que nunca se compactaban (deuda MVP); el GC de
+    /// derivados los libera sin tocar las filas vivas. **WHERE**: cableado desde
+    /// `Database::reap`.
+    ///
+    /// Conserva los tombstones en `deleted` (el heap ya no tiene esas filas, así
+    /// que siguen fuera de KNN/TRAVERSE) y no altera los resultados de las filas
+    /// vivas. Es idempotente.
+    ///
+    /// Args:
+    ///     purged: `RecordId` que el heap ya no contiene.
+    pub(crate) fn compact(&mut self, purged: &BTreeSet<RecordId>) {
+        if purged.is_empty() {
+            return;
+        }
+        for index in self.fts.values_mut() {
+            for id in purged {
+                index.drop_document(id);
+            }
+        }
+        let dead_nodes: BTreeSet<NodeId> = purged
+            .iter()
+            .filter_map(|id| self.graph.to_node.get(id).copied())
+            .collect();
+        self.graph.graph.remove_nodes(&dead_nodes);
+    }
+
+    /// Número de aristas únicas del CSR de la tabla (introspección, SPEC-0085).
+    ///
+    /// Returns:
+    ///     La cardinalidad de aristas del grafo compilado.
+    pub(crate) fn graph_edge_count(&self) -> usize {
+        self.graph.graph.edge_count()
+    }
+
+    /// Número de documentos vivos del índice invertido de `column`.
+    ///
+    /// Args:
+    ///     column: Columna `TEXT` indexada.
+    ///
+    /// Returns:
+    ///     El número de documentos vivos (0 si no hay índice para la columna).
+    pub(crate) fn fts_doc_count(&self, column: &str) -> usize {
+        self.fts.get(column).map_or(0, InvertedIndex::doc_count)
+    }
+
+    /// Número total de postings del índice invertido de `column`.
+    ///
+    /// Args:
+    ///     column: Columna `TEXT` indexada.
+    ///
+    /// Returns:
+    ///     La suma de postings (0 si no hay índice para la columna).
+    pub(crate) fn fts_posting_count(&self, column: &str) -> usize {
+        self.fts.get(column).map_or(0, InvertedIndex::posting_count)
+    }
+
     /// Reindexa el texto de un registro actualizado (sin tombstone).
     ///
     /// Retira el `RecordId` de todos los índices invertidos y lo reinserta con el

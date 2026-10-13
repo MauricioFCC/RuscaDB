@@ -31,6 +31,22 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   con el código real (se retiran afirmaciones falsas: BLAKE3, cargo-vet,
   cargo-geiger, AES-256-GCM, secrecy; se conservan las verificadas: SBOM,
   cargo-deny, cargo-audit, gitleaks, miri, ASan).
+- **SPEC-0080** (Ola 2): observabilidad — spans `tracing` en `commit`,
+  `checkpoint`, `page_fault` y `lock_wait` (no-op ~1.2 ns sin subscriber) y
+  feature `metrics` (default OFF) que registra latencia de commit e hit-rate
+  del buffer pool; tests con collector local en ambas configuraciones.
+- **SPEC-0085** (Ola 2): reclamación de storage — free-list persistida en el
+  manifiesto (serde con default, compatible hacia atrás) que `allocate()`
+  consume antes de crecer el fichero; `reap()` da de alta las páginas
+  purgadas en el mismo commit atómico que retira los locator (crash-safe: no
+  puede reasignarse una página viva); GC de derivados `remove_nodes` (CSR) y
+  `drop_document` (FTS) cableado desde reap sin cambiar resultados de filas
+  vivas.
+- **SPEC-0086** (Ola 2): catálogo sin techo de 64 KiB — formato v2 con
+  superblock de 24 B y cadena de páginas de overflow pagadas con el bump
+  `next_page` compartido con el heap (patrón SPEC-0071, sin colisiones por
+  construcción); v1 (≤16 páginas) carga sin migración; techo residual u32
+  con error actionable.
 - **Plan de producción Olas 0–4 (SPEC-0076..0088)**: roadmap actualizado tras
   la auditoría *production readiness* (2026-10-12, veredicto «NO apto para
   producción») y el research de frontera correspondiente (§3): lock

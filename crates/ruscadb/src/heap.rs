@@ -88,7 +88,9 @@ pub(crate) fn heap_insert(
             return Ok((PageId(*raw), slot));
         }
     }
-    let fresh = catalog.alloc_page();
+    // Reutiliza una página liberada por el GC si hay (SPEC-0085); si no,
+    // extiende el fichero con el asignador *bump* del catálogo.
+    let fresh = database.allocate_page(catalog);
     let blank = blank_slotted_page(fresh);
     let table = catalog.get_mut(table_name)?;
     finish_insert(database, table, &blank, fresh.0, &bytes, 0)?;
@@ -385,7 +387,8 @@ fn write_overflow_chain(
     let chunks: Vec<&[u8]> = raw.chunks(OVERFLOW_CHUNK).collect();
     let mut pages = Vec::with_capacity(chunks.len());
     for _ in 0..chunks.len() {
-        let fresh = catalog.alloc_page();
+        // Reutiliza páginas liberadas antes de crecer (SPEC-0085).
+        let fresh = database.allocate_page(catalog);
         catalog.get_mut(table_name)?.pages.push(fresh.0);
         pages.push(fresh);
     }
@@ -551,6 +554,34 @@ pub(crate) fn heap_scan(
         collect_page_rows(database, PageId(*raw), &mut rows)?;
     }
     Ok(rows)
+}
+
+/// Indica si una página del heap quedó sin filas (candidata a liberar).
+///
+/// Tras purgar filas obsoletas, una página de datos con cero slots ya no
+/// referencia ninguna fila y puede devolverse a la free-list (SPEC-0085). Las
+/// páginas de desbordamiento nunca se consideran vacías aquí (se detectan por
+/// su marca), de modo que el GC no libera una cadena en uso.
+///
+/// Args:
+///     database: Base abierta.
+///     page: Página a inspeccionar.
+///
+/// Returns:
+///     `true` si es una página de datos con cero slots.
+///
+/// Errors:
+///     [`RuscaError::PageOutOfRange`] si la página no existe;
+///     [`RuscaError::CorruptManifest`] si los bytes no son un heap válido.
+pub(crate) fn heap_page_is_empty(
+    database: &mut Database,
+    page: PageId,
+) -> Result<bool, RuscaError> {
+    let page = database.read_page(page)?;
+    if is_overflow_page(page.data()) {
+        return Ok(false);
+    }
+    Ok(read_count(page.data()) == 0)
 }
 
 /// Inicializa una página ranurada vacía.

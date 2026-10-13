@@ -239,6 +239,8 @@ impl BufferPool {
 
         if let Some(&idx) = self.index.get(&id) {
             self.hits += 1;
+            #[cfg(feature = "metrics")]
+            metrics::counter!("ruscadb_buffer_pool_hits_total").increment(1);
             let frame = &mut self.frames[idx];
             frame.pin_count += 1;
             frame.record_ref(self.clock);
@@ -246,6 +248,12 @@ impl BufferPool {
         }
 
         self.misses += 1;
+        #[cfg(feature = "metrics")]
+        metrics::counter!("ruscadb_buffer_pool_misses_total").increment(1);
+        // Span de frontera (SPEC-0080): page fault = lectura de una página que
+        // no estaba en el pool y se trae desde el almacén persistente.
+        let fault = tracing::debug_span!("page_fault", page_id = id.0);
+        let _fault = fault.enter();
         let idx = if self.frames.len() < self.capacity {
             self.frames.push(Frame::empty());
             self.frames.len() - 1

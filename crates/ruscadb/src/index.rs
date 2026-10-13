@@ -344,7 +344,8 @@ fn store_entries(
     let payloads = pack_entries(&entries)?;
     let mut page_ids = catalog.get(table_name)?.index_pages();
     while page_ids.len() < payloads.len() {
-        page_ids.push(catalog.alloc_page().0);
+        // Reutiliza páginas liberadas antes de crecer (SPEC-0085).
+        page_ids.push(database.allocate_page(catalog).0);
     }
     page_ids.truncate(payloads.len());
     for (raw, payload) in page_ids.iter().zip(payloads.iter()) {

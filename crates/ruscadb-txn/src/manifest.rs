@@ -5,6 +5,7 @@
 //! checkpoint. Se escribe con `tmp + fsync + rename` para que un lector nunca
 //! observe un estado a medias.
 
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -29,21 +30,96 @@ pub struct Manifest {
     pub epoch: u64,
     /// LSN de checkpoint desde el que se reproduce el WAL.
     pub checkpoint_lsn: u64,
+    /// Free-list persistida de páginas del almacén (SPEC-0085).
+    ///
+    /// **WHAT**: páginas que quedaron sin filas tras el `reap()` y que el
+    /// asignador puede reutilizar antes de crecer el fichero. **WHY**: el campo
+    /// es privado en `Database`, así que `RefCell` da **mutabilidad interior**:
+    /// la fachada la modifica a través de `&Manifest` (`Database::manifest()`) y
+    /// el manifiesto se persiste **entero y de forma atómica** en cada commit
+    /// (`tmp + fsync + rename`). **WHERE**: `ruscadb-txn::manifest`; consumida
+    /// por `ruscadb` (`gc`/`heap`). Al compartir el `store` atómico del
+    /// manifiesto, la free-list queda *write-ahead* respecto de la purga: nunca
+    /// se publica una página libre antes que la purga que la vació.
+    ///
+    /// Se omite del JSON cuando está vacía (compatibilidad hacia atrás con
+    /// manifiestos previos a SPEC-0085); al faltar en disco se carga vacía.
+    #[serde(default, skip_serializing_if = "free_pages_is_empty")]
+    pub free_pages: RefCell<Vec<u64>>,
+}
+
+/// Predicado de serialización: omite `free_pages` cuando está vacío.
+///
+/// Args:
+///     pages: Free-list en memoria.
+///
+/// Returns:
+///     `true` si no hay páginas libres (el campo no se escribe en el JSON).
+fn free_pages_is_empty(pages: &RefCell<Vec<u64>>) -> bool {
+    pages.borrow().is_empty()
 }
 
 impl Manifest {
     /// Crea el manifiesto inicial.
     ///
     /// Returns:
-    ///     Manifiesto con [`CURRENT_SCHEMA_VERSION`], `epoch = 0` y
-    ///     `checkpoint_lsn = 0`.
+    ///     Manifiesto con [`CURRENT_SCHEMA_VERSION`], `epoch = 0`,
+    ///     `checkpoint_lsn = 0` y la free-list vacía.
     #[allow(clippy::new_without_default)] // el default neutro sería schema_version=0 (inválido)
     pub fn new() -> Self {
         Self {
             schema_version: CURRENT_SCHEMA_VERSION,
             epoch: 0,
             checkpoint_lsn: 0,
+            free_pages: RefCell::new(Vec::new()),
         }
+    }
+
+    /// Añade `page` a la free-list persistida (idempotente).
+    ///
+    /// Es idempotente por construcción: una página ya presente no se duplica,
+    /// de modo que un `reap()` repetido no introduce un doble free
+    /// (NF-0085-02). La mutación es en memoria; la durabilidad la da el
+    /// `store` atómico del manifiesto en el siguiente commit.
+    ///
+    /// Args:
+    ///     page: Identificador de la página a liberar.
+    ///
+    /// Returns:
+    ///     `true` si la página no estaba en la free-list (se añadió);
+    ///     `false` si ya estaba (no-op).
+    pub fn add_free_page(&self, page: u64) -> bool {
+        let mut pages = self.free_pages.borrow_mut();
+        if pages.contains(&page) {
+            return false;
+        }
+        pages.push(page);
+        true
+    }
+
+    /// Extrae la siguiente página libre en orden LIFO, si hay.
+    ///
+    /// Returns:
+    ///     `Some(page)` con la página reutilizable, o `None` si la free-list
+    ///     está vacía (el llamador debe crecer el fichero).
+    pub fn take_free_page(&self) -> Option<u64> {
+        self.free_pages.borrow_mut().pop()
+    }
+
+    /// Número de páginas de la free-list persistida.
+    ///
+    /// Returns:
+    ///     La cantidad de páginas reutilizables.
+    pub fn free_page_count(&self) -> usize {
+        self.free_pages.borrow().len()
+    }
+
+    /// Copia ordenada de las páginas libres (introspección/tests).
+    ///
+    /// Returns:
+    ///     Las páginas libres en el orden en que se liberaron (FIFO físico).
+    pub fn free_pages(&self) -> Vec<u64> {
+        self.free_pages.borrow().clone()
     }
 
     /// Carga y valida el manifiesto de `path`.

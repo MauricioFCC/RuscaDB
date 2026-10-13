@@ -1,12 +1,25 @@
-//! Introspección del catálogo y GC MVCC cableado (SPEC-0028).
+//! Introspección del catálogo y GC MVCC cableado (SPEC-0028, SPEC-0085).
 //!
 //! - [`Database::tables`]: devuelve los nombres de tabla del catálogo.
 //! - [`Database::reap`]: purga física de filas obsoletas según el
-//!   `low_watermark` del [`TxnManager`](ruscadb_txn::TxnManager).
-//!   No compacta el grafo/FTS (fuera de alcance): esos índices ya excluyen a
-//!   las filas borradas vía tombstones desde el borrado lógico.
+//!   `low_watermark` del [`TxnManager`](ruscadb_txn::TxnManager), **libera**
+//!   las páginas que quedan sin filas a la free-list persistida (SPEC-0085) y
+//!   **compacta** los índices derivados (grafo/FTS) de esas filas.
+//!
+//! ## Crash-safety de la reclamación (NF-0085-01)
+//!
+//! La secuencia segura es: **purga en memoria → free-list en memoria → un único
+//! commit atómico**. Se libera una página solo cuando *todas* sus filas son
+//! obsoletas (`is_obsolete`), es decir, invisibles para todo snapshot (`<=` el
+//! watermark); por eso reasignarla nunca pisa una fila viva. La retirada de la
+//! página del catálogo (`table.pages`) y su alta en la free-list del manifiesto
+//! ocurren antes del commit que las persiste juntas (`catalog.save` →
+//! `commit`: WAL-first + `Manifest::store` `tmp+fsync+rename`). Un crash antes
+//! del commit no publica ninguna de las dos (páginas en fuga, detectable); un
+//! crash después publica ambas (consistente). Nunca se publica una página libre
+//! antes que la purga que la vació.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ruscadb_core::{RecordId, RuscaError};
 use ruscadb_storage::PageId;
@@ -14,7 +27,7 @@ use ruscadb_txn::{Version, is_obsolete};
 
 use crate::catalog::Catalog;
 use crate::database::Database;
-use crate::heap::{RowLocator, heap_remove, heap_scan};
+use crate::heap::{RowLocator, heap_page_is_empty, heap_remove, heap_scan};
 
 impl Database {
     /// Devuelve los nombres de tabla del catálogo, en orden.
@@ -40,8 +53,14 @@ impl Database {
     /// decrementa `row_count` y persiste el catálogo. Es idempotente y nunca
     /// toca filas vivas ni con `deleted_tx >= watermark`.
     ///
-    /// No compacta el grafo/FTS (fuera de alcance, SPEC-0028): esos índices
-    /// derivados ya excluían a las filas borradas desde el borrado lógico.
+    /// **SPEC-0085**: además, devuelve a la free-list persistida las páginas que
+    /// quedan sin ninguna fila (su purga las vació) y compacta los índices
+    /// derivados (postings/aristas huérfanos del grafo/FTS). La secuencia de
+    /// crash-safety se documenta en el módulo: purga y liberación se persisten
+    /// juntas en un único commit atómico, y solo se liberan páginas cuyas filas
+    /// eran todas obsoletas (invisibles), de modo que reasignarlas nunca pisa
+    /// una fila viva. Repetir `reap()` sin cambios no altera la free-list
+    /// (idempotencia, NF-0085-02).
     ///
     /// Returns:
     ///     Número de filas purgadas (`0` si no había obsoletas).
@@ -106,12 +125,19 @@ fn collect_obsolete(
     Ok(targets)
 }
 
-/// Purga los objetivos: elimina del heap, actualiza catálogo y reindexa.
+/// Purga los objetivos: elimina del heap, libera páginas, compacta derivados.
 ///
-/// Agrupa por página y purga en orden descendente de slot (los índices
-/// menores siguen válidos tras cada eliminación). Decrementa `row_count`,
-/// persiste el catálogo (WAL-first) y reconstruye el índice primario, cuyos
-/// localizadores pudieron desplazarse.
+/// Agrupa por página y purga en orden descendente de slot (los índices menores
+/// siguen válidos tras cada eliminación). Cuando una página de datos queda sin
+/// ninguna fila, se retira de `table.pages` y se encola en la free-list del
+/// manifiesto. Luego decrementa `row_count`, **persiste el catálogo y la
+/// free-list en un único commit atómico** (WAL-first, `catalog.save`), poda los
+/// índices derivados de los `RecordId` purgados y reconstruye el índice
+/// primario, cuyos localizadores pudieron desplazarse.
+///
+/// La free-list se muta **antes** de `catalog.save` para que su `Manifest::store`
+/// la publique junto con la purga (ver crash-safety del módulo): así nunca se
+/// publica una página libre sin la purga que la vació.
 ///
 /// Args:
 ///     database: Base abierta.
@@ -129,12 +155,19 @@ fn purge_targets(database: &mut Database, targets: &[ReapTarget]) -> Result<(), 
             .push((target.locator.1, target.id));
     }
     let mut purged_per_table: BTreeMap<String, u64> = BTreeMap::new();
+    let mut purged_ids: BTreeMap<String, BTreeSet<RecordId>> = BTreeMap::new();
+    let mut reclaimed: BTreeMap<String, Vec<u64>> = BTreeMap::new();
     for ((table, page), mut slots) in by_page {
         slots.sort_by_key(|slot| std::cmp::Reverse(slot.0));
         for (slot, id) in slots {
             heap_remove(database, (page, slot))?;
             database.primary_remove(&table, &id);
             *purged_per_table.entry(table.clone()).or_default() += 1;
+            purged_ids.entry(table.clone()).or_default().insert(id);
+        }
+        // Una página sin filas tras la purga es reutilizable (SPEC-0085).
+        if heap_page_is_empty(database, page)? {
+            reclaimed.entry(table).or_default().push(page.0);
         }
     }
     let mut catalog = Catalog::load(database)?;
@@ -142,8 +175,113 @@ fn purge_targets(database: &mut Database, targets: &[ReapTarget]) -> Result<(), 
         let definition = catalog.get_mut(table)?;
         definition.row_count = definition.row_count.saturating_sub(*purged);
     }
+    for (table, pages) in &reclaimed {
+        let definition = catalog.get_mut(table)?;
+        definition.pages.retain(|raw| !pages.contains(raw));
+    }
+    // Alta en la free-list ANTES del commit que la persiste con la purga.
+    for pages in reclaimed.values() {
+        for raw in pages {
+            database.release_page(PageId(*raw));
+        }
+    }
     catalog.save(database)?;
-    database.rebuild_primary_index()
+    database.rebuild_primary_index()?;
+    for (table, ids) in &purged_ids {
+        if let Some(indexes) = database.indexes.get_mut(table) {
+            indexes.compact(ids);
+        }
+    }
+    Ok(())
+}
+
+impl Database {
+    /// Reserva una página reutilizando la free-list o creciendo el fichero.
+    ///
+    /// **WHAT**: extrae una página de la free-list persistida si hay alguna
+    /// válida (`< next_page`); si no, delega en el asignador *bump* del
+    /// catálogo. **WHY**: reutilizar páginas liberadas por el reap mantiene
+    /// estable el alto agua del almacén (FR-0085-01). **WHERE**: usado por el
+    /// heap y el índice secundario de la fachada.
+    ///
+    /// Si la free-list contuviera un id fuera de rango (manifiesto corrupto) lo
+    /// descarta silenciosamente (página en fuga detectable) y prueba el
+    /// siguiente: nunca revienta ni reasigna una página inexistente.
+    ///
+    /// Args:
+    ///     catalog: Catálogo abierto (asignador *bump* y `next_page`).
+    ///
+    /// Returns:
+    ///     El `PageId` reservado, listo para escribir.
+    pub(crate) fn allocate_page(&mut self, catalog: &mut Catalog) -> PageId {
+        while let Some(raw) = self.manifest().take_free_page() {
+            if raw < catalog.next_page() {
+                return PageId(raw);
+            }
+        }
+        catalog.alloc_page()
+    }
+
+    /// Devuelve una página a la free-list persistida (idempotente).
+    ///
+    /// La mutación es en memoria y se serializa con el próximo commit (el
+    /// `Manifest::store` atómico); un `reap()` repetido no duplica la entrada.
+    ///
+    /// Args:
+    ///     id: Página sin filas que se reutilizará.
+    pub(crate) fn release_page(&self, id: PageId) {
+        self.manifest().add_free_page(id.0);
+    }
+
+    /// Número de páginas en la free-list persistida (introspección).
+    ///
+    /// Returns:
+    ///     La cantidad de páginas reutilizables.
+    pub fn free_page_count(&self) -> usize {
+        self.manifest().free_page_count()
+    }
+
+    /// Número de aristas únicas del grafo derivado de una tabla (SPEC-0085).
+    ///
+    /// Args:
+    ///     table: Nombre de la tabla.
+    ///
+    /// Returns:
+    ///     La cardinalidad de aristas del CSR (`0` si la tabla no tiene índice
+    ///     en memoria).
+    pub fn graph_edge_count(&self, table: &str) -> usize {
+        self.indexes
+            .get(table)
+            .map_or(0, crate::indexes::TableIndexes::graph_edge_count)
+    }
+
+    /// Número de documentos vivos del índice invertido de `column`.
+    ///
+    /// Args:
+    ///     table: Nombre de la tabla.
+    ///     column: Columna `TEXT` indexada.
+    ///
+    /// Returns:
+    ///     El número de documentos vivos (`0` si no hay índice).
+    pub fn fts_doc_count(&self, table: &str, column: &str) -> usize {
+        self.indexes
+            .get(table)
+            .map_or(0, |indexes| indexes.fts_doc_count(column))
+    }
+
+    /// Número total de postings del índice invertido de una columna.
+    ///
+    /// Args:
+    ///     table: Nombre de la tabla.
+    ///     column: Columna `TEXT` indexada.
+    ///
+    /// Returns:
+    ///     La suma de postings (`0` si no hay índice).
+    pub fn fts_posting_count(&self, table: &str, column: &str) -> usize {
+        self.indexes
+            .get(table)
+            .map_or(0, |indexes| indexes.fts_posting_count(column))
+    }
 }
 
 #[cfg(test)]

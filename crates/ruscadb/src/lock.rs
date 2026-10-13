@@ -41,6 +41,10 @@ impl LockGuard {
     ///     handle/proceso; WHERE: la ruta del fichero de datos);
     ///     [`RuscaError::Io`] si no se puede abrir el sidecar.
     pub(crate) fn acquire(data_path: &Path) -> Result<Self, RuscaError> {
+        // Span de frontera (SPEC-0080): intento de adquisición del lock
+        // cross-proceso. Sin subscriber es no-op; con él registra la ruta.
+        let span = tracing::debug_span!("lock_wait", path = %data_path.display());
+        let _entered = span.enter();
         let sidecar = data_path.with_extension("lock");
         let file = OpenOptions::new()
             .read(true)

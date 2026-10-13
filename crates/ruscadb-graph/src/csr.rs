@@ -4,6 +4,7 @@
 //! compactas: una para aristas salientes (`Out`) y otra para entrantes (`In`).
 
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
 
 use crate::{Direction, NodeId};
 
@@ -89,6 +90,28 @@ impl CsrGraph {
         self.out_neighbors = out_neighbors;
         self.in_offsets = in_offsets;
         self.in_neighbors = in_neighbors;
+    }
+
+    /// Poda las aristas incidentes a `removed` y recompila el CSR (SPEC-0085).
+    ///
+    /// **WHAT**: descarta toda arista cuyo origen o destino sea un nodo podado y
+    /// reconstruye offsets/vecinos. **WHY**: tras el `reap()` las filas purgadas
+    /// dejan de existir físicamente; sus aristas quedarían huérfanas y ocuparían
+    /// memoria para siempre. **WHERE**: GC de derivados, cableado desde
+    /// `Database::reap`.
+    ///
+    /// La poda es idempotente: repetirla con los mismos nodos no altera el
+    /// resultado. Los nodos no podados conservan su adyacencia exacta.
+    ///
+    /// Args:
+    ///     removed: Nodos (numeración densa) cuyas aristas se eliminan.
+    pub fn remove_nodes(&mut self, removed: &BTreeSet<NodeId>) {
+        if removed.is_empty() {
+            return;
+        }
+        self.edges
+            .retain(|(from, to)| !removed.contains(from) && !removed.contains(to));
+        self.build();
     }
 
     /// Devuelve los vecinos directos de `node` en la `direction` indicada.

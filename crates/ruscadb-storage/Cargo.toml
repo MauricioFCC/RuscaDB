@@ -18,6 +18,15 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 ruscadb-core = { workspace = true }
+# Spans de frontera (SPEC-0080): no-op sin subscriber, coste despreciable.
+tracing = { workspace = true }
+# Métricas opcionales (SPEC-0080): solo presentes con la feature `metrics`.
+metrics = { workspace = true, optional = true }
+
+[features]
+default = []
+# Hit-rate del buffer pool (SPEC-0080): OFF por defecto (coste cero).
+metrics = ["dep:metrics"]
 
 [dev-dependencies]
 proptest = { workspace = true }

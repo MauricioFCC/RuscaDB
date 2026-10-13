@@ -304,6 +304,28 @@ impl Wal {
     pub fn next_lsn(&self) -> Lsn {
         self.next_lsn
     }
+
+    /// Fuerza un checkpoint del WAL y lo hace durable (SPEC-0080).
+    ///
+    /// Añade un registro [`RecordKind::Checkpoint`] que marca hasta qué LSN el
+    /// log está completamente escrito y lo sincroniza con `fsync`. Es el punto
+    /// de control que habilita (en el futuro) reclamar el prefijo del WAL ya
+    /// aplicado; emite el span `checkpoint` para observabilidad de frontera.
+    ///
+    /// Returns:
+    ///     El `Lsn` asignado al registro de checkpoint.
+    ///
+    /// Errors:
+    ///     [`RuscaError::WalCorrupt`] si el payload excede el máximo por frame;
+    ///     [`RuscaError::Io`] si falla la escritura o el `fsync`.
+    pub fn checkpoint(&mut self) -> Result<Lsn, RuscaError> {
+        // Span de frontera (SPEC-0080): checkpoint real del WAL.
+        let span = tracing::debug_span!("checkpoint", lsn = self.next_lsn);
+        let _entered = span.enter();
+        let lsn = self.append(0, RecordKind::Checkpoint, &[])?;
+        self.sync()?;
+        Ok(lsn)
+    }
 }
 
 /// Lee los registros válidos del WAL sin modificarlo.

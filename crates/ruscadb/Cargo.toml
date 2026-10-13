@@ -45,6 +45,16 @@ serde_json = { workspace = true }
 # CRC32C por línea del audit persistido (SPEC-0073).
 crc32c = { workspace = true }
 zeroize = { workspace = true }
+# Spans de frontera (SPEC-0080): no-op sin subscriber, coste despreciable.
+tracing = { workspace = true }
+# Métricas opcionales (SPEC-0080): solo presentes con la feature `metrics`.
+metrics = { workspace = true, optional = true }
+
+[features]
+default = []
+# Latencia de commit (SPEC-0080): OFF por defecto (coste cero). Propaga a
+# `ruscadb-storage` para registrar el hit-rate del buffer pool.
+metrics = ["dep:metrics", "ruscadb-storage/metrics"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -52,6 +62,8 @@ proptest = { workspace = true }
 rstest = { workspace = true }
 pretty_assertions = { workspace = true }
 criterion = { workspace = true }
+# Lectura del registry en memoria de metrica en los tests (SPEC-0080, dev-only).
+metrics-util = { workspace = true }
 
 [[bench]]
 name = "facade_smoke"
