@@ -6,7 +6,12 @@ use thiserror::Error;
 ///
 /// Es `Send + Sync + 'static` para poder cruzar la frontera FFI y viajar por
 /// hilos. Cada variante lleva contexto accionable (WHAT + WHY + WHERE).
+///
+/// Es `#[non_exhaustive]` (SPEC-0078): un consumidor externo debe añadir un
+/// brazo `_` a sus `match`, de modo que añadir variantes nuevas en el futuro no
+/// rompa su compilación.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum RuscaError {
     /// El identificador de registro no es un ULID válido.
     #[error("identificador inválido: {0}")]

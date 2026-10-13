@@ -1,0 +1,45 @@
+# Semver de RuscaDB — estabilidad de API en PRs (SPEC-0078).
+#
+# `cargo-semver-checks` compara el rustdoc JSON de HEAD contra una **baseline
+# git** (la revisión base del PR), sin publicar ni consultar crates.io: el
+# workspace declara `publish = false`, así que la semver se protege contra el
+# propio historial de git. Es el mecanismo estándar de Rust para detectar
+# cambios incompatibles antes del merge (`#[non_exhaustive]` permite crecer sin
+# romper consumidores externos).
+#
+# No toca `.github/workflows/ci.yml` (gate T1): este workflow añade la capa
+# semver y corre solo en `pull_request`, donde existe una base con la que
+# comparar. Ver `specs/api_stability.md` (SPEC-0078).
+
+name: Semver
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: semver-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  semver-checks:
+    name: cargo-semver-checks (baseline git)
+    runs-on: ubuntu-latest
+    steps:
+      # `fetch-depth: 0` trae la historia completa para resolver la rev base.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Baseline = revisión base del PR (git), NUNCA el registro de crates.io.
+      - name: Check semver against PR base rev
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          baseline-rev: ${{ github.event.pull_request.base.sha }}

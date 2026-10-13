@@ -861,7 +861,9 @@ completo + commit + CI verde antes de abrir la siguiente.
 > contrato SDD (`cargo xtask contract`) los valida bidireccionalmente.
 > **Plan de producción (2026-10-12)**: la auditoría *readiness* concluyó
 > «NO apto para producción» y abre las **Olas 0–4 (§8.1)** con 13 specs
-> SPEC-0076..0088 en `planned`, a cerrar secuencialmente en este loop.
+> SPEC-0076..0088. **Olas 0–1 cerradas (2026-10-13)**: SPEC-0076, 0077, 0078,
+> 0079 y 0084 están `implemented` y trazadas (360 AC); quedan 8 specs
+> (Olas 2–4) en este loop.
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
 > SDD cuyos AC están cubiertos por tests `test_ac_*` y verificados por
@@ -877,7 +879,7 @@ completo + commit + CI verde antes de abrir la siguiente.
 | F5 — Bindings (C-ABI, Python, Node, WASM) | ✅ | SPEC-0010, SPEC-0023, SPEC-0026, SPEC-0068 |
 | F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062, SPEC-0066 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
-| **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ⏳ | Plan §8.1 (auditoría readiness 2026-10-12: «NO apto para producción»). 13 specs en `planned`, a cerrar en loop hasta agotar el roadmap. |
+| **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ⏳ 5/13 ✅ | Olas 0–1 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY alineado). Quedan 8: Ola 2 (0080 ∥ 0085/0086 → 0081), Ola 3 (0082), Ola 4 (0087 ∥ 0088 ∥ 0083). |
 | Líneas futuras (sin spec aún) | ⏳ | modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083); persistencia del caché semántico (bajo valor: cada mutación invalida); tools MCP de escritura avanzadas (update/delete por tool) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |

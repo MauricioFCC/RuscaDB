@@ -118,20 +118,33 @@ bajo el umbral falla con el conteo (matados/totales). `check_ci_config.py`
 valida el cableado del job. Puerta solo-PR: en push a `main` no hay base
 contra la que medirse.
 
-### Cobertura del core (bloquea merge, SPEC-0061)
+### Política de cobertura (bloquea merge, SPEC-0061 + SPEC-0079)
 
 El job `coverage` de `ci.yml` corre la suite instrumentada con
 `cargo llvm-cov` en ubuntu y aplica `scripts/coverage_gate.py` sobre el
-`lcov.info` con el SLO del roadmap (core: línea ≥ 80 %, rama ≥ 70 %):
+`lcov.info` con un scope por familia de crates y su umbral propio:
 
 ```bash
 cargo llvm-cov --workspace --all-features --locked --lcov --output-path lcov.info
-python scripts/coverage_gate.py lcov.info --scope ruscadb-core/ --min-line 80 --min-branch 70
+python scripts/coverage_gate.py lcov.info \
+  --scope ruscadb-core/ --min-line 80  --min-branch 70 \
+  --scope ruscadb-txn/  --min-line 90  --min-branch 70 \
+  --scope ruscadb-wal/  --min-line 90  --min-branch 70
 ```
 
-Medición de referencia (2026-10-10, suite completa): workspace línea 93.5 % /
-rama 93.9 %; core línea 96.4 % (rama n/a: sin BRDA en el core). Sin datos del
-scope o lcov ausente el gate falla ruidoso (exit 2), nunca verde silencioso.
+Medición de referencia (2026-10-13, artefacto `coverage-lcov` del run verde
+`edb4d77`): core 96.4 %, `ruscadb-txn/` 96.5 %, `ruscadb-wal/` 96.6 %,
+`ruscadb-query/` 93.8 %, `ruscadb-vector/` 94.7 %, `ruscadb-fvs/` 99.2 %,
+`ruscadb-fts/` 99.8 % (línea; rama n/a: el export lcov no lleva BRDA, se
+activa añadiendo `--branch-coverage` a `cargo llvm-cov`).
+
+Semántica del gate (contrato SPEC-0061, conservado por SPEC-0079): la salida
+imprime el % de línea/rama **por crate** dentro de cada scope para ver qué
+crate arrastra el número; exit `0` = todos los scopes cumplen, exit `1` =
+algún scope bajo umbral (nombra al infractor), exit `2` = scope sin datos o
+lcov vacío: fallo ruidoso, nunca verde silencioso. Umbrales: core es el SLO
+del roadmap (80/70); txn/wal son *hard floors* a 90 con ~6 pts de holgura
+sobre lo medido — un descenso real de cobertura los rompe, ruido legítimo no.
 
 ---
 

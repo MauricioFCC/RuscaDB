@@ -37,6 +37,15 @@ pub const RC_PANIC: c_int = 4;
 /// el tamaño requerido está en `ruscadb_last_error`.
 pub const RC_BUFFER_TOO_SMALL: c_int = 5;
 
+/// Invariante de compatibilidad binaria del C-ABI (SPEC-0078).
+///
+/// Se incrementa solo ante un cambio incompatible en la superficie C (firmas,
+/// semántica de códigos de retorno, layout de buffers). Es independiente de la
+/// semver semántica devuelta por [`ruscadb_version`], que describe el release de
+/// la librería. Los drivers deben rechazar un `RUSCADB_ABI_VERSION` mayor que el
+/// que compilaron.
+pub static RUSCADB_ABI_VERSION: u32 = 1;
+
 /// Marca de handle vivo (`"RUSCADB1"` en ASCII). Detecta punteros corruptos.
 const HANDLE_MAGIC: u64 = 0x5255_5343_4144_4231;
 
@@ -387,6 +396,43 @@ pub extern "C" fn ruscadb_last_error(out_buf: *mut c_char, buf_len: usize) -> us
         // válido para escribir un byte.
         unsafe { core::ptr::write(terminator, 0) };
         bytes.len()
+    })
+}
+
+/// Copia la versión semántica de la librería (SPEC-0078) a `out_buf`.
+///
+/// Sigue el mismo contrato de buffer que [`ruscadb_last_error`]: escribe la
+/// cadena semver (`env!("CARGO_PKG_VERSION")`, heredada del workspace),
+/// trunca a `buf_len` bytes y garantiza terminación en NUL si hay espacio.
+/// La versión describe el release; la compatibilidad binaria la declara
+/// [`RUSCADB_ABI_VERSION`].
+///
+/// Args:
+///     out_buf: Buffer destino, o nulo para solo consultar la longitud.
+///     buf_len: Capacidad de `out_buf` en bytes.
+///
+/// Returns:
+///     La longitud de la versión en bytes (sin NUL). Si `out_buf` es nulo, solo
+///     la longitud.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_version(out_buf: *mut c_char, buf_len: usize) -> usize {
+    guard_ffi_usize(|| {
+        let version = env!("CARGO_PKG_VERSION").as_bytes();
+        if out_buf.is_null() || buf_len == 0 {
+            return version.len();
+        }
+        let capacity = buf_len.saturating_sub(1);
+        let copy = version.len().min(capacity);
+        // SAFETY: `out_buf` es no nulo y `copy <= buf_len - 1`, por lo que
+        // escribir `copy` bytes cae dentro del buffer del llamador.
+        unsafe { core::ptr::copy_nonoverlapping(version.as_ptr(), out_buf.cast::<u8>(), copy) };
+        // SAFETY: queda al menos el byte para el NUL (`copy < buf_len`), luego
+        // el offset `copy` está dentro del buffer.
+        let terminator = unsafe { out_buf.add(copy) };
+        // SAFETY: `terminator` apunta dentro de `out_buf` (ver arriba) y es
+        // válido para escribir un byte.
+        unsafe { core::ptr::write(terminator, 0) };
+        version.len()
     })
 }
 

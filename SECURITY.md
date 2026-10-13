@@ -99,11 +99,11 @@ superficie real.
   recibe. RuscaDB es una librería embebida: no expone red ni usuarios.
 - **Configuración insegura deliberada**: capacidades `file`/`net`/`script`
   habilitadas, presupuestos de recursos elevados o desactivar la verificación
-  de integridad (CRC32C/BLAKE3) por parte del integrador.
+  de integridad (CRC32C) por parte del integrador.
 - **DoS de recursos** cuando el anfitrión amplía los límites por encima de los
   defaults seguros documentados (`docs/RuscaDB-roadmap.md` §6.4).
 - **Dependencias de terceros**: se enrutan a su upstream (RustSec), aunque el
-  proyecto las rastrea con `cargo-audit`/`cargo-deny`/`cargo-vet` y SBOM.
+  proyecto las rastrea con `cargo-audit`/`cargo-deny` y SBOM.
 
 ---
 
@@ -128,24 +128,27 @@ El `unsafe` es el riesgo número uno de una DB in-process. La política es
   una **tabla de handles con marca mágica + generación** (anti doble-free /
   use-after-free) y captura panics con `catch_unwind` para que ninguno cruce el
   ABI.
-- Cobertura adicional: `miri` (UB), ASan/UBSan, `cargo-geiger`, y `cargo-fuzz`
-  sobre parser, WAL/CRC, blob, FFI y modelos.
+- Cobertura adicional: `miri` (UB) en crates sin `unsafe`, AddressSanitizer
+  (ASan) sobre `ruscadb-ffi` y `cargo-fuzz` sobre el parser RQL y la recuperación
+  del WAL (`.github/workflows/nightly.yml`).
 
 ---
 
 ## Hardening y controles
 
-- **Integridad**: CRC32C por frame de WAL y BLAKE3 en páginas/manifiesto;
-  frames manipulados se truncan o rechazan.
-- **Datos en reposo** (opcional): AEAD XChaCha20-Poly1305 / AES-256-GCM,
-  passphrase → Argon2id → DEK, `secrecy` + `zeroize` para el material sensible.
+- **Integridad**: CRC32C por frame de WAL; frames manipulados se truncan o
+  rechazan. El manifiesto y el heap `.data` no llevan checksum propio: su
+  durabilidad depende de la escritura atómica (`tmp` + `fsync` + `rename`).
+- **Datos en reposo** (opcional): AEAD XChaCha20-Poly1305 sobre el WAL (el heap
+  `.data` hereda el cifrado), passphrase → Argon2id → clave de 256 bits,
+  `zeroize` para el material sensible.
 - **Límites de recursos** por defecto: profundidad AST 64, query budget
   `100 000`, timeout 5 000 ms, `LIMIT` implícito 1 000 filas, blob 256 MiB,
   dimensión de vector ≤ 4 096, traversal depth 16.
 - **Path safety**: `file()` restringido al *sandbox root* (canonicalización +
   prefijo; anti `..`/symlink).
 - **Supply chain**: `Cargo.lock --locked`, `cargo-audit`, `cargo-deny`,
-  `cargo-vet`, toolchain pinneada, SBOM CycloneDX por release y `gitleaks` en
+  toolchain pinneada, SBOM CycloneDX por release y `gitleaks` en
   pre-commit/CI.
 
 Gracias por ayudar a mantener RuscaDB seguro.

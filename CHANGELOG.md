@@ -18,6 +18,19 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   `CorruptManifest` y `MigrationFailed`; runner atómico `tmp+rename` con
   registro `[(from,to,apply)]` y `migrate_plan()` dry-run. AC-0019-02
   actualizado.
+- **SPEC-0078** (Ola 1): estabilidad de API — `#[non_exhaustive]` en
+  `RuscaError`, `RUSCADB_ABI_VERSION` + `ruscadb_version()` en la C-ABI y
+  workflow nuevo `semver.yml` con `cargo-semver-checks` contra baseline git
+  (sin crates.io, el workspace es `publish = false`).
+- **SPEC-0079** (Ola 1): política de cobertura multi-scope —
+  `coverage_gate.py` acepta varios `--scope` con umbral propio e imprime % por
+  crate; CI gatea core ≥ 80 %, txn ≥ 90 % y wal ≥ 90 % (medido 96.5/96.6 %);
+  política documentada en `docs/verification.md`.
+- **SPEC-0084** (Ola 1): docs de operación — runbook `docs/operacion.md`
+  (lock, migración, backup, claves, troubleshooting) y `SECURITY.md` alineado
+  con el código real (se retiran afirmaciones falsas: BLAKE3, cargo-vet,
+  cargo-geiger, AES-256-GCM, secrecy; se conservan las verificadas: SBOM,
+  cargo-deny, cargo-audit, gitleaks, miri, ASan).
 - **Plan de producción Olas 0–4 (SPEC-0076..0088)**: roadmap actualizado tras
   la auditoría *production readiness* (2026-10-12, veredicto «NO apto para
   producción») y el research de frontera correspondiente (§3): lock

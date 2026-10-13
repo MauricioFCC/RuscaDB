@@ -175,11 +175,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  # Cobertura llvm-cov del core (SLO roadmap: línea >= 80 %, rama >= 70 %,
-  # SPEC-0061). Corre la suite completa instrumentada en ubuntu y aplica
-  # scripts/coverage_gate.py; bloquea el merge bajo el umbral.
+  # Cobertura llvm-cov multi-scope (SPEC-0061 + SPEC-0079): core >= 80 %,
+  # txn/wal >= 90 % (hard floor; medido 96.5 %/96.6 % el 2026-10-13). Corre la
+  # suite completa instrumentada en ubuntu y aplica scripts/coverage_gate.py;
+  # bloquea el merge bajo cualquier umbral de scope.
   coverage:
-    name: Coverage (core>=80/70%)
+    name: Coverage (core>=80, txn/wal>=90)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -193,8 +194,8 @@ jobs:
           tool: cargo-llvm-cov
       - name: Coverage lcov
         run: cargo llvm-cov --workspace --all-features --locked --lcov --output-path lcov.info
-      - name: Gate core>=80/70
-        run: python scripts/coverage_gate.py lcov.info --scope ruscadb-core/ --min-line 80 --min-branch 70
+      - name: Gate core>=80 / txn>=90 / wal>=90
+        run: python scripts/coverage_gate.py lcov.info --scope ruscadb-core/ --min-line 80 --min-branch 70 --scope ruscadb-txn/ --min-line 90 --min-branch 70 --scope ruscadb-wal/ --min-line 90 --min-branch 70
       - name: Upload lcov
         if: always()
         uses: actions/upload-artifact@v6

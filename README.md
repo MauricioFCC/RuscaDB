@@ -157,6 +157,8 @@ in the `ruscadb` facade. The guard `scripts/check_architecture.py` enforces
   `// SAFETY:` justification on every block. Every other crate is
   `#![forbid(unsafe_code)]`.
 - Supply chain: `cargo-deny`, `cargo-audit`, CycloneDX SBOM and gitleaks.
+- Operations runbook (open/lock, schema migrations, backup & restore, key
+  rotation, troubleshooting): [`docs/operacion.md`](docs/operacion.md).
 - Report vulnerabilities per [`SECURITY.md`](SECURITY.md) — please do **not** open
   a public issue for security reports.
 
