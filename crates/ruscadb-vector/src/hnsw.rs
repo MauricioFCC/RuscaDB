@@ -372,7 +372,10 @@ impl HnswIndex {
 
         let mut output: Vec<(usize, f32)> =
             results.into_iter().map(|c| (c.id, c.distance)).collect();
-        output.sort_by(|a, b| a.1.total_cmp(&b.1));
+        // Desempate por id de nodo (= orden de inserción): `post_filter_indexed`
+        // hace `take(k)` sobre este orden, así que sin desempate los empates de
+        // distancia salían en orden arbitrario del BinaryHeap (proptest del CI).
+        output.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
         output
     }
 
