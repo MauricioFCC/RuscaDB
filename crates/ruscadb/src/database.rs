@@ -134,6 +134,8 @@ pub struct Database {
     pub(crate) audit_last_nanos: u64,
     /// Ruta del audit persistido `<data>.audit.jsonl` (SPEC-0073).
     pub(crate) audit_path: PathBuf,
+    /// Ruta del caché semántico persistido `<data>.cache.json` (SPEC-0093).
+    pub(crate) cache_path: PathBuf,
     /// Pipeline de blobs (SPEC-0067): cola FIFO de análisis.
     pub(crate) blob_pipeline: BlobPipeline,
     /// Guard RAII del lock cross-proceso `<data>.lock` (SPEC-0076).
@@ -164,6 +166,10 @@ impl Database {
     /// La política de fsync del WAL la fija [`DbConfig::fsync_policy`]
     /// (SPEC-0081): [`FsyncPolicy::Full`] (default) fsync-ea por commit;
     /// [`FsyncPolicy::Normal`] agrupa los commits en un writer thread.
+    ///
+    /// Restaura el caché semántico persistido `<data>.cache.json` (SPEC-0093)
+    /// de forma *best-effort*: ausente, corrupto o con versión desconocida deja
+    /// el caché vacío sin impedir la apertura; en bases cifradas no se carga.
     ///
     /// Args:
     ///     config: Configuración de apertura.
@@ -227,6 +233,7 @@ impl Database {
             audit_epoch: std::time::Instant::now(),
             audit_last_nanos: 0,
             audit_path: config.data_path.with_extension("audit.jsonl"),
+            cache_path: config.data_path.with_extension("cache.json"),
             blob_pipeline: BlobPipeline::default(),
             _lock: lock,
         };
@@ -241,6 +248,9 @@ impl Database {
         database.rebuild_indexes()?;
         database.rebuild_primary_index()?;
         database.restore_txn_watermark()?;
+        // Caché semántico persistido (SPEC-0093): best-effort; un sidecar
+        // ausente/corrupto no impide abrir la base.
+        database.restore_semantic_cache();
         Ok(database)
     }
 
@@ -339,6 +349,9 @@ impl Database {
     pub fn close(mut self) -> Result<(), RuscaError> {
         self.commit()?;
         self.file.flush()?;
+        // Persiste el caché semántico (SPEC-0093) tras el cierre limpio: la
+        // próxima apertura restaura las entradas si no hubo mutación posterior.
+        self.persist_semantic_cache()?;
         Ok(())
     }
 

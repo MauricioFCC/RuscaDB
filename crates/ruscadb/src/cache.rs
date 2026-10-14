@@ -9,9 +9,14 @@
 
 use crate::database::Database;
 use crate::executor::Row;
+use ruscadb_core::RuscaError;
+use std::path::{Path, PathBuf};
 
 /// Umbral de coseno para el hit semántico (Gupta et al. 2024 ~0.8).
 const SEMANTIC_CACHE_THRESHOLD: f64 = 0.8;
+
+/// Versión del formato del caché persistido en `<data>.cache.json` (SPEC-0093).
+const CACHE_FORMAT_VERSION: u64 = 1;
 
 /// Métricas del caché semántico (SPEC-0065).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -82,10 +87,65 @@ impl Database {
     }
 
     /// Vacía el caché y resetea sus métricas (conserva el modo habilitado).
+    ///
+    /// También retira el sidecar `<data>.cache.json` (SPEC-0093) para que una
+    /// limpieza explícita no quede revivida por una restauración posterior.
     pub fn clear_semantic_cache(&mut self) {
         self.semantic_cache.entries.clear();
         self.semantic_cache.hits = 0;
         self.semantic_cache.misses = 0;
+        remove_cache_file(&self.cache_path);
+    }
+
+    /// Persiste las entradas del caché semántico en `<data>.cache.json`.
+    ///
+    /// Formato versionado (`version: 1`) con firma, vector clave y filas de cada
+    /// entrada; la escritura es atómica (`tmp` + `rename`). Sin entradas retira
+    /// el sidecar previo. En bases **cifradas** no se persiste nada en claro
+    /// (el `cache.json` se retira): los datos del caché son filas reales.
+    ///
+    /// Args: ninguno (usa el estado en memoria y [`Database::cache_path`]).
+    ///
+    /// Returns:
+    ///     `Ok(())` tras persistir o retirar el sidecar.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla la escritura o el `rename`;
+    ///     [`RuscaError::InvalidConfig`] si una entrada no fuese serializable.
+    pub fn persist_semantic_cache(&self) -> Result<(), RuscaError> {
+        if self.encryption_key().is_some() || self.semantic_cache.entries.is_empty() {
+            remove_cache_file(&self.cache_path);
+            return Ok(());
+        }
+        let mut entries = Vec::with_capacity(self.semantic_cache.entries.len());
+        for entry in &self.semantic_cache.entries {
+            entries.push(serde_json::json!({
+                "signature": entry.signature,
+                "vector": entry.vector,
+                "rows": entry.rows,
+            }));
+        }
+        let payload = serde_json::json!({
+            "version": CACHE_FORMAT_VERSION,
+            "entries": entries,
+        });
+        let text = serde_json::to_string(&payload).map_err(|error| {
+            RuscaError::InvalidConfig(format!("caché semántico no serializable: {error}"))
+        })?;
+        write_cache_file(&self.cache_path, &text)
+    }
+
+    /// Restaura el caché semántico desde `<data>.cache.json` (best-effort).
+    ///
+    /// Un sidecar ausente, ilegible, con versión desconocida o malformado se
+    /// ignora (caché vacío), nunca impide abrir la base. En bases cifradas no se
+    /// carga (no se confía en un sidecar en claro).
+    pub(crate) fn restore_semantic_cache(&mut self) {
+        self.semantic_cache.entries = if self.encryption_key().is_some() {
+            Vec::new()
+        } else {
+            read_cache_file(&self.cache_path).unwrap_or_default()
+        };
     }
 
     /// Reporte de coste por query acumulado.
@@ -155,9 +215,15 @@ impl Database {
     /// Invalida las ENTRADAS del caché tras una mutación (SPEC-0069).
     ///
     /// Conserva los contadores acumulados de hits/misses: la invalidación es
-    /// de datos, no de telemetría.
+    /// de datos, no de telemetría. También retira el sidecar persistido
+    /// `<data>.cache.json` (SPEC-0093) para que un crash antes de re-persistir
+    /// no resucite filas obsoletas en la próxima apertura.
     pub(crate) fn invalidate_semantic_cache(&mut self) {
+        if self.semantic_cache.entries.is_empty() {
+            return;
+        }
         self.semantic_cache.entries.clear();
+        remove_cache_file(&self.cache_path);
     }
 
     /// Acumula una consulta ejecutada en el reporte de coste.
@@ -170,6 +236,64 @@ impl Database {
         self.cost_report.rows_returned += rows_returned as u64;
         self.cost_report.nanos += nanos;
     }
+}
+
+/// Lee y valida el sidecar del caché semántico `<data>.cache.json`.
+///
+/// Args:
+///     path: Ruta del sidecar.
+///
+/// Returns:
+///     `Some(entradas)` si el fichero existe, es JSON válido, declara la
+///     versión soportada y todas las entradas son bien formadas; `None` en
+///     cualquier otro caso (se ignora, sin error).
+fn read_cache_file(path: &Path) -> Option<Vec<CacheEntry>> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    if value.get("version").and_then(serde_json::Value::as_u64) != Some(CACHE_FORMAT_VERSION) {
+        return None;
+    }
+    let items = value.get("entries")?.as_array()?;
+    let mut entries = Vec::with_capacity(items.len());
+    for item in items {
+        let signature = item.get("signature")?.as_str()?.to_string();
+        let vector: Vec<f32> = serde_json::from_value(item.get("vector")?.clone()).ok()?;
+        let rows: Vec<Row> = serde_json::from_value(item.get("rows")?.clone()).ok()?;
+        entries.push(CacheEntry {
+            signature,
+            vector,
+            rows,
+        });
+    }
+    Some(entries)
+}
+
+/// Escribe el sidecar del caché de forma atómica (`tmp` + `rename`).
+///
+/// Args:
+///     path: Ruta destino del sidecar.
+///     text: Contenido JSON a escribir.
+///
+/// Returns:
+///     `Ok(())` si el fichero quedó publicado atómicamente.
+///
+/// Errors:
+///     [`RuscaError::Io`] si falla la escritura o el `rename`.
+fn write_cache_file(path: &Path, text: &str) -> Result<(), RuscaError> {
+    let mut tmp = path.as_os_str().to_os_string();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Retira el sidecar del caché si existe (best-effort, sin error).
+///
+/// Args:
+///     path: Ruta del sidecar a retirar.
+fn remove_cache_file(path: &Path) {
+    let _ = std::fs::remove_file(path);
 }
 
 /// Similitud de coseno entre dos vectores.

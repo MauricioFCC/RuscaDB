@@ -232,6 +232,12 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   crate (peor a mejor), aplica `--min-branch` y vuelca `--json-out`; el job
   `coverage` de `ci.yml` sube el artefacto `branch-coverage-report` y
   `check_ci_config.py` lo valida.
+- **SPEC-0093** (Ola 6): persistencia del caché semántico — `Database::close`
+  escribe `<data>.cache.json` (versión 1, escritura atómica `tmp`+`rename`) y
+  `Database::open` lo restaura *best-effort* (fichero ausente/corrupto/versión
+  desconocida ⇒ caché vacío, nunca falla la apertura); una mutación retira el
+  sidecar y una base cifrada no persiste ni carga el caché en claro
+  (`persist_semantic_cache`/`restore_semantic_cache`).
 
 ### Retrospectiva
 

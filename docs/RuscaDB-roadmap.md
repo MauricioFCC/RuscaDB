@@ -844,12 +844,13 @@ actualizada.
 | SPEC-0090 | `msrv_gate` | 5 | Job `msrv` en CI con el piso `rust-version` (1.89) y `cargo check` | cargo `rust-version` |
 | SPEC-0091 | `mcp_advanced_write` | 6 | `Database::update` estructurado + tools MCP `update`/`delete` (sin SQL en el adapter, RBAC delegado) | escritura MCP estructurada 2026 |
 | SPEC-0092 | `branch_coverage_report` | 6 | Reporte explícito de ramas (BRDA) por crate reutilizando el lcov del gate + artefacto JSON en CI | DORA/SRE: cobertura observable |
+| SPEC-0093 | `semantic_cache_persistence` | 6 | Sidecar versionado `<data>.cache.json` para el caché semántico (atómico, best-effort, sin claro en bases cifradas) | caché como derivado persistible 2026 |
 
 **Secuencia crítica**: Ola 0 en paralelo (SPEC-0076 en la fachada ∥
 SPEC-0077 en `ruscadb-txn`) → Ola 1 en paralelo (0078 ∥ 0079 ∥ 0084) →
 Ola 2 (0080 ∥ 0085/0086, después 0081 en solitario por tocar el WAL) →
 Ola 3 (0082) → Ola 4 (0087 ∥ 0088 ∥ 0083) → Ola 5 (flujos P0: 0089 ∥ 0090) →
-Ola 6 (producto/frontera + proceso: 0091 ∥ 0092).
+Ola 6 (producto/frontera + proceso: 0091 ∥ 0092 ∥ 0093).
 Cada cierre de ola exige T1
 completo + commit + CI verde antes de abrir la siguiente.
 
@@ -879,8 +880,9 @@ completo + commit + CI verde antes de abrir la siguiente.
 > (releases/tags + validación CHANGELOG/commits) y SPEC-0090 (job MSRV 1.89).
 > **Ola 6 (2026-10-14)**: SPEC-0091
 > (`Database::update` estructurado + tools MCP `update`/`delete` con RBAC
-> delegado y sin SQL en el adapter) y SPEC-0092 (reporte explícito de ramas
-> BRDA por crate + artefacto en CI).
+> delegado y sin SQL en el adapter), SPEC-0092 (reporte explícito de ramas
+> BRDA por crate + artefacto en CI) y SPEC-0093 (persistencia del caché
+> semántico en `<data>.cache.json`, best-effort y sin claro en bases cifradas).
 > El resto de flujos P0 sigue en «Líneas futuras».
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
@@ -899,8 +901,8 @@ completo + commit + CI verde antes de abrir la siguiente.
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
 | **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ✅ 13/13 | Olas 0–4 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow), 0081 (group commit greedy-pipelined + FsyncPolicy + crash-harness), 0082 (gates SLO Mann-Whitney/bootstrap/A-A + slo.yml), 0083 (embeddings estáticos model2vec-rs + enmienda ADR-016), 0087 (examples ejecutables + `docs/api_guide.md`, smoke por subproceso), 0088 (session/auth MCP `-32001` + keystore KMS-lite con rotación). **386 AC trazados**. |
 | **Ola 5 — flujos P0 (SPEC-0089..0090)** | ✅ 2/2 | Cierra 2026-10-14: SPEC-0089 (automatización de releases/tags + validación CHANGELOG/commits: `check_commits.py`/`check_changelog.py`, job `commits` en PR, `release.yml` con SBOM) y SPEC-0090 (job `msrv` 1.89 en CI). |
-| **Ola 6 — escritura MCP estructurada + reporte BRDA (SPEC-0091..0092)** | ✅ 2/2 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` — actualización parcial por `RecordId`, reutiliza la ruta de índices del `UPDATE ... WHERE` — + tools MCP `update`/`delete` read_write-only con RBAC delegado y errores accionables -32602/-32000) y SPEC-0092 (reporte explícito de ramas BRDA por crate reutilizando el lcov del gate, con artefacto JSON en CI). **397 AC trazados**. |
-| Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0 — resto)**: code review multi-agente cableado (FF-11); gate RED-first con harness (adv. guardrails); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083); persistencia del caché semántico (bajo valor: cada mutación invalida) |
+| **Ola 6 — escritura MCP estructurada + reporte BRDA + caché persistente (SPEC-0091..0093)** | ✅ 3/3 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` — actualización parcial por `RecordId`, reutiliza la ruta de índices del `UPDATE ... WHERE` — + tools MCP `update`/`delete` read_write-only con RBAC delegado y errores accionables -32602/-32000); SPEC-0092 (reporte explícito de ramas BRDA por crate reutilizando el lcov del gate, con artefacto JSON en CI); SPEC-0093 (sidecar versionado `<data>.cache.json` del caché semántico: restauración best-effort, invalidación por mutación y omisión total en bases cifradas). **401 AC trazados**. |
+| Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0 — resto)**: code review multi-agente cableado (FF-11); gate RED-first con harness (adv. guardrails); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |
 | **Motor SQL DataFusion (ADR-001)** | ✅ | **Resuelto (ADR-013)**: el motor propio RQL se mantiene como decisión consciente y el overlap con ADR-001 se cierra con un spike `TableProvider` opcional (feature `datafusion`, OFF por defecto, SPEC-0060) que demuestra paridad SQL sin cambiar el runtime por defecto. |

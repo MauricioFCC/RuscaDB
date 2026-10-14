@@ -47,7 +47,7 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (actualizado 2026-10-14): **92 specs implementadas, 397
+Estado de referencia (actualizado 2026-10-14): **93 specs implementadas, 401
 AC trazados** (`cargo xtask trace`), **555+ tests** (`cargo test --workspace --
 --list`, sin `--all-features`).
 
@@ -142,6 +142,16 @@ python scripts/branch_coverage_report.py lcov.info \
 
 `scripts/check_ci_config.py` (`check_branch_report_job`) valida el cableado y
 `crates/xtask/tests/branch_coverage.rs` cubre AC-0092-01/02.
+
+### Persistencia del caché semántico (SPEC-0093) — T1
+
+`Database::close` persiste el caché KNN en `<data>.cache.json` (versión 1,
+`tmp`+`rename`) y `Database::open` lo restaura *best-effort*; una mutación
+retira el sidecar y una base cifrada no persiste ni carga el caché en claro.
+
+```bash
+cargo test -p ruscadb --test semantic_cache_persistence   # AC-0093-01..04
+```
 
 ---
 
@@ -380,6 +390,7 @@ el parseo de T1/T2/T3.
 | `ruscadb` (`Database::update`) | SPEC-0091/AC-01 | `cargo test -p ruscadb --test row_update_api` |
 | `ruscadb-mcp` (`update`/`delete`) | SPEC-0091/AC-02..04 | `cargo test -p ruscadb-mcp --test mcp_write_tools_advanced` |
 | `ci.yml` (`coverage`, BRDA) | SPEC-0092/AC-02 | `scripts/branch_coverage_report.py` + `check_ci_config.py` |
+| `ruscadb` (`<data>.cache.json`) | SPEC-0093/AC-01..04 | `cargo test -p ruscadb --test semantic_cache_persistence` |
 | `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
 | `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |
 | `xtask contract` | SPEC-0061 | `cargo xtask contract` (marcadores + estados) |
