@@ -4,7 +4,8 @@
 //! - [`Database::reap`]: purga física de filas obsoletas según el
 //!   `low_watermark` del [`TxnManager`](ruscadb_txn::TxnManager), **libera**
 //!   las páginas que quedan sin filas a la free-list persistida (SPEC-0085) y
-//!   **compacta** los índices derivados (grafo/FTS) de esas filas.
+//!   **reconstruye** los índices derivados (vectorial/grafo/FTS) desde las
+//!   filas vivas, de modo que no queden entradas huérfanas (SPEC-0101).
 //!
 //! ## Crash-safety de la reclamación (NF-0085-01)
 //!
@@ -19,7 +20,7 @@
 //! crash después publica ambas (consistente). Nunca se publica una página libre
 //! antes que la purga que la vació.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use ruscadb_core::{RecordId, RuscaError};
 use ruscadb_storage::PageId;
@@ -54,8 +55,9 @@ impl Database {
     /// toca filas vivas ni con `deleted_tx >= watermark`.
     ///
     /// **SPEC-0085**: además, devuelve a la free-list persistida las páginas que
-    /// quedan sin ninguna fila (su purga las vació) y compacta los índices
-    /// derivados (postings/aristas huérfanos del grafo/FTS). La secuencia de
+    /// quedan sin ninguna fila (su purga las vació) y reconstruye los índices
+    /// derivados (vectorial/grafo/FTS) desde las filas vivas, eliminando las
+    /// entradas huérfanas de las purgadas (SPEC-0101). La secuencia de
     /// crash-safety se documenta en el módulo: purga y liberación se persisten
     /// juntas en un único commit atómico, y solo se liberan páginas cuyas filas
     /// eran todas obsoletas (invisibles), de modo que reasignarlas nunca pisa
@@ -125,15 +127,16 @@ fn collect_obsolete(
     Ok(targets)
 }
 
-/// Purga los objetivos: elimina del heap, libera páginas, compacta derivados.
+/// Purga los objetivos: elimina del heap, libera páginas, reconstruye derivados.
 ///
 /// Agrupa por página y purga en orden descendente de slot (los índices menores
 /// siguen válidos tras cada eliminación). Cuando una página de datos queda sin
 /// ninguna fila, se retira de `table.pages` y se encola en la free-list del
 /// manifiesto. Luego decrementa `row_count`, **persiste el catálogo y la
-/// free-list en un único commit atómico** (WAL-first, `catalog.save`), poda los
-/// índices derivados de los `RecordId` purgados y reconstruye el índice
-/// primario, cuyos localizadores pudieron desplazarse.
+/// free-list en un único commit atómico** (WAL-first, `catalog.save`) y
+/// reconstruye los índices derivados (vectorial/grafo/FTS) y el índice primario
+/// desde las filas vivas ([`Database::compact_derived_indexes`], SPEC-0101):
+/// así ninguna fila purgada conserva entradas en memoria.
 ///
 /// La free-list se muta **antes** de `catalog.save` para que su `Manifest::store`
 /// la publique junto con la purga (ver crash-safety del módulo): así nunca se
@@ -155,7 +158,6 @@ fn purge_targets(database: &mut Database, targets: &[ReapTarget]) -> Result<(), 
             .push((target.locator.1, target.id));
     }
     let mut purged_per_table: BTreeMap<String, u64> = BTreeMap::new();
-    let mut purged_ids: BTreeMap<String, BTreeSet<RecordId>> = BTreeMap::new();
     let mut reclaimed: BTreeMap<String, Vec<u64>> = BTreeMap::new();
     for ((table, page), mut slots) in by_page {
         slots.sort_by_key(|slot| std::cmp::Reverse(slot.0));
@@ -163,7 +165,6 @@ fn purge_targets(database: &mut Database, targets: &[ReapTarget]) -> Result<(), 
             heap_remove(database, (page, slot))?;
             database.primary_remove(&table, &id);
             *purged_per_table.entry(table.clone()).or_default() += 1;
-            purged_ids.entry(table.clone()).or_default().insert(id);
         }
         // Una página sin filas tras la purga es reutilizable (SPEC-0085).
         if heap_page_is_empty(database, page)? {
@@ -186,12 +187,10 @@ fn purge_targets(database: &mut Database, targets: &[ReapTarget]) -> Result<(), 
         }
     }
     catalog.save(database)?;
-    database.rebuild_primary_index()?;
-    for (table, ids) in &purged_ids {
-        if let Some(indexes) = database.indexes.get_mut(table) {
-            indexes.compact(ids);
-        }
-    }
+    // Rebuild desde las filas vivas (SPEC-0101): elimina las entradas
+    // huérfanas de las purgadas en los índices derivados y recalcula los
+    // localizadores del índice primario (el `heap_remove` los desplazó).
+    database.compact_derived_indexes()?;
     Ok(())
 }
 
@@ -253,6 +252,24 @@ impl Database {
         self.indexes
             .get(table)
             .map_or(0, crate::indexes::TableIndexes::graph_edge_count)
+    }
+
+    /// Número de vectores indexados del índice HNSW de una tabla (SPEC-0101).
+    ///
+    /// Señal observable de compactación: tras un `reap()` que purga filas
+    /// vectoriales, el rebuild deja solo los vectores de las filas vivas, de
+    /// modo que este conteo baja al de filas vivas con embedding.
+    ///
+    /// Args:
+    ///     table: Nombre de la tabla.
+    ///
+    /// Returns:
+    ///     La longitud del corpus vectorial (`0` si la tabla no tiene índice en
+    ///     memoria o ningún embedding).
+    pub fn vector_index_len(&self, table: &str) -> usize {
+        self.indexes
+            .get(table)
+            .map_or(0, crate::indexes::TableIndexes::vector_len)
     }
 
     /// Número de documentos vivos del índice invertido de `column`.

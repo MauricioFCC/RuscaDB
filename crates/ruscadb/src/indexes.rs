@@ -389,35 +389,33 @@ impl TableIndexes {
         }
     }
 
-    /// Poda selectiva de los índices derivados tras el `reap()` (SPEC-0085).
+    /// Indexa una fila viva durante la reconstrucción de índices (SPEC-0101).
     ///
-    /// **WHAT**: elimina permanentemente los rastros de los `RecordId` que el
-    /// heap ya purgó: postings del índice invertido y aristas del CSR
-    /// incidentes a sus nodos. **WHY**: los borrados lógicos dejan tombstones y
-    /// postings/aristas huérfanos que nunca se compactaban (deuda MVP); el GC de
-    /// derivados los libera sin tocar las filas vivas. **WHERE**: cableado desde
-    /// `Database::reap`.
-    ///
-    /// Conserva los tombstones en `deleted` (el heap ya no tiene esas filas, así
-    /// que siguen fuera de KNN/TRAVERSE) y no altera los resultados de las filas
-    /// vivas. Es idempotente.
+    /// **WHAT**: variante de [`TableIndexes::index_record`] para el *rebuild*
+    /// desde el heap: indexa el vector y el texto igual, pero solo añade aristas
+    /// del CSR cuyo destino sea una fila viva (`live`). **WHY**: tras el
+    /// `reap()` una fila purgada puede seguir siendo destino de una arista viva
+    /// (p. ej. `b -> d` con `d` purgado); indexarla crearía un nodo huérfano.
+    /// **WHERE**: usado por [`Database::rebuild_indexes`].
     ///
     /// Args:
-    ///     purged: `RecordId` que el heap ya no contiene.
-    pub(crate) fn compact(&mut self, purged: &BTreeSet<RecordId>) {
-        if purged.is_empty() {
-            return;
-        }
-        for index in self.fts.values_mut() {
-            for id in purged {
-                index.drop_document(id);
-            }
-        }
-        let dead_nodes: BTreeSet<NodeId> = purged
-            .iter()
-            .filter_map(|id| self.graph.to_node.get(id).copied())
-            .collect();
-        self.graph.graph.remove_nodes(&dead_nodes);
+    ///     record: Registro vivo del heap (sin `deleted_tx`).
+    ///     table: Definición de la tabla (columnas `TEXT`).
+    ///     live: `RecordId` de todas las filas vivas de la tabla.
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si un vector no coincide con la
+    ///     dimensión del índice de la tabla.
+    fn index_live_record(
+        &mut self,
+        record: &Record,
+        table: &TableDef,
+        live: &BTreeSet<RecordId>,
+    ) -> Result<(), RuscaError> {
+        self.index_vector(record)?;
+        self.index_graph_restricted(record, live);
+        self.index_text(record, table);
+        Ok(())
     }
 
     /// Número de aristas únicas del CSR de la tabla (introspección, SPEC-0085).
@@ -487,10 +485,33 @@ impl TableIndexes {
     /// Añade las aristas salientes del registro al grafo (sin compilar).
     fn index_graph(&mut self, record: &Record) {
         for edge in &record.edges.out {
-            let from = self.graph.node_id(record.id);
-            let to = self.graph.node_id(edge.node);
-            self.graph.graph.add_edge(from, to);
+            self.add_edge(record.id, edge.node);
         }
+    }
+
+    /// Añade solo las aristas salientes cuyo destino es una fila viva (SPEC-0101).
+    ///
+    /// Args:
+    ///     record: Registro vivo del heap.
+    ///     live: `RecordId` de las filas vivas de la tabla.
+    fn index_graph_restricted(&mut self, record: &Record, live: &BTreeSet<RecordId>) {
+        for edge in &record.edges.out {
+            if !live.contains(&edge.node) {
+                continue;
+            }
+            self.add_edge(record.id, edge.node);
+        }
+    }
+
+    /// Registra una arista dirigida `from -> to` en el CSR acumulado.
+    ///
+    /// Args:
+    ///     from: `RecordId` de origen.
+    ///     to: `RecordId` de destino.
+    fn add_edge(&mut self, from: RecordId, to: RecordId) {
+        let from = self.graph.node_id(from);
+        let to = self.graph.node_id(to);
+        self.graph.graph.add_edge(from, to);
     }
 
     /// Indexa el escalar de texto de cada columna `TEXT` del esquema.
@@ -613,7 +634,12 @@ impl Database {
     /// Reconstruye los índices en memoria escaneando todas las tablas.
     ///
     /// Se invoca al abrir la base (durabilidad): los índices son derivados del
-    /// heap y no se persisten (fuera de alcance de SPEC-0017).
+    /// heap y no se persisten (fuera de alcance de SPEC-0017). También lo usa
+    /// [`Database::compact_derived_indexes`] tras el `reap()` (SPEC-0101).
+    ///
+    /// Indexa **solo** las filas vivas (sin `deleted_tx`) y, en dos pasadas,
+    /// añade aristas del CSR únicamente hacia filas vivas: así una fila purgada
+    /// no reaparece como nodo huérfano por ser destino de una arista viva.
     ///
     /// Errors:
     ///     [`RuscaError::TableNotFound`] / [`RuscaError::DimensionMismatch`]
@@ -623,19 +649,56 @@ impl Database {
         let mut indexes = BTreeMap::new();
         for name in catalog.table_names() {
             let table = catalog.get(&name)?.clone();
-            let mut table_indexes = TableIndexes::default();
+            // Primera pasada: recolecta las filas vivas (SPEC-0101). Las
+            // versiones borradas no entran en los índices derivados (SPEC-0022):
+            // solo se indexa la versión viva.
+            let mut live = BTreeSet::new();
+            let mut records = Vec::new();
             for (_, record) in heap_scan(self, &table)? {
-                // Las versiones borradas no entran en los índices derivados
-                // (SPEC-0022): solo se indexa la versión viva.
                 if record.meta.deleted_tx.is_some() {
                     continue;
                 }
-                table_indexes.index_record(&record, &table)?;
+                live.insert(record.id);
+                records.push(record);
+            }
+            // Segunda pasada: indexa vector/texto y las aristas hacia filas vivas.
+            let mut table_indexes = TableIndexes::default();
+            for record in &records {
+                table_indexes.index_live_record(record, &table, &live)?;
             }
             table_indexes.finalize();
             indexes.insert(name, table_indexes);
         }
         self.indexes = indexes;
+        Ok(())
+    }
+
+    /// Reconstruye los índices derivados desde las filas vivas del heap (SPEC-0101).
+    ///
+    /// **WHAT**: rehace los índices vectorial (HNSW), de grafo (CSR) y de texto
+    /// (invertido) de cada tabla a partir de las filas visibles del heap, y
+    /// reconstruye el índice primario. **WHY**: tras [`Database::reap`] la purga
+    /// física elimina filas del heap, pero los índices derivados en memoria
+    /// conservaban sus entradas (vectores, aristas y postings) como huérfanos;
+    /// el rebuild los deja con solo las filas vivas. **WHERE**: invocado al
+    /// final de [`Database::reap`]; expuesto también para compactar a demanda.
+    ///
+    /// Reutiliza `rebuild_indexes` y `rebuild_primary_index` (SPEC-0019/0024)
+    /// para no duplicar la lógica de reconstrucción. Solo indexa filas sin
+    /// `deleted_tx` y aristas hacia filas vivas, de modo que no quedan entradas
+    /// de filas purgadas. Es **idempotente**: repetirlo no cambia el resultado
+    /// ni los conteos.
+    ///
+    /// Returns:
+    ///     `Ok(())` tras reconstruir los índices.
+    ///
+    /// Errors:
+    ///     [`RuscaError::CorruptManifest`] si el heap o el catálogo son inválidos;
+    ///     [`RuscaError::DimensionMismatch`] si un vector rompe la dimensión del
+    ///     índice de su tabla.
+    pub fn compact_derived_indexes(&mut self) -> Result<(), RuscaError> {
+        self.rebuild_indexes()?;
+        self.rebuild_primary_index()?;
         Ok(())
     }
 
