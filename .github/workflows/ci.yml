@@ -142,7 +142,7 @@ jobs:
       - name: Generate CycloneDX SBOM (JSON)
         run: cargo cyclonedx --format json --all
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-cyclonedx
           path: "**/bom.json"
@@ -177,7 +177,7 @@ jobs:
         run: python scripts/mutation_diff_gate.py mutants.out/outcomes.json --min-score 70
       - name: Upload mutants outcomes
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: mutants-diff-outcomes
           path: mutants.out/outcomes.json
@@ -212,7 +212,7 @@ jobs:
         run: python scripts/coverage_gate.py lcov.info --scope ruscadb-core/ --min-line 80 --min-branch 70 --scope ruscadb-txn/ --min-line 90 --min-branch 70 --scope ruscadb-wal/ --min-line 90 --min-branch 70
       - name: Upload lcov
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-lcov
           path: lcov.info
