@@ -98,7 +98,7 @@ impl Database {
 ///
 /// Errors:
 ///     [`RuscaError::CorruptManifest`] si una página del heap es inválida.
-fn locate_row(
+pub(crate) fn locate_row(
     database: &mut Database,
     table: &TableDef,
     id: &RecordId,

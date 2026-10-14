@@ -205,16 +205,50 @@ fn rewrite_row(
     locator: RowLocator,
     tx: u64,
 ) -> Result<(), RuscaError> {
-    if let Some(old_value) = indexed_value(table, record) {
+    let updated = apply_assignments(database, table, record, assignments, tx)?;
+    persist_row_update(database, catalog, table, record, &updated, locator)
+}
+
+/// Persiste una versión actualizada de una fila manteniendo los índices.
+///
+/// Punto único de escritura de una actualización (SPEC-0043 y SPEC-0091):
+/// retira la entrada del índice secundario del valor **anterior**, reescribe la
+/// versión en su localizador del heap, inserta la entrada del valor **nuevo** y
+/// refresca el índice invertido. Se separa de [`rewrite_row`] para que la API
+/// estructurada por `RecordId` ([`Database::update`]) reuse exactamente la
+/// misma ruta de persistencia que el `UPDATE ... WHERE` en RQL.
+///
+/// Args:
+///     database: Base abierta (asignador de páginas + índices en memoria).
+///     catalog: Catálogo cargado (definición de la tabla).
+///     table: Definición de la tabla objetivo.
+///     previous: Versión viva original (inmutable) usada para retirar índices.
+///     updated: Nueva versión a persistir (`created_tx`/`lsn` ya estampados).
+///     locator: Localizador de la fila (no cambia con la actualización).
+///
+/// Returns:
+///     `Ok(())` tras persistir la versión y mantener los índices.
+///
+/// Errors:
+///     [`RuscaError::TypeMismatch`] si el valor indexado no pertenece a su
+///     columna; [`RuscaError::CorruptManifest`] si la fila actualizada no cabe.
+pub(crate) fn persist_row_update(
+    database: &mut Database,
+    catalog: &mut Catalog,
+    table: &TableDef,
+    previous: &Record,
+    updated: &Record,
+    locator: RowLocator,
+) -> Result<(), RuscaError> {
+    if let Some(old_value) = indexed_value(table, previous) {
         index_remove(database, catalog, &table.name, &old_value, locator)?;
     }
-    let updated = apply_assignments(database, table, record, assignments, tx)?;
-    heap_update(database, catalog, &table.name, locator, &updated)?;
-    if let Some(new_value) = indexed_value(table, &updated) {
+    heap_update(database, catalog, &table.name, locator, updated)?;
+    if let Some(new_value) = indexed_value(table, updated) {
         index_insert(database, catalog, &table.name, &new_value, locator)?;
     }
     if let Some(indexes) = database.indexes.get_mut(&table.name) {
-        indexes.refresh_text(&updated, table);
+        indexes.refresh_text(updated, table);
     }
     Ok(())
 }

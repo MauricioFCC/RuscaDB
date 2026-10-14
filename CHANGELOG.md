@@ -210,6 +210,29 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   regresión determinista `knn_postfilter_ties_are_deterministic` + seed
   proptest versionada.
 
+- **SPEC-0089** (Ola 5): automatización de releases y validación de
+  CHANGELOG/commits — `scripts/check_commits.py` (Conventional Commits sobre
+  rangos/ficheros) y `scripts/check_changelog.py` (`[Unreleased]` + sección
+  versionada del tag, con `--notes-out`); job `commits` (solo PR) en `ci.yml`
+  y `release.yml` que publica el GitHub Release al empujar un tag `v*` (notas
+  del CHANGELOG + SBOM CycloneDX; `contents: write` solo al publicar).
+- **SPEC-0090** (Ola 5): job `msrv` en `ci.yml` que compila con el piso
+  `rust-version` (1.89) y `cargo check --workspace --all-features --locked`;
+  `check_ci_config.py` compara el job contra `rust-version` (fuente única).
+- **SPEC-0091** (Ola 6): escritura MCP estructurada — `Database::update(table,
+  id, scalars)` actualiza escalares de una fila viva por `RecordId` (parcial,
+  validando el esquema y reutilizando la ruta de índices del `UPDATE ... WHERE`
+  vía `persist_row_update`); tools MCP `update`/`delete` **solo** con
+  `McpServer::read_write`, que delegan en la fachada (sin componer SQL), aplican
+  el RBAC de la `Database` (-32000 con rol `Read`) y validan `RecordId`
+  (-32602). `tools/list` las publica solo en modo escritura.
+- **SPEC-0092** (Ola 6): reporte explícito de cobertura de **ramas** (BRDA) —
+  `scripts/branch_coverage_report.py` reutiliza el parser de
+  `coverage_gate.py` y el `lcov.info` del gate, cita la rama por scope y por
+  crate (peor a mejor), aplica `--min-branch` y vuelca `--json-out`; el job
+  `coverage` de `ci.yml` sube el artefacto `branch-coverage-report` y
+  `check_ci_config.py` lo valida.
+
 ### Retrospectiva
 
 - Roadmap §2.6: ritual de **retrospectiva de frontera** formalizado — se
@@ -261,6 +284,12 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   como líneas futuras: automatizar releases/tags, branch-coverage en el
   gate, job MSRV en CI, code review multi-agente cableado y gate RED-first
   (roadmap §Estado «Líneas futuras»).
+- Sexta edición (Ola 5, flujos P0): **automatización de releases + job MSRV
+  implementados** (SPEC-0089/SPEC-0090), cerrando dos de los P0 de proceso del
+  análisis 2026-10-13. Quedan como líneas futuras: branch-coverage explícito en
+  el gate (el gate ya mide BRDA con `--min-branch`, pero sin job dedicado),
+  code review multi-agente cableado (FF-11), gate RED-first con harness y la
+  retro T2-LLM-judge programada.
 
 ### Changed
 

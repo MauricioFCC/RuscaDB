@@ -30,6 +30,7 @@ mod index;
 mod indexes;
 mod join;
 mod lock;
+mod row_update;
 mod table_api;
 mod ts_api;
 

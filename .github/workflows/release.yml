@@ -1,0 +1,82 @@
+# Release de RuscaDB (SPEC-0089) — publica un GitHub Release al empujar un tag v*.
+#
+# Mínimo privilegio (NF-0089-02): el workflow corre con `contents: read` a nivel
+# raíz; el job `release` eleva a `contents: write` solo para crear el Release.
+#
+# Flujo: valida que el CHANGELOG tenga la sección [X.Y.Z] del tag, corre los
+# gates de arquitectura/config, genera el SBOM CycloneDX como artefacto y
+# publica el Release con las notas extraídas del CHANGELOG.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag a liberar (p. ej. v0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Resolve tag to release
+        id: tag
+        run: |
+          ref="${{ inputs.tag != '' && inputs.tag || github.ref_name }}"
+          echo "value=$ref" >> "$GITHUB_OUTPUT"
+      - name: CHANGELOG enlazado con el tag
+        run: python scripts/check_changelog.py CHANGELOG.md --tag "${{ steps.tag.outputs.value }}"
+      - name: Guards de arquitectura y config de CI
+        run: |
+          python scripts/check_architecture.py
+          python scripts/check_ci_config.py
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-cyclonedx
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
+      - name: SBOM (CycloneDX)
+        run: cargo cyclonedx --format json --all
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v6
+        with:
+          name: sbom-cyclonedx
+          path: "**/bom.json"
+          if-no-files-found: warn
+          retention-days: 90
+
+  release:
+    name: Publish GitHub Release
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Extract release notes from CHANGELOG
+        run: python scripts/check_changelog.py CHANGELOG.md --tag "${{ needs.gate.outputs.tag }}" --notes-out release-notes.md
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ needs.gate.outputs.tag }}" --title "${{ needs.gate.outputs.tag }}" --notes-file release-notes.md

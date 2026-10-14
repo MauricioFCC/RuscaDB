@@ -71,6 +71,9 @@ REQUIRED_MUTANTS_KEYS: tuple[str, ...] = (
 # Claves que cargo-mutants rechaza (`deny_unknown_fields`): si aparecen, T3
 # fallaría al parsear la config. Se valida explícitamente.
 FORBIDDEN_MUTANTS_KEYS: tuple[str, ...] = ("toolchain",)
+# Manifiesto raíz (fuente única del MSRV) y workflow de release (SPEC-0089/0090).
+ROOT_MANIFEST = ROOT / "Cargo.toml"
+RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 
 
 def _load_yaml(text: str) -> dict[str, Any] | None:
@@ -109,6 +112,49 @@ def _jobs_from_text(text: str) -> set[str]:
             if key.endswith(":"):
                 jobs.add(key[:-1].strip())
     return jobs
+
+
+def _job_block(text: str, job: str) -> str | None:
+    """Devuelve el texto del bloque de un job de primer nivel de un workflow.
+
+    Args:
+        text: Contenido del workflow YAML.
+        job: Nombre del job (clave de 2 espacios bajo ``jobs:``).
+
+    Returns:
+        El bloque del job (sin su cabecera) hasta el siguiente job de primer
+        nivel; ``None`` si el job no existe.
+    """
+    marker = f"\n  {job}:"
+    index = text.find(marker)
+    if index == -1:
+        return None
+    block: list[str] = []
+    for line in text[index + len(marker):].splitlines():
+        if (
+            line.startswith("  ")
+            and not line.startswith("   ")
+            and line.rstrip().endswith(":")
+        ):
+            break
+        block.append(line)
+    return "\n".join(block)
+
+
+def _workspace_rust_version() -> str | None:
+    """Lee ``rust-version`` del ``Cargo.toml`` raíz (fuente única del MSRV).
+
+    Returns:
+        La versión declarada (p. ej. ``1.89``) o ``None`` si no existe.
+    """
+    if not ROOT_MANIFEST.exists():
+        return None
+    text = ROOT_MANIFEST.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("rust-version") and "=" in stripped:
+            return stripped.split("=", 1)[1].strip().strip('"')
+    return None
 
 
 def _fuzz_targets_from_matrix(job: dict[str, Any]) -> set[str]:
@@ -397,6 +443,115 @@ def check_coverage_job(errors: list[str]) -> None:
             errors.append(f"ci.yml: {why} (chequeo textual)")
 
 
+def check_branch_report_job(errors: list[str]) -> None:
+    """Valida el reporte explícito de ramas en el job `coverage` (SPEC-0092).
+
+    El bloque del job `coverage` debe invocar
+    ``scripts/branch_coverage_report.py`` con ``--json-out`` y adjuntar el
+    artefacto ``branch-coverage-report`` (reporte BRDA por crate).
+    """
+    if not CI.exists():
+        errors.append(f"no existe {CI.relative_to(ROOT)}")
+        return
+    block = _job_block(CI.read_text(encoding="utf-8"), "coverage")
+    if block is None:
+        errors.append("ci.yml: falta el job 'coverage' (SPEC-0092)")
+        return
+    for needle, why in [
+        (
+            "branch_coverage_report.py",
+            "el job 'coverage' debe publicar el reporte de ramas "
+            "(scripts/branch_coverage_report.py)",
+        ),
+        (
+            "--json-out",
+            "el reporte de ramas debe volcarse a JSON (--json-out)",
+        ),
+        (
+            "branch-coverage-report",
+            "el reporte de ramas debe subirse como artefacto "
+            "'branch-coverage-report'",
+        ),
+    ]:
+        if needle not in block:
+            errors.append(f"ci.yml: {why}")
+
+
+def check_msrv_job(errors: list[str]) -> None:
+    """Valida el job `msrv` de ``ci.yml`` (SPEC-0090).
+
+    El job debe existir, usar la versión de ``rust-version`` del ``Cargo.toml``
+    raíz (fuente única, sin duplicar el número) y compilar con
+    ``cargo check --workspace --all-features --locked``.
+    """
+    version = _workspace_rust_version()
+    if version is None:
+        errors.append("Cargo.toml: falta 'rust-version' (fuente del MSRV)")
+        return
+    if not CI.exists():
+        errors.append(f"no existe {CI.relative_to(ROOT)}")
+        return
+    block = _job_block(CI.read_text(encoding="utf-8"), "msrv")
+    if block is None:
+        errors.append("ci.yml: falta el job 'msrv' (SPEC-0090)")
+        return
+    if version not in block:
+        errors.append(
+            f"ci.yml: el job 'msrv' no usa la versión de rust-version ({version})"
+        )
+    if "cargo check" not in block:
+        errors.append("ci.yml: el job 'msrv' debe compilar con 'cargo check'")
+    if "--locked" not in block:
+        errors.append("ci.yml: el job 'msrv' debe usar '--locked'")
+
+
+def check_release_config(errors: list[str]) -> None:
+    """Valida el cableado de release (SPEC-0089).
+
+    Comprueba el job `commits` de ``ci.yml`` (solo PR, corre ambos
+    validadores) y ``release.yml`` (disparo por tags, ``contents: write``,
+    validación del CHANGELOG antes de publicar y SBOM CycloneDX).
+    """
+    if not CI.exists():
+        errors.append(f"no existe {CI.relative_to(ROOT)}")
+    else:
+        block = _job_block(CI.read_text(encoding="utf-8"), "commits")
+        if block is None:
+            errors.append("ci.yml: falta el job 'commits' (SPEC-0089)")
+        else:
+            for needle, why in [
+                (
+                    "check_commits.py",
+                    "el job 'commits' debe correr scripts/check_commits.py",
+                ),
+                (
+                    "check_changelog.py",
+                    "el job 'commits' debe correr scripts/check_changelog.py",
+                ),
+                (
+                    "pull_request",
+                    "el job 'commits' debe correr solo en pull_request",
+                ),
+            ]:
+                if needle not in block:
+                    errors.append(f"ci.yml: {why}")
+    if not RELEASE_WORKFLOW.exists():
+        errors.append(f"no existe {RELEASE_WORKFLOW.relative_to(ROOT)}")
+        return
+    release = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    for needle, why in [
+        ("tags:", "release.yml debe dispararse en tags"),
+        ("contents: write", "release.yml necesita contents: write para publicar"),
+        (
+            "check_changelog.py",
+            "release.yml debe validar el CHANGELOG antes de publicar",
+        ),
+        ("cyclonedx", "release.yml debe generar el SBOM (CycloneDX)"),
+    ]:
+        if needle not in release:
+            errors.append(f"release.yml: {why}")
+
+
 def main() -> int:
     """Ejecuta todas las validaciones y devuelve el exit code."""
     errors: list[str] = []
@@ -407,6 +562,9 @@ def main() -> int:
     check_publish_flags(errors)
     check_mutation_diff_job(errors)
     check_coverage_job(errors)
+    check_branch_report_job(errors)
+    check_msrv_job(errors)
+    check_release_config(errors)
 
     if errors:
         print("[FAIL] check_ci_config: configuración de CI/supply chain inválida:")
@@ -416,9 +574,11 @@ def main() -> int:
 
     print(
         "[OK] check_ci_config: ci.yml (matriz rápida ubuntu/windows + "
-        "mutation-diff MS>=70 en PR), "
+        "mutation-diff MS>=70 en PR + commits/CHANGELOG en PR + msrv + "
+        "reporte BRDA), "
         "nightly.yml (mutation/fuzz/miri/sanitizers/loom + test-macos, alert-only; "
         "fuzz con query_parse/wal_recover + dictionary), "
+        "release.yml (tags v* + SBOM), "
         "mutants.toml y deny.toml (4 secciones) válidos."
     )
     return 0

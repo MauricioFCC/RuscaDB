@@ -817,7 +817,7 @@ Cada fase se ejecuta **spec-first**: se escriben `specs/<feature>.md` + tests
 RED antes de tocar código; el gate de fase es la matriz de trazabilidad
 actualizada.
 
-### 8.1 Plan de producción 2026 (Olas 0–4)
+### 8.1 Plan de producción 2026 (Olas 0–6)
 
 > Origen: auditoría *production readiness* (2026-10-12) con veredicto
 > «**NO apto para producción**» (10 criterios: API ❌, IA real ❌, resto ⚠️) y
@@ -840,11 +840,17 @@ actualizada.
 | SPEC-0087 | `examples` | 4 | `examples/` ejecutables + guía de API para terceros | — |
 | SPEC-0088 | `p2_hardening` | 4 | Auth de sesión en MCP + rotación de claves (KMS-lite) | — |
 | SPEC-0083 | `static_embeddings` | 4 | Feature `static-embeddings` con `model2vec-rs` (potion-base-8M, `local-only`); enmienda de ADR-016 | arXiv:2410.22517 |
+| SPEC-0089 | `release_automation` | 5 | Automatización de releases/tags + validación CHANGELOG/commits (job `commits` en PR, `release.yml` con SBOM) | release-please / git-cliff |
+| SPEC-0090 | `msrv_gate` | 5 | Job `msrv` en CI con el piso `rust-version` (1.89) y `cargo check` | cargo `rust-version` |
+| SPEC-0091 | `mcp_advanced_write` | 6 | `Database::update` estructurado + tools MCP `update`/`delete` (sin SQL en el adapter, RBAC delegado) | escritura MCP estructurada 2026 |
+| SPEC-0092 | `branch_coverage_report` | 6 | Reporte explícito de ramas (BRDA) por crate reutilizando el lcov del gate + artefacto JSON en CI | DORA/SRE: cobertura observable |
 
 **Secuencia crítica**: Ola 0 en paralelo (SPEC-0076 en la fachada ∥
 SPEC-0077 en `ruscadb-txn`) → Ola 1 en paralelo (0078 ∥ 0079 ∥ 0084) →
 Ola 2 (0080 ∥ 0085/0086, después 0081 en solitario por tocar el WAL) →
-Ola 3 (0082) → Ola 4 (0087 ∥ 0088 ∥ 0083). Cada cierre de ola exige T1
+Ola 3 (0082) → Ola 4 (0087 ∥ 0088 ∥ 0083) → Ola 5 (flujos P0: 0089 ∥ 0090) →
+Ola 6 (producto/frontera + proceso: 0091 ∥ 0092).
+Cada cierre de ola exige T1
 completo + commit + CI verde antes de abrir la siguiente.
 
 ---
@@ -869,6 +875,13 @@ completo + commit + CI verde antes de abrir la siguiente.
 > dejó **P0 de proceso** no resueltos en «Líneas futuras»: releases/tags
 > automáticos, branch-coverage en el gate, job MSRV, code review
 > multi-agente y gate RED-first (CHANGELOG «Retrospectiva 5.ª»).
+> **Ola 5 (2026-10-14)**: dos P0 de proceso cerrados — SPEC-0089
+> (releases/tags + validación CHANGELOG/commits) y SPEC-0090 (job MSRV 1.89).
+> **Ola 6 (2026-10-14)**: SPEC-0091
+> (`Database::update` estructurado + tools MCP `update`/`delete` con RBAC
+> delegado y sin SQL en el adapter) y SPEC-0092 (reporte explícito de ramas
+> BRDA por crate + artefacto en CI).
+> El resto de flujos P0 sigue en «Líneas futuras».
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
 > SDD cuyos AC están cubiertos por tests `test_ac_*` y verificados por
@@ -885,7 +898,9 @@ completo + commit + CI verde antes de abrir la siguiente.
 | F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062, SPEC-0066 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
 | **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ✅ 13/13 | Olas 0–4 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow), 0081 (group commit greedy-pipelined + FsyncPolicy + crash-harness), 0082 (gates SLO Mann-Whitney/bootstrap/A-A + slo.yml), 0083 (embeddings estáticos model2vec-rs + enmienda ADR-016), 0087 (examples ejecutables + `docs/api_guide.md`, smoke por subproceso), 0088 (session/auth MCP `-32001` + keystore KMS-lite con rotación). **386 AC trazados**. |
-| Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0)**: automatizar releases/tags + validación CHANGELOG/commits en CI; branch-coverage en el gate de cobertura; job MSRV (1.89) en CI; code review multi-agente cableado (FF-11); gate RED-first con harness (adv. guardrails); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083); persistencia del caché semántico (bajo valor: cada mutación invalida); tools MCP de escritura avanzadas (update/delete por tool) |
+| **Ola 5 — flujos P0 (SPEC-0089..0090)** | ✅ 2/2 | Cierra 2026-10-14: SPEC-0089 (automatización de releases/tags + validación CHANGELOG/commits: `check_commits.py`/`check_changelog.py`, job `commits` en PR, `release.yml` con SBOM) y SPEC-0090 (job `msrv` 1.89 en CI). |
+| **Ola 6 — escritura MCP estructurada + reporte BRDA (SPEC-0091..0092)** | ✅ 2/2 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` — actualización parcial por `RecordId`, reutiliza la ruta de índices del `UPDATE ... WHERE` — + tools MCP `update`/`delete` read_write-only con RBAC delegado y errores accionables -32602/-32000) y SPEC-0092 (reporte explícito de ramas BRDA por crate reutilizando el lcov del gate, con artefacto JSON en CI). **397 AC trazados**. |
+| Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0 — resto)**: code review multi-agente cableado (FF-11); gate RED-first con harness (adv. guardrails); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083); persistencia del caché semántico (bajo valor: cada mutación invalida) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |
 | **Motor SQL DataFusion (ADR-001)** | ✅ | **Resuelto (ADR-013)**: el motor propio RQL se mantiene como decisión consciente y el overlap con ADR-001 se cierra con un spike `TableProvider` opcional (feature `datafusion`, OFF por defecto, SPEC-0060) que demuestra paridad SQL sin cambiar el runtime por defecto. |

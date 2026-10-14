@@ -47,8 +47,8 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (retrospectiva 2026-10-12): **62 specs implementadas, 279
-AC trazados** (`cargo xtask trace`), **555 tests** (`cargo test --workspace --
+Estado de referencia (actualizado 2026-10-14): **92 specs implementadas, 397
+AC trazados** (`cargo xtask trace`), **555+ tests** (`cargo test --workspace --
 --list`, sin `--all-features`).
 
 Atajo opcional (mismos comandos, vía pre-commit):
@@ -82,6 +82,66 @@ el workspace debe ser portable (sin rutas de SO ni separadores hardcodeados).
 **macOS se valida en T3** (`nightly.yml`, job `test-macos`) por `schedule`: la
 cola de runners macOS es larga (~20 min) y no debe retrasar el feedback de
 push/PR. Ver la sección T3.
+
+### Higiene de release y MSRV (SPEC-0089/SPEC-0090) — T1
+
+Dos jobs adicionales en `ci.yml`:
+
+- **`commits`** (solo `pull_request`): corre `scripts/check_commits.py
+  --range origin/<base>..HEAD` (Conventional Commits) y
+  `scripts/check_changelog.py CHANGELOG.md` (sección `[Unreleased]`
+  documentada). Falla ruidoso (exit 2) si no hay commits que revisar.
+- **`msrv`**: compila con la toolchain del piso (`rust-version` = 1.89) y
+  `cargo check --workspace --all-features --locked`, para que el MSRV no sea
+  una promesa sin verificar. La versión vive en un solo lugar (`Cargo.toml`);
+  `scripts/check_ci_config.py` compara el job contra ella.
+
+El **release** lo publica `.github/workflows/release.yml` al empujar un tag
+`v*` (SPEC-0089): valida la sección `[X.Y.Z]` del CHANGELOG, corre los guards,
+genera el SBOM CycloneDX y crea el GitHub Release con las notas extraídas del
+CHANGELOG. Mínimo privilegio: `contents: read` global, `contents: write` solo
+en el job de publicación.
+
+```bash
+# Local: los mismos validadores que CI
+python scripts/check_commits.py --range origin/main..HEAD
+python scripts/check_changelog.py CHANGELOG.md --tag v0.1.0 --notes-out notas.md
+python scripts/check_ci_config.py
+```
+
+### Escritura estructurada MCP (SPEC-0091) — T1
+
+La fachada gana `Database::update(table, id, scalars)` (actualización parcial de
+una fila viva por `RecordId`, reutilizando la ruta de índices del
+`UPDATE ... WHERE`) y el servidor MCP publica las tools `update`/`delete` solo
+con `McpServer::read_write`:
+
+```bash
+cargo test -p ruscadb --test row_update_api            # AC-0091-01
+cargo test -p ruscadb --lib row_update                 # unit de la API
+cargo test -p ruscadb-mcp --test mcp_write_tools_advanced  # AC-0091-02..04
+```
+
+Contrato: el adapter **no compone SQL** (identificadores/valores no inyectables);
+el permiso real lo aplica el RBAC de la `Database` (rol `Read` ⇒ `-32000`) y un
+`RecordId` inválido responde `-32602`. En solo lectura las tools responden un
+rechazo accionable y no aparecen en `tools/list`.
+
+### Reporte de cobertura de ramas (SPEC-0092) — T1
+
+El job `coverage` publica un reporte explícito de ramas (BRDA) por crate
+reutilizando el `lcov.info` del gate (sin re-ejecutar la suite):
+
+```bash
+python scripts/branch_coverage_report.py lcov.info \
+  --scope ruscadb-core/ --min-branch 70 \
+  --scope ruscadb-txn/ --min-branch 70 \
+  --scope ruscadb-wal/ --min-branch 70 \
+  --json-out branch-coverage.json
+```
+
+`scripts/check_ci_config.py` (`check_branch_report_job`) valida el cableado y
+`crates/xtask/tests/branch_coverage.rs` cubre AC-0092-01/02.
 
 ---
 
@@ -314,6 +374,12 @@ el parseo de T1/T2/T3.
 | `nightly.yml` (`test-macos`) | SPEC-0046/AC-02 | idem |
 | `ci.yml` (`mutation-diff`) | SPEC-0061/T2m | `scripts/mutation_diff_gate.py` (MS_diff ≥ 70 %) |
 | `ci.yml` (`coverage`) | SPEC-0061 | `scripts/coverage_gate.py` (core ≥ 80/70) |
+| `ci.yml` (`commits`) | SPEC-0089/AC-03 | `scripts/check_commits.py` + `scripts/check_changelog.py` |
+| `release.yml` (tags `v*`) | SPEC-0089/AC-03 | `scripts/check_changelog.py --tag` + SBOM |
+| `ci.yml` (`msrv`) | SPEC-0090/AC-01 | `scripts/check_ci_config.py` (`rust-version`) |
+| `ruscadb` (`Database::update`) | SPEC-0091/AC-01 | `cargo test -p ruscadb --test row_update_api` |
+| `ruscadb-mcp` (`update`/`delete`) | SPEC-0091/AC-02..04 | `cargo test -p ruscadb-mcp --test mcp_write_tools_advanced` |
+| `ci.yml` (`coverage`, BRDA) | SPEC-0092/AC-02 | `scripts/branch_coverage_report.py` + `check_ci_config.py` |
 | `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
 | `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |
 | `xtask contract` | SPEC-0061 | `cargo xtask contract` (marcadores + estados) |

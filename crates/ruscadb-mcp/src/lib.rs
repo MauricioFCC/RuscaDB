@@ -2,14 +2,16 @@
 //!
 //! Local y sin red: un proceso padre lanza el binario y habla JSON-RPC 2.0 por
 //! stdin/stdout. Expone tools de lectura e inspección (`query`, `tables`,
-//! `integrity_check`); en esta iteración no hay escritura ni recursos.
+//! `integrity_check`), resources de tabla (`ruscadb://table/<name>`, SPEC-0075)
+//! y, con el opt-in [`McpServer::read_write`], escritura estructurada
+//! (`insert`, `update`, `delete`; SPEC-0075/SPEC-0091).
 //!
 //! **Autenticación de sesión (SPEC-0088)**: todos los métodos de datos exigen
 //! un handshake `session/auth` con token emitido por el padre vía
 //! [`McpServer::issue_session_token`]; la rotación del keystore
 //! ([`McpServer::rotate_keystore`]) invalida las sesiones en curso.
 
-use ruscadb::{Database, Keystore, RuscaError, ScalarValue};
+use ruscadb::{Database, Keystore, RecordId, RuscaError, ScalarMap, ScalarValue};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -351,6 +353,60 @@ impl McpServer {
                     Err(error) => error_response(id, ERR_SERVER, format!("insert falló: {error}")),
                 }
             }
+            "update" if self.read_write => {
+                let Some(table) = arguments.get("table").and_then(Value::as_str) else {
+                    return error_response(
+                        id,
+                        ERR_INVALID_PARAMS,
+                        "la tool 'update' requiere 'arguments.table' (string)".to_string(),
+                    );
+                };
+                let record_id = match parse_record_id(arguments, "update", &id) {
+                    Ok(record_id) => record_id,
+                    Err(response) => return response,
+                };
+                let Some(values) = arguments.get("values").and_then(Value::as_object) else {
+                    return error_response(
+                        id,
+                        ERR_INVALID_PARAMS,
+                        "la tool 'update' requiere 'arguments.values' (objeto columna->valor)"
+                            .to_string(),
+                    );
+                };
+                let scalars: ScalarMap = values
+                    .iter()
+                    .map(|(column, value)| (column.clone(), json_to_scalar(value)))
+                    .collect();
+                match self.db.update(table, &record_id, scalars) {
+                    Ok(updated) => ok_response(id, json!({ "updated": updated })),
+                    Err(error) => error_response(id, ERR_SERVER, format!("update falló: {error}")),
+                }
+            }
+            "delete" if self.read_write => {
+                let Some(table) = arguments.get("table").and_then(Value::as_str) else {
+                    return error_response(
+                        id,
+                        ERR_INVALID_PARAMS,
+                        "la tool 'delete' requiere 'arguments.table' (string)".to_string(),
+                    );
+                };
+                let record_id = match parse_record_id(arguments, "delete", &id) {
+                    Ok(record_id) => record_id,
+                    Err(response) => return response,
+                };
+                match self.db.delete(table, &record_id) {
+                    Ok(deleted) => ok_response(id, json!({ "deleted": deleted })),
+                    Err(error) => error_response(id, ERR_SERVER, format!("delete falló: {error}")),
+                }
+            }
+            // SPEC-0091: las tools de escritura estructurada son read_write-only;
+            // sin el opt-in responden un rechazo accionable (no "tool desconocida").
+            "update" | "delete" => error_response(
+                id,
+                ERR_SERVER,
+                "permiso denegado: las tools 'update'/'delete' requieren McpServer::read_write"
+                    .to_string(),
+            ),
             "tables" => match self.db.tables() {
                 Ok(tables) => ok_response(id, json!({ "tables": tables })),
                 Err(error) => error_response(id, ERR_SERVER, format!("tables falló: {error}")),
@@ -372,7 +428,10 @@ impl McpServer {
             other => error_response(
                 id,
                 ERR_INVALID_PARAMS,
-                format!("tool desconocida '{other}': disponibles query, tables, integrity_check"),
+                format!(
+                    "tool desconocida '{other}': disponibles query, tables, integrity_check \
+                     (y insert/update/delete con McpServer::read_write)"
+                ),
             ),
         }
     }
@@ -474,13 +533,47 @@ impl McpServer {
                 "name": "insert",
                 "description": "Inserta una fila (arguments.table y arguments.values columna->valor)."
             }));
+            tools.push(json!({
+                "name": "update",
+                "description": "Actualiza columnas de una fila por RecordId (arguments.table, arguments.id, arguments.values)."
+            }));
+            tools.push(json!({
+                "name": "delete",
+                "description": "Borra lógicamente una fila por RecordId (arguments.table y arguments.id)."
+            }));
         }
         Value::Array(tools)
     }
 }
 
-/// Convierte un valor JSON a un escalar del dominio (tool `insert`).
+/// Parsea `arguments.id` como [`RecordId`] o devuelve la respuesta de error.
 ///
+/// Args:
+///     arguments: Objeto `params.arguments` de la tool.
+///     tool: Nombre de la tool (para el mensaje accionable).
+///     id: Identificador JSON-RPC a ecoar en la respuesta de error.
+///
+/// Returns:
+///     `Ok(RecordId)` si `arguments.id` es un RecordId válido; `Err(respuesta)`
+///     con `-32602` y mensaje accionable si falta o no parsea.
+fn parse_record_id(arguments: &Value, tool: &str, id: &Value) -> Result<RecordId, String> {
+    let Some(text) = arguments.get("id").and_then(Value::as_str) else {
+        return Err(error_response(
+            id.clone(),
+            ERR_INVALID_PARAMS,
+            format!("la tool '{tool}' requiere 'arguments.id' (string RecordId)"),
+        ));
+    };
+    text.parse::<RecordId>().map_err(|_| {
+        error_response(
+            id.clone(),
+            ERR_INVALID_PARAMS,
+            format!("la tool '{tool}' recibió un RecordId inválido: '{text}'"),
+        )
+    })
+}
+
+/// Convierte un valor JSON a un escalar del dominio (tool `insert`).///
 /// Args:
 ///     value: Valor JSON (número, string, bool o null).
 ///

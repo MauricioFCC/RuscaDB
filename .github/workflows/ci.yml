@@ -98,6 +98,41 @@ jobs:
       - name: SDD contract (test -> spec, implemented fully traced)
         run: cargo xtask contract
 
+  # Piso MSRV (SPEC-0090): el workspace declara rust-version = "1.89"; este job
+  # compila con esa toolchain para que el MSRV no sea una promesa sin verificar
+  # (CI usa stable y rust-toolchain.toml pinnea 1.97.1, así que nadie compilaba
+  # con el piso real).
+  msrv:
+    name: MSRV (1.89)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check (MSRV floor, sin linkear)
+        run: cargo check --workspace --all-features --locked
+
+  # Higiene de release en el PR (SPEC-0089): mensajes Conventional Commits y
+  # CHANGELOG con [Unreleased] documentado. Solo PR (necesita la rama base para
+  # el rango de commits), como `mutation-diff`.
+  commits:
+    name: Commits & CHANGELOG
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Fetch base branch
+        run: git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
+      - name: Conventional Commits
+        run: python scripts/check_commits.py --range origin/${{ github.base_ref }}..HEAD
+      - name: CHANGELOG (Unreleased documentado)
+        run: python scripts/check_changelog.py CHANGELOG.md
+
   security:
     name: Security
     runs-on: ubuntu-latest
@@ -210,6 +245,18 @@ jobs:
         run: cargo llvm-cov --workspace --all-features --locked --lcov --output-path lcov.info
       - name: Gate core>=80 / txn>=90 / wal>=90
         run: python scripts/coverage_gate.py lcov.info --scope ruscadb-core/ --min-line 80 --min-branch 70 --scope ruscadb-txn/ --min-line 90 --min-branch 70 --scope ruscadb-wal/ --min-line 90 --min-branch 70
+      # Reporte explícito de ramas (SPEC-0092): reutiliza el lcov del gate, cita
+      # la cobertura BRDA por crate y la adjunta como artefacto JSON.
+      - name: Branch coverage report (BRDA per crate)
+        run: python scripts/branch_coverage_report.py lcov.info --scope ruscadb-core/ --min-branch 70 --scope ruscadb-txn/ --min-branch 70 --scope ruscadb-wal/ --min-branch 70 --json-out branch-coverage.json
+      - name: Upload branch coverage report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: branch-coverage-report
+          path: branch-coverage.json
+          if-no-files-found: warn
+          retention-days: 30
       - name: Upload lcov
         if: always()
         uses: actions/upload-artifact@v6
