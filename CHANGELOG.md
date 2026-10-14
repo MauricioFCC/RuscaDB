@@ -262,6 +262,16 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   exterior sin contraparte se emite una vez con las columnas interiores a `NULL`
   en las rutas indexada y no indexada; `JoinKind` en el AST con `Display`
   canónico (`JOIN`/`LEFT JOIN`).
+- **SPEC-0100** (Ola 7): provider LLM del harness — `scripts/llm_provider.py`
+  agnóstico con `local` por defecto (**llama.cpp `llama-server`**,
+  OpenAI-compatible, sin API key), `openai` para producción (`OPENAI_API_KEY`
+  obligatoria) y `ollama` legacy; selección por `RUSCADB_LLM_PROVIDER` con
+  overrides CLI; `scripts/llm_judge.py` construye el prompt T2 y
+  `--show-config`/`--show-prompt` no tocan la red.
+- **SPEC-0101** (Ola 7): compactación de índices derivados — `reap` reconstruye
+  HNSW/CSR/FTS desde las filas vivas (`Database::compact_derived_indexes` con
+  `rebuild_indexes` *live-aware* en dos pasadas); cierra el límite «sin
+  compactación de índices derivados» sin regresión de SPEC-0085.
 - **SPEC-0102** (Ola 7): `RETURNING` en DML — `INSERT`/`UPDATE`/`DELETE ...
   RETURNING *|<cols>` devuelven las filas afectadas (valores nuevos en UPDATE,
   valores borrados en DELETE) en lugar de `{"affected": N}`; sin RETURNING el

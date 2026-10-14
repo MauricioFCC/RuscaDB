@@ -93,9 +93,9 @@ cifrado.
   (SPEC-0096), no *keyset* ni cursor de servidor.
 - **Un índice secundario por tabla** (una columna); sin optimizador de consultas
   más allá de `IndexScan` por igualdad.
-- **GC de derivados sin compactación**: `reap` purga el heap, alimenta la
-  free-list y retira las entradas de los índices derivados (CSR/FTS) (SPEC-0085);
-  las estructuras (p. ej. HNSW) no se recompactan ni se reconstruyen.
+- **Compactación de índices derivados**: `reap` reconstruye HNSW/CSR/FTS desde
+  las filas vivas (SPEC-0101), de modo que las entradas de filas purgadas
+  desaparecen (sin tombstones residuales).
 - **Rollback no soportado en cifrado**: en modo cifrado las páginas viven en el
   WAL y nunca se publican a `.data`; `rollback` devuelve `InvalidConfig` (cerrar
   y reabrir para volver al último estado confirmado).

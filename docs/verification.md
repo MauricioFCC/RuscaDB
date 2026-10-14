@@ -47,7 +47,7 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (actualizado 2026-10-14): **100 specs implementadas, 419
+Estado de referencia (actualizado 2026-10-14): **103 specs implementadas, 435
 AC trazados** (`cargo xtask trace`), **555+ tests** (`cargo test --workspace --
 --list`, sin `--all-features`).
 
@@ -190,6 +190,24 @@ cargo test -p xtask --test mutation_gate
 cargo mutants --in-diff pr.diff --baseline=skip -o mutants.out
 python scripts/mutation_diff_gate.py mutants.out/outcomes.json --min-score 70
 ```
+
+### LLM del harness: dev local (llama.cpp) / prod OpenAI (SPEC-0100)
+
+El T2 LLM-judge usa `scripts/llm_provider.py`, agnóstico de proveedor y
+seleccionable por entorno:
+
+```bash
+# Dev (default): llama.cpp llama-server (OpenAI-compatible, sin API key)
+RUSCADB_LLM_PROVIDER=local RUSCADB_LLM_BASE_URL=http://127.0.0.1:8080/v1 \
+  python scripts/llm_provider.py --show-config
+# Producción: OpenAI
+RUSCADB_LLM_PROVIDER=openai OPENAI_API_KEY=sk-... \
+  python scripts/llm_judge.py pr.diff
+```
+
+`local` (llama.cpp) es el default de desarrollo; `openai` es producción y exige
+`OPENAI_API_KEY` (si falta, exit 2 accionable). `ollama` (11434) queda como
+compatibilidad legacy. `--show-config`/`--show-prompt` no tocan la red.
 
 ---
 
@@ -434,6 +452,10 @@ el parseo de T1/T2/T3.
 | RQL (`LIMIT/OFFSET`) | SPEC-0096/AC-01..03 | `cargo test -p ruscadb --test query_pagination` + `cargo test -p ruscadb-query` |
 | RQL (`SELECT DISTINCT`) | SPEC-0097/AC-01..03 | `cargo test -p ruscadb --test query_distinct` + `cargo test -p ruscadb-query` |
 | RQL (`LEFT JOIN`) | SPEC-0099/AC-01..03 | `cargo test -p ruscadb --test join_left` + `cargo test -p ruscadb-query` |
+| LLM provider (T2 judge) | SPEC-0100/AC-01..05 | `cargo test -p xtask --test llm_provider` (offline) |
+| Índices derivados (`reap`) | SPEC-0101/AC-01..04 | `cargo test -p ruscadb --test derived_index_compaction` |
+| RQL (`RETURNING`) | SPEC-0102/AC-01..03 | `cargo test -p ruscadb --test dml_returning` |
+| RQL (`RIGHT`/`FULL`/`CROSS`) | SPEC-0103/AC-01..04 | `cargo test -p ruscadb --test join_outer` |
 | `mutation_diff_gate.py` | SPEC-0098/AC-01..03 | `cargo test -p xtask --test mutation_gate` |
 | `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
 | `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |
