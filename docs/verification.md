@@ -47,7 +47,7 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (actualizado 2026-10-14): **94 specs implementadas, 405
+Estado de referencia (actualizado 2026-10-14): **95 specs implementadas, 407
 AC trazados** (`cargo xtask trace`), **555+ tests** (`cargo test --workspace --
 --list`, sin `--all-features`).
 
@@ -406,6 +406,7 @@ el parseo de T1/T2/T3.
 | `ci.yml` (`coverage`, BRDA) | SPEC-0092/AC-02 | `scripts/branch_coverage_report.py` + `check_ci_config.py` |
 | `ruscadb` (`<data>.cache.json`) | SPEC-0093/AC-01..04 | `cargo test -p ruscadb --test semantic_cache_persistence` |
 | `ci.yml` (`red-first`) | SPEC-0094/AC-02 | `cargo xtask red` + `scripts/red_first_gate.py` |
+| `docs/MVP.md` | SPEC-0095/AC-01..02 | `cargo test -p ruscadb --test mvp_doc_coherence` |
 | `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
 | `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |
 | `xtask contract` | SPEC-0061 | `cargo xtask contract` (marcadores + estados) |

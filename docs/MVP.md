@@ -59,25 +59,44 @@ cifrado.
 - **Cifrado en reposo**: `EncryptionConfig::new(clave)` o
   `EncryptionConfig::from_passphrase(..)`; el WAL se cifra (AEAD) y en disco no
   queda ningún claro verificable.
+- **Concurrencia y durabilidad**: lock exclusivo cross-proceso `<data>.lock`
+  (SPEC-0076) — una segunda apertura devuelve `DatabaseInUse`; group commit con
+  `FsyncPolicy::{Full, Normal}` (SPEC-0081), donde `Normal` coalesce fsyncs sin
+  confirmar nada no durable.
+- **Escritura estructurada**: `Database::update(table, id, scalars)` (SPEC-0091)
+  actualiza columnas de una fila viva por `RecordId` con la misma ruta de
+  índices que el `UPDATE ... WHERE` en RQL.
+- **Catálogo escalable**: sin techo de 64 KiB (SPEC-0086); el catálogo crece por
+  una cadena de páginas de overflow (techo residual `u32`).
+- **Reclamación de storage**: `reap` purga el heap, da de alta las páginas en la
+  free-list y retira las entradas de los índices derivados (CSR/FTS) (SPEC-0085).
+- **Caché semántico persistente**: `close` guarda las claves KNN en
+  `<data>.cache.json` y `open` las restaura *best-effort* (SPEC-0093); una
+  mutación invalida el caché y retira el sidecar.
+- **Keystore KMS-lite**: keystore con rotación de claves para las sesiones MCP
+  (SPEC-0088), sin KMS/HSM externo.
 
 ## Límites
 
-- **Single-writer**: una única conexión de escritura por fichero; sin modo
-  servidor ni acceso concurrente multi-proceso.
+- **Single-writer**: una única conexión de escritura por fichero, garantizada
+  por un lock exclusivo cross-proceso `<data>.lock` (SPEC-0076): otra apertura
+  (proceso o misma app) falla con `DatabaseInUse`. Sin modo servidor.
 - **Sin streaming ni paginación por cursor**: `execute` materializa todas las
   filas del resultado en memoria.
 - **Un índice secundario por tabla** (una columna); sin optimizador de consultas
   más allá de `IndexScan` por igualdad.
-- **Sin GC en grafo/FTS**: `reap` purga el heap; los índices derivados
-  (HNSW/CSR/invertido) excluyen las filas borradas vía tombstones desde el
-  borrado lógico, pero no se compactan.
+- **GC de derivados sin compactación**: `reap` purga el heap, alimenta la
+  free-list y retira las entradas de los índices derivados (CSR/FTS) (SPEC-0085);
+  las estructuras (p. ej. HNSW) no se recompactan ni se reconstruyen.
 - **Rollback no soportado en cifrado**: en modo cifrado las páginas viven en el
   WAL y nunca se publican a `.data`; `rollback` devuelve `InvalidConfig` (cerrar
   y reabrir para volver al último estado confirmado).
 - **Pool dimensionado en cifrado**: las páginas cifradas permanecen `dirty` en
   el pool (nunca se desalojan); un pool lleno falla con `BufferPoolFull`.
-- **Sin rotación de claves ni KMS/HSM**; el catálogo está limitado a la región
-  reservada (16 páginas = 64 KiB).
+- **KMS/HSM externos fuera de alcance**: el keystore KMS-lite local soporta
+  rotación de claves (SPEC-0088), pero no hay KMS/HSM ni custodia externa. El
+  catálogo ya no tiene el techo de 64 KiB (SPEC-0086); su techo residual es
+  `u32`.
 - **RQL acotado**: `JOIN` solo INNER de dos tablas con una igualdad (sin
   LEFT/RIGHT/FULL, no-equi ni multi-condición) y sin subconsultas; `ORDER BY`
   de una sola clave (sin `NULLS FIRST/LAST`); sin `DISTINCT`; DML sin
@@ -89,8 +108,8 @@ cifrado.
 Superficie cubierta por la suite del MVP (todo lo demás son internals):
 
 - Apertura: `Database`, `DbConfig`, `Database::builder()`.
-- Escritura: `create_table`, `insert`, `insert_record`, `insert_many`, `delete`,
-  `create_index`, `commit`, `rollback`, `close`, `put_blob`.
+- Escritura: `create_table`, `insert`, `insert_record`, `insert_many`, `update`,
+  `delete`, `create_index`, `commit`, `rollback`, `close`, `put_blob`.
 - Lectura: `execute` (incluye DML, `ORDER BY`, `GROUP BY` y operadores de
   documento), `execute_at`, `tables`, `catalog`, `get_record`, `reap`,
   `get_blob`, `gc_blobs`.

@@ -244,6 +244,12 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   (acotado a los crates del spec); job `red-first` (solo PR) que aplica
   `scripts/red_first_gate.py --diff pr.diff` a los specs en curso del diff y
   `check_ci_config.py` lo valida.
+- **SPEC-0095** (Ola 6): coherencia de `docs/MVP.md` — alineado con las Olas
+  0–6 (lock cross-proceso, `FsyncPolicy`/group commit, `Database::update`,
+  catálogo sin techo con overflow, GC de derivados con free-list, caché
+  semántico persistente y keystore con rotación) y guard
+  `mvp_doc_coherence.rs` que exige las capacidades clave y prohíbe reintroducir
+  límites superados (64 KiB, sin rotación, sin GC de derivados).
 
 ### Retrospectiva
 
