@@ -22,7 +22,8 @@ cifrado.
   (`SELECT *`, `WHERE`, proyección, `LIMIT`).
 - **DML en RQL**: `INSERT INTO t (cols) VALUES (...)` (multi-fila = un solo
   commit vía `insert_many`), `UPDATE t SET col = ... [WHERE ...]` y
-  `DELETE FROM t [WHERE ...]`; `execute` devuelve `{"affected": N}`.
+  `DELETE FROM t [WHERE ...]`; `execute` devuelve `{"affected": N}`, o las
+  **filas afectadas** con `RETURNING *|<cols>` (SPEC-0102).
 - **Analítica en RQL**: `ORDER BY <col> [ASC|DESC]` (NULL al final en ASC;
   acepta `tabla.col`) y `GROUP BY a, b, ...` multi-clave con agregados
   `COUNT(*)`/`COUNT(col)`/`SUM`/`AVG`/`MIN`/`MAX` (hash aggregation; sin
@@ -107,7 +108,7 @@ cifrado.
 - **RQL acotado**: `JOIN` solo de dos tablas con una igualdad (`INNER` o
   `LEFT`, sin RIGHT/FULL/CROSS, no-equi ni multi-condición) y sin subconsultas;
   `ORDER BY` de una sola clave (sin `NULLS FIRST/LAST`); DML sin
-  `UPSERT`/`MERGE`/`RETURNING`; el orden de `MATCH` lo fija BM25 y el de
+  `UPSERT`/`MERGE`; el orden de `MATCH` lo fija BM25 y el de
   `KNN` la distancia. Los operadores `->`/`@>` no usan índice (scan por fila).
 
 ## API estable

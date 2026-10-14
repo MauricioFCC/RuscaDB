@@ -877,7 +877,7 @@ pub(crate) fn dedup_rows(rows: &mut Vec<Row>) {
 }
 
 /// Proyecta las columnas pedidas (valida el esquema primero).
-fn project_row(
+pub(crate) fn project_row(
     table: &TableDef,
     projection: &Projection,
     scalars: &ScalarMap,

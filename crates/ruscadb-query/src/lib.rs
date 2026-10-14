@@ -886,7 +886,12 @@ mod tests {
                 .map(|chunk| chunk.iter().map(|value| Expr::Int(*value)).collect())
                 .collect();
             prop_assume!(!rows.is_empty());
-            let statement = Statement::Insert(Insert { table, columns, rows });
+            let statement = Statement::Insert(Insert {
+                table,
+                columns,
+                rows,
+                returning: None,
+            });
             let text = statement.to_string();
             let reparsed = parse_statement(&text).expect("reparse");
             prop_assert_eq!(reparsed, statement);
@@ -909,11 +914,16 @@ mod tests {
                 table: table.clone(),
                 assignments: vec![(column.clone(), Expr::Int(value))],
                 filter: Some(filter.clone()),
+                returning: None,
             });
             let reparsed_update = parse_statement(&update.to_string()).expect("reparse update");
             prop_assert_eq!(reparsed_update, update);
 
-            let delete = Statement::Delete(Delete { table, filter: Some(filter) });
+            let delete = Statement::Delete(Delete {
+                table,
+                filter: Some(filter),
+                returning: None,
+            });
             let reparsed_delete = parse_statement(&delete.to_string()).expect("reparse delete");
             prop_assert_eq!(reparsed_delete, delete);
         }
@@ -1021,5 +1031,33 @@ mod tests {
 
         // `LEFT` sin `JOIN` es ParseError.
         assert!(parse("SELECT * FROM a LEFT b").is_err());
+    }
+
+    /// AC-0102-03 — `RETURNING` parsea, canoniza y falla ruidoso si está vacío.
+    #[test] // @spec AC-0102-03
+    fn test_ac_0102_03_returning_parses_and_displays() {
+        // INSERT con lista de columnas + roundtrip.
+        let insert =
+            parse_statement("INSERT INTO t (a) VALUES (1) RETURNING a").expect("insert returning");
+        assert!(insert.to_string().ends_with("RETURNING a"), "{insert}");
+        assert_eq!(
+            parse_statement(&insert.to_string()).expect("reparse"),
+            insert
+        );
+
+        // `RETURNING *` se canoniza como `*`.
+        let star = parse_statement("INSERT INTO t (a) VALUES (1) RETURNING *")
+            .expect("insert returning *");
+        assert!(star.to_string().ends_with("RETURNING *"), "{star}");
+
+        // UPDATE y DELETE con RETURNING.
+        let update = parse_statement("UPDATE t SET a = 2 WHERE a = 1 RETURNING a, b")
+            .expect("update returning");
+        assert!(update.to_string().contains("RETURNING a, b"), "{update}");
+        let delete = parse_statement("DELETE FROM t RETURNING *").expect("delete returning");
+        assert!(delete.to_string().ends_with("RETURNING *"), "{delete}");
+
+        // `RETURNING` sin columnas es ParseError.
+        assert!(parse_statement("DELETE FROM t RETURNING").is_err());
     }
 }

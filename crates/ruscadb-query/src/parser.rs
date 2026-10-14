@@ -222,10 +222,12 @@ impl Parser {
         self.expect_keyword(Keyword::Values)?;
         let rows = self.parse_value_rows()?;
         validate_insert_rows(&columns, &rows).map_err(|message| self.error(message))?;
+        let returning = self.parse_returning()?;
         Ok(Insert {
             table,
             columns,
             rows,
+            returning,
         })
     }
 
@@ -251,10 +253,12 @@ impl Parser {
         } else {
             None
         };
+        let returning = self.parse_returning()?;
         Ok(Update {
             table,
             assignments,
             filter,
+            returning,
         })
     }
 
@@ -268,7 +272,33 @@ impl Parser {
         } else {
             None
         };
-        Ok(Delete { table, filter })
+        let returning = self.parse_returning()?;
+        Ok(Delete {
+            table,
+            filter,
+            returning,
+        })
+    }
+
+    /// Parsea la cláusula opcional `RETURNING *|<cols>` (SPEC-0102).
+    ///
+    /// Returns:
+    ///     `Some(["*"])` para `RETURNING *`, `Some(cols)` para una lista de
+    ///     columnas, o `None` si no hay cláusula.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si `RETURNING` no va seguido de `*` o de
+    ///     una lista de identificadores.
+    fn parse_returning(&mut self) -> Result<Option<Vec<String>>, RuscaError> {
+        if !self.match_keyword(Keyword::Returning) {
+            return Ok(None);
+        }
+        if self.peek() == Some(&Token::Star) {
+            self.advance();
+            return Ok(Some(vec!["*".to_string()]));
+        }
+        let columns = self.parse_ident_list()?;
+        Ok(Some(columns))
     }
 
     /// Parsea una lista `ident[, ident...]` (al menos un identificador).

@@ -6,12 +6,12 @@
 //! `{"affected": N}` (documentado en [`Database::execute`]).
 
 use ruscadb_core::{EdgeSet, Record, RecordId, RecordMeta, RuscaError, ScalarMap, ScalarValue};
-use ruscadb_query::{Delete, Expr, Insert, Update};
+use ruscadb_query::{Delete, Expr, Insert, Projection, Update};
 use ruscadb_txn::Snapshot;
 
 use crate::catalog::{Catalog, TableDef};
 use crate::database::Database;
-use crate::executor::{Row, is_visible, keeps_row, literal_scalar};
+use crate::executor::{Row, is_visible, keeps_row, literal_scalar, project_row};
 use crate::heap::{RowLocator, heap_scan, heap_update};
 use crate::index::{index_insert, index_remove};
 use crate::table_api::validate_scalars;
@@ -31,8 +31,20 @@ impl Database {
     ///     [`RuscaError::TypeMismatch`] si un literal no pertenece a su columna.
     pub(crate) fn execute_insert(&mut self, insert: &Insert) -> Result<Vec<Row>, RuscaError> {
         let records = build_insert_records(insert)?;
-        let inserted = self.insert_many(&insert.table, records)?;
-        Ok(vec![affected_row(inserted.len() as i64)])
+        let ids = self.insert_many(&insert.table, records)?;
+        if insert.returning.is_none() {
+            return Ok(vec![affected_row(ids.len() as i64)]);
+        }
+        // `RETURNING` (SPEC-0102): relee las filas insertadas y las proyecta.
+        let table = Catalog::load(self)?.get(&insert.table)?.clone();
+        let projection = returning_projection(insert.returning.as_deref());
+        let mut rows = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(record) = self.get_record(&insert.table, &id)? {
+                rows.push(project_row(&table, &projection, &record.scalars)?);
+            }
+        }
+        Ok(rows)
     }
 
     /// Ejecuta un `UPDATE` de las filas visibles que cumplen el `WHERE`.
@@ -62,6 +74,7 @@ impl Database {
             None => (self.txn.begin(), true),
         };
         let mut affected = 0_i64;
+        let mut returned: Vec<Record> = Vec::new();
         for (locator, record) in candidates {
             if record.meta.deleted_tx.is_some() || !is_visible(snapshot, &record) {
                 continue;
@@ -69,7 +82,7 @@ impl Database {
             if !keeps_row(&table, update.filter.as_ref(), &record)? {
                 continue;
             }
-            rewrite_row(
+            let updated = rewrite_row(
                 self,
                 &mut catalog,
                 &table,
@@ -78,6 +91,9 @@ impl Database {
                 locator,
                 tx,
             )?;
+            if update.returning.is_some() {
+                returned.push(updated);
+            }
             affected += 1;
         }
         catalog.save(self)?;
@@ -86,6 +102,9 @@ impl Database {
         }
         // Coherencia del caché (SPEC-0069): un UPDATE invalida entradas.
         self.invalidate_semantic_cache();
+        if let Some(columns) = &update.returning {
+            return project_records(&table, columns, &returned);
+        }
         Ok(vec![affected_row(affected)])
     }
 
@@ -107,20 +126,27 @@ impl Database {
         snapshot: &Snapshot,
     ) -> Result<Vec<Row>, RuscaError> {
         let table = Catalog::load(self)?.get(&delete.table)?.clone();
-        let mut victims = Vec::new();
+        let mut candidates: Vec<Record> = Vec::new();
         for (_, record) in heap_scan(self, &table)? {
             if record.meta.deleted_tx.is_some() || !is_visible(snapshot, &record) {
                 continue;
             }
             if keeps_row(&table, delete.filter.as_ref(), &record)? {
-                victims.push(record.id);
+                candidates.push(record);
             }
         }
         let mut affected = 0_i64;
-        for id in victims {
-            if self.delete(&delete.table, &id)? {
+        let mut deleted: Vec<Record> = Vec::new();
+        for record in candidates {
+            if self.delete(&delete.table, &record.id)? {
                 affected += 1;
+                if delete.returning.is_some() {
+                    deleted.push(record);
+                }
             }
+        }
+        if let Some(columns) = &delete.returning {
+            return project_records(&table, columns, &deleted);
         }
         Ok(vec![affected_row(affected)])
     }
@@ -191,7 +217,8 @@ fn validate_assignments(
 ///     tx: Transacción que estampa la nueva versión.
 ///
 /// Returns:
-///     `Ok(())` tras persistir la versión y mantener los índices.
+///     El [`Record`] actualizado tras persistir la versión y mantener los
+///     índices (lo consume `RETURNING`, SPEC-0102).
 ///
 /// Errors:
 ///     [`RuscaError::TypeMismatch`] si un valor no pertenece a su columna;
@@ -204,9 +231,10 @@ fn rewrite_row(
     assignments: &[(String, Expr)],
     locator: RowLocator,
     tx: u64,
-) -> Result<(), RuscaError> {
+) -> Result<Record, RuscaError> {
     let updated = apply_assignments(database, table, record, assignments, tx)?;
-    persist_row_update(database, catalog, table, record, &updated, locator)
+    persist_row_update(database, catalog, table, record, &updated, locator)?;
+    Ok(updated)
 }
 
 /// Persiste una versión actualizada de una fila manteniendo los índices.
@@ -314,4 +342,45 @@ fn indexed_value(table: &TableDef, record: &Record) -> Option<ScalarValue> {
 ///     Una fila con la única columna `affected`.
 fn affected_row(affected: i64) -> Row {
     Row::from([("affected".to_string(), ScalarValue::Int(affected))])
+}
+
+/// Convierte las columnas de `RETURNING` en una [`Projection`].
+///
+/// Args:
+///     columns: Columnas pedidas (`["*"]` = todas), o `None` (todas).
+///
+/// Returns:
+///     La proyección equivalente.
+fn returning_projection(columns: Option<&[String]>) -> Projection {
+    match columns {
+        Some(columns) if !columns.iter().any(|column| column == "*") => {
+            Projection::Columns(columns.to_vec())
+        }
+        _ => Projection::All,
+    }
+}
+
+/// Proyecta los registros devueltos por `RETURNING` (SPEC-0102).
+///
+/// Args:
+///     table: Definición de la tabla (valida columnas y ordena `*`).
+///     columns: Columnas pedidas (`["*"]` = todas).
+///     records: Registros afectados (insertados/actualizados/borrados).
+///
+/// Returns:
+///     Una fila por registro con las columnas pedidas.
+///
+/// Errors:
+///     [`RuscaError::ColumnNotFound`] si una columna pedida no existe.
+fn project_records(
+    table: &TableDef,
+    columns: &[String],
+    records: &[Record],
+) -> Result<Vec<Row>, RuscaError> {
+    let projection = returning_projection(Some(columns));
+    let mut rows = Vec::with_capacity(records.len());
+    for record in records {
+        rows.push(project_row(table, &projection, &record.scalars)?);
+    }
+    Ok(rows)
 }

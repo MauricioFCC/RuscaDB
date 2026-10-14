@@ -75,6 +75,8 @@ pub enum Keyword {
     Outer,
     /// `INNER` (`INNER JOIN`, SPEC-0099).
     Inner,
+    /// `RETURNING` (DML devuelve filas, SPEC-0102).
+    Returning,
 }
 
 impl Keyword {
@@ -116,6 +118,7 @@ impl Keyword {
             Self::Left => "LEFT",
             Self::Outer => "OUTER",
             Self::Inner => "INNER",
+            Self::Returning => "RETURNING",
         }
     }
 
@@ -163,6 +166,7 @@ impl Keyword {
             "left" => Some(Self::Left),
             "outer" => Some(Self::Outer),
             "inner" => Some(Self::Inner),
+            "returning" => Some(Self::Returning),
             _ => None,
         }
     }

@@ -168,6 +168,9 @@ pub struct Insert {
     pub columns: Vec<String>,
     /// Filas de literales (cada una con `columns.len()` valores).
     pub rows: Vec<Vec<Expr>>,
+    /// `RETURNING <cols|*>`: filas devueltas en lugar de `{"affected": N}`
+    /// (SPEC-0102). `["*"]` denota todas las columnas.
+    pub returning: Option<Vec<String>>,
 }
 
 /// Sentencia `UPDATE <tabla> SET <col> = <literal>[, ...] [WHERE ...]` (SPEC-0043).
@@ -179,6 +182,8 @@ pub struct Update {
     pub assignments: Vec<(String, Expr)>,
     /// Filtro `WHERE` (opcional; sin él se actualizan todas las filas).
     pub filter: Option<Expr>,
+    /// `RETURNING <cols|*>` (SPEC-0102).
+    pub returning: Option<Vec<String>>,
 }
 
 /// Sentencia `DELETE FROM <tabla> [WHERE ...]` (SPEC-0043).
@@ -188,6 +193,8 @@ pub struct Delete {
     pub table: String,
     /// Filtro `WHERE` (opcional; sin él se borran todas las filas).
     pub filter: Option<Expr>,
+    /// `RETURNING <cols|*>` (SPEC-0102).
+    pub returning: Option<Vec<String>>,
 }
 
 /// Cláusula `KNN <columna> <|k|> [v1, v2, ...]` de búsqueda de vecinos.
@@ -538,7 +545,31 @@ impl fmt::Display for Insert {
             self.table,
             self.columns.join(", ")
         )?;
-        write_rows(formatter, &self.rows)
+        write_rows(formatter, &self.rows)?;
+        write_returning(formatter, self.returning.as_deref())
+    }
+}
+
+/// Escribe la cláusula `RETURNING` si está presente (SPEC-0102).
+///
+/// Args:
+///     formatter: Formateador de destino.
+///     returning: Columnas a devolver (`["*"]` = todas), o `None`.
+///
+/// Returns:
+///     `Ok(())` si la escritura tuvo éxito.
+///
+/// Errors:
+///     Propaga cualquier error de [`fmt::Write`] de `formatter`.
+fn write_returning(
+    formatter: &mut fmt::Formatter<'_>,
+    returning: Option<&[String]>,
+) -> fmt::Result {
+    match returning {
+        Some(columns) if !columns.is_empty() => {
+            write!(formatter, " RETURNING {}", columns.join(", "))
+        }
+        _ => Ok(()),
     }
 }
 
@@ -582,7 +613,7 @@ impl fmt::Display for Update {
         if let Some(filter) = &self.filter {
             write!(formatter, " WHERE {filter}")?;
         }
-        Ok(())
+        write_returning(formatter, self.returning.as_deref())
     }
 }
 
@@ -592,7 +623,7 @@ impl fmt::Display for Delete {
         if let Some(filter) = &self.filter {
             write!(formatter, " WHERE {filter}")?;
         }
-        Ok(())
+        write_returning(formatter, self.returning.as_deref())
     }
 }
 
