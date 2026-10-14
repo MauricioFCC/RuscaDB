@@ -142,7 +142,14 @@ fn test_ac_0088_02_invalid_token_rejected_without_leak() {
 
     let mut corrupted = token.clone();
     let last = corrupted.pop().expect("token no vacío");
-    corrupted.push(if last == 'A' { 'B' } else { 'A' });
+    // hex::decode es case-insensitive: cambiar 'a'→'A' NO cambia el byte
+    // (flaky 1/16 observado en CI); se fuerza un nibble distinto ('b'/'c').
+    let replacement = if last.eq_ignore_ascii_case(&'b') {
+        'c'
+    } else {
+        'b'
+    };
+    corrupted.push(replacement);
     let raw = call_raw(&mut server, &auth_message(&corrupted));
     let response: Value = serde_json::from_str(&raw).expect("respuesta JSON");
     assert_eq!(

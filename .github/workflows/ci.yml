@@ -201,6 +201,11 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
+      - name: Build examples (smoke SPEC-0087)
+        # `cargo llvm-cov` invoca `cargo test --tests`, que NO compila los
+        # examples; el test de humo los ejecuta como binarios reales, así que
+        # se pre-compilan en el target-dir que llvm-cov usará después.
+        run: cargo build --examples --workspace --all-features --locked --target-dir target/llvm-cov-target
       - name: Coverage lcov
         run: cargo llvm-cov --workspace --all-features --locked --lcov --output-path lcov.info
       - name: Gate core>=80 / txn>=90 / wal>=90
