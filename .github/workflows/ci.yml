@@ -133,6 +133,26 @@ jobs:
       - name: CHANGELOG (Unreleased documentado)
         run: python scripts/check_changelog.py CHANGELOG.md
 
+  # Gate RED-first (SPEC-0094): un spec en curso (`status: planned`/`draft`)
+  # tocado por el PR debe tener sus tests en rojo. Solo PR (necesita el diff).
+  red-first:
+    name: RED-first (specs en curso)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Diff vs base
+        run: git diff origin/${{ github.base_ref }}...HEAD > pr.diff
+      - name: RED-first gate
+        run: python scripts/red_first_gate.py --diff pr.diff
+
   security:
     name: Security
     runs-on: ubuntu-latest

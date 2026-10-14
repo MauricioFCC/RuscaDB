@@ -238,6 +238,12 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   desconocida ⇒ caché vacío, nunca falla la apertura); una mutación retira el
   sidecar y una base cifrada no persiste ni carga el caché en claro
   (`persist_semantic_cache`/`restore_semantic_cache`).
+- **SPEC-0094** (Ola 6): gate RED-first — `cargo xtask red <spec>` clasifica la
+  salida de `cargo test` (`Red`/`AlreadyPassing`/`Missing`) y exige que los
+  tests citados por los ACs de un spec `planned`/`draft` estén en rojo
+  (acotado a los crates del spec); job `red-first` (solo PR) que aplica
+  `scripts/red_first_gate.py --diff pr.diff` a los specs en curso del diff y
+  `check_ci_config.py` lo valida.
 
 ### Retrospectiva
 

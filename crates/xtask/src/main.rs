@@ -10,15 +10,18 @@
 //!   spec `implemented` trazada). Gate T1 (SPEC-0061).
 //! - `judge <diff>`: rúbricas deterministas sobre un diff con veredicto
 //!   (puerta T2 v0, SPEC-0061; sin el path lee stdin).
+//! - `red <spec>`: gate RED-first (SPEC-0094) para specs `planned`/`draft`:
+//!   exige que los tests citados por sus ACs fallen antes de implementar.
 //!
 //! Sin dependencias externas (solo `std`) para mantener el bootstrap liviano.
 
 mod judge;
+mod red;
 
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
@@ -27,9 +30,100 @@ fn main() -> ExitCode {
         "trace" => trace(),
         "contract" => contract_cmd(),
         "judge" => judge_cmd(args.next()),
+        "red" => red_cmd(args.next()),
         other => {
-            eprintln!("comando desconocido: {other} (disponibles: trace, contract, judge)");
+            eprintln!("comando desconocido: {other} (disponibles: trace, contract, judge, red)");
             ExitCode::FAILURE
+        }
+    }
+}
+
+/// Ejecuta el gate RED-first sobre un spec en curso (`cargo xtask red <spec>`).
+///
+/// Args:
+///     spec_path: Ruta del spec (`specs/<feature>.md`), relativa a la raíz del
+///         workspace o absoluta.
+///
+/// Returns:
+///     `0` si los tests del spec son RED (evidencia de test-first); `1` si ya
+///     pasan (sin evidencia RED); `2` si el spec no aplica (no está en curso,
+///     no cita tests o no se pudo leer/ejecutar).
+fn red_cmd(spec_path: Option<String>) -> ExitCode {
+    let Some(spec_path) = spec_path else {
+        eprintln!("uso: cargo xtask red <specs/<feature>.md>");
+        return ExitCode::from(2);
+    };
+    let Some(root) = workspace_root() else {
+        eprintln!("[FAIL] xtask red: no se pudo determinar la raíz del workspace");
+        return ExitCode::from(2);
+    };
+    let path = if Path::new(&spec_path).is_absolute() {
+        PathBuf::from(&spec_path)
+    } else {
+        root.join(&spec_path)
+    };
+    let Ok(text) = fs::read_to_string(&path) else {
+        eprintln!("[FAIL] xtask red: no se pudo leer {spec_path}");
+        return ExitCode::from(2);
+    };
+    let spec = red::parse_spec(&text);
+    if !red::is_in_progress(&spec.status) {
+        eprintln!(
+            "[FAIL] xtask red: {spec_path} declara status '{}'; el gate RED-first solo \
+             aplica a specs 'planned'/'draft'",
+            spec.status
+        );
+        return ExitCode::from(2);
+    }
+    if spec.tests.is_empty() {
+        eprintln!("[FAIL] xtask red: {spec_path} no cita ningún test en sus ACs");
+        return ExitCode::from(2);
+    }
+
+    let mut command = Command::new("cargo");
+    command.arg("test");
+    if spec.crates.is_empty() {
+        command.arg("--workspace");
+    } else {
+        for krate in &spec.crates {
+            command.arg("-p").arg(krate);
+        }
+    }
+    command.arg("--all-features");
+    command.arg("--no-fail-fast");
+    command.args(["--", "--exact"]);
+    command.args(&spec.tests);
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("[FAIL] xtask red: no se pudo ejecutar cargo test: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
+    combined.push_str(&String::from_utf8_lossy(&output.stderr));
+
+    match red::evaluate(&combined) {
+        red::RedVerdict::Red => {
+            println!(
+                "[OK] xtask red: {} test(s) RED en {spec_path} (evidencia test-first).",
+                spec.tests.len()
+            );
+            ExitCode::SUCCESS
+        }
+        red::RedVerdict::AlreadyPassing => {
+            eprintln!(
+                "[FAIL] xtask red: los tests de {spec_path} ya pasan; no hay evidencia RED \
+                 (el spec debería seguir 'planned' solo con tests rojos)"
+            );
+            ExitCode::from(1)
+        }
+        red::RedVerdict::Missing => {
+            eprintln!(
+                "[FAIL] xtask red: no se ejecutó ningún test de {spec_path}; revisa los nombres \
+                 `test:` de sus ACs"
+            );
+            ExitCode::from(2)
         }
     }
 }

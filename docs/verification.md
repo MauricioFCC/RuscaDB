@@ -47,7 +47,7 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (actualizado 2026-10-14): **93 specs implementadas, 401
+Estado de referencia (actualizado 2026-10-14): **94 specs implementadas, 405
 AC trazados** (`cargo xtask trace`), **555+ tests** (`cargo test --workspace --
 --list`, sin `--all-features`).
 
@@ -151,6 +151,20 @@ retira el sidecar y una base cifrada no persiste ni carga el caché en claro.
 
 ```bash
 cargo test -p ruscadb --test semantic_cache_persistence   # AC-0093-01..04
+```
+
+### Gate RED-first (SPEC-0094) — T1 (solo PR)
+
+Un spec en curso (`status: planned`/`draft`) tocado por el PR debe tener sus
+tests citados por los ACs **en rojo**: `cargo xtask red <spec>` ejecuta
+`cargo test --exact` (acotado a los crates del spec), clasifica la salida
+(`Red`/`AlreadyPassing`/`Missing`) y el job `red-first` lo aplica a los specs
+en curso del diff vía `scripts/red_first_gate.py --diff pr.diff`.
+
+```bash
+cargo test -p xtask --test red_first                 # AC-0094-02..04 (CLI/script/wiring)
+cargo xtask red specs/<feature>.md                   # local: exige RED
+python scripts/red_first_gate.py --list              # specs en curso
 ```
 
 ---
@@ -391,6 +405,7 @@ el parseo de T1/T2/T3.
 | `ruscadb-mcp` (`update`/`delete`) | SPEC-0091/AC-02..04 | `cargo test -p ruscadb-mcp --test mcp_write_tools_advanced` |
 | `ci.yml` (`coverage`, BRDA) | SPEC-0092/AC-02 | `scripts/branch_coverage_report.py` + `check_ci_config.py` |
 | `ruscadb` (`<data>.cache.json`) | SPEC-0093/AC-01..04 | `cargo test -p ruscadb --test semantic_cache_persistence` |
+| `ci.yml` (`red-first`) | SPEC-0094/AC-02 | `cargo xtask red` + `scripts/red_first_gate.py` |
 | `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
 | `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |
 | `xtask contract` | SPEC-0061 | `cargo xtask contract` (marcadores + estados) |

@@ -477,6 +477,37 @@ def check_branch_report_job(errors: list[str]) -> None:
             errors.append(f"ci.yml: {why}")
 
 
+def check_red_first_job(errors: list[str]) -> None:
+    """Valida el job `red-first` de ``ci.yml`` (SPEC-0094).
+
+    El job debe existir, correr solo en `pull_request`, generar el diff del PR
+    y aplicar ``scripts/red_first_gate.py``.
+    """
+    if not CI.exists():
+        errors.append(f"no existe {CI.relative_to(ROOT)}")
+        return
+    block = _job_block(CI.read_text(encoding="utf-8"), "red-first")
+    if block is None:
+        errors.append("ci.yml: falta el job 'red-first' (SPEC-0094)")
+        return
+    for needle, why in [
+        (
+            "red_first_gate.py",
+            "el job 'red-first' debe aplicar scripts/red_first_gate.py",
+        ),
+        (
+            "pull_request",
+            "el job 'red-first' debe correr solo en pull_request",
+        ),
+        (
+            "--diff",
+            "el gate RED-first debe analizar el diff del PR (--diff)",
+        ),
+    ]:
+        if needle not in block:
+            errors.append(f"ci.yml: {why}")
+
+
 def check_msrv_job(errors: list[str]) -> None:
     """Valida el job `msrv` de ``ci.yml`` (SPEC-0090).
 
@@ -563,6 +594,7 @@ def main() -> int:
     check_mutation_diff_job(errors)
     check_coverage_job(errors)
     check_branch_report_job(errors)
+    check_red_first_job(errors)
     check_msrv_job(errors)
     check_release_config(errors)
 
@@ -575,7 +607,7 @@ def main() -> int:
     print(
         "[OK] check_ci_config: ci.yml (matriz rápida ubuntu/windows + "
         "mutation-diff MS>=70 en PR + commits/CHANGELOG en PR + msrv + "
-        "reporte BRDA), "
+        "reporte BRDA + red-first), "
         "nightly.yml (mutation/fuzz/miri/sanitizers/loom + test-macos, alert-only; "
         "fuzz con query_parse/wal_recover + dictionary), "
         "release.yml (tags v* + SBOM), "
