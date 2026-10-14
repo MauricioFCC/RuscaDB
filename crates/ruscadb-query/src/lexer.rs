@@ -69,6 +69,12 @@ pub enum Keyword {
     Offset,
     /// `DISTINCT` (proyección deduplicada, SPEC-0097).
     Distinct,
+    /// `LEFT` (`LEFT JOIN`, SPEC-0099).
+    Left,
+    /// `OUTER` (`LEFT OUTER JOIN`, SPEC-0099).
+    Outer,
+    /// `INNER` (`INNER JOIN`, SPEC-0099).
+    Inner,
 }
 
 impl Keyword {
@@ -107,6 +113,9 @@ impl Keyword {
             Self::Having => "HAVING",
             Self::Offset => "OFFSET",
             Self::Distinct => "DISTINCT",
+            Self::Left => "LEFT",
+            Self::Outer => "OUTER",
+            Self::Inner => "INNER",
         }
     }
 
@@ -151,6 +160,9 @@ impl Keyword {
             "having" => Some(Self::Having),
             "offset" => Some(Self::Offset),
             "distinct" => Some(Self::Distinct),
+            "left" => Some(Self::Left),
+            "outer" => Some(Self::Outer),
+            "inner" => Some(Self::Inner),
             _ => None,
         }
     }

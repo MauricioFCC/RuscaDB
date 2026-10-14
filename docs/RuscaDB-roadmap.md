@@ -850,6 +850,7 @@ actualizada.
 | SPEC-0096 | `query_pagination` | 7 | `LIMIT n OFFSET m` (y `OFFSET` sin `LIMIT`) en RQL, aplicado tras `ORDER BY` en escaneo/agregación/JOIN | Postgres/DuckDB |
 | SPEC-0097 | `query_distinct` | 7 | `SELECT DISTINCT` (proyección completa) con dedupe antes de `OFFSET`/`LIMIT` | SQL:2016 |
 | SPEC-0098 | `mutation_gate_schema` | 7 | Gate de mutación robusto a los dos esquemas de `outcomes.json` (dict legacy + cadena v25+); estado desconocido ⇒ exit 2 | cargo-mutants v27 (hallado por mutación adversarial de SPEC-0096) |
+| SPEC-0099 | `left_join` | 7 | `LEFT [OUTER] JOIN` (y `INNER JOIN`) con fila exterior sin contraparte a `NULL` | SQL:2016 |
 
 **Secuencia crítica**: Ola 0 en paralelo (SPEC-0076 en la fachada ∥
 SPEC-0077 en `ruscadb-txn`) → Ola 1 en paralelo (0078 ∥ 0079 ∥ 0084) →
@@ -893,9 +894,10 @@ completo + commit + CI verde antes de abrir la siguiente.
 > para specs en curso) y SPEC-0095 (`docs/MVP.md` alineado con las Olas 0–6 +
 > guard de contenido que evita drift silencioso).
 > **Ola 7 (2026-10-14, en curso)**: cierre de límites del MVP — SPEC-0096
-> (paginación `LIMIT ... OFFSET` en RQL), SPEC-0097 (`SELECT DISTINCT`) y
+> (paginación `LIMIT ... OFFSET` en RQL), SPEC-0097 (`SELECT DISTINCT`),
 > SPEC-0098 (robustez de esquema del gate de mutación, hallada por la corrida
-> adversarial de SPEC-0096; MS_diff real 100 %).
+> adversarial de SPEC-0096; MS_diff real 100 %) y SPEC-0099 (`LEFT [OUTER]
+> JOIN`).
 > El resto de flujos P0 sigue en «Líneas futuras».
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
@@ -915,7 +917,7 @@ completo + commit + CI verde antes de abrir la siguiente.
 | **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ✅ 13/13 | Olas 0–4 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow), 0081 (group commit greedy-pipelined + FsyncPolicy + crash-harness), 0082 (gates SLO Mann-Whitney/bootstrap/A-A + slo.yml), 0083 (embeddings estáticos model2vec-rs + enmienda ADR-016), 0087 (examples ejecutables + `docs/api_guide.md`, smoke por subproceso), 0088 (session/auth MCP `-32001` + keystore KMS-lite con rotación). **386 AC trazados**. |
 | **Ola 5 — flujos P0 (SPEC-0089..0090)** | ✅ 2/2 | Cierra 2026-10-14: SPEC-0089 (automatización de releases/tags + validación CHANGELOG/commits: `check_commits.py`/`check_changelog.py`, job `commits` en PR, `release.yml` con SBOM) y SPEC-0090 (job `msrv` 1.89 en CI). |
 | **Ola 6 — escritura MCP + caché persistente + BRDA + RED-first + MVP doc (SPEC-0091..0095)** | ✅ 5/5 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` + tools MCP `update`/`delete` read_write-only con RBAC delegado); SPEC-0092 (reporte de ramas BRDA por crate + artefacto JSON en CI); SPEC-0093 (sidecar `<data>.cache.json`: restauración best-effort, invalidación por mutación y omisión en bases cifradas); SPEC-0094 (`cargo xtask red` + job PR `red-first` con `scripts/red_first_gate.py`); SPEC-0095 (`docs/MVP.md` coherente con las Olas 0–6 + guard de contenido). |
-| **Ola 7 — cierre de límites del MVP (SPEC-0096…)** | ⏳ 3/n | 2026-10-14: SPEC-0096 (paginación `LIMIT n OFFSET m` y `OFFSET` sin `LIMIT` en RQL, tras `ORDER BY` en escaneo/agregación/JOIN), SPEC-0097 (`SELECT DISTINCT` con dedupe antes de `OFFSET`/`LIMIT`) y SPEC-0098 (gate de mutación robusto a cargo-mutants v25+; la corrida adversarial de SPEC-0096 dio MS_diff 100 %). **416 AC trazados**. Pendiente: `LEFT JOIN`, multi-índice por tabla, compactación de índices derivados, `rollback` cifrado, pool cifrado, `UPSERT`/`RETURNING`, KMS/HSM externo, JOIN avanzado. |
+| **Ola 7 — cierre de límites del MVP (SPEC-0096…)** | ⏳ 4/n | 2026-10-14: SPEC-0096 (paginación `LIMIT n OFFSET m` y `OFFSET` sin `LIMIT` en RQL, tras `ORDER BY` en escaneo/agregación/JOIN), SPEC-0097 (`SELECT DISTINCT` con dedupe antes de `OFFSET`/`LIMIT`), SPEC-0098 (gate de mutación robusto a cargo-mutants v25+; la corrida adversarial de SPEC-0096 dio MS_diff 100 %) y SPEC-0099 (`LEFT [OUTER] JOIN` con la fila exterior sin contraparte a `NULL`). **419 AC trazados**. Pendiente: multi-índice por tabla, compactación de índices derivados, `rollback` cifrado, pool cifrado, `UPSERT`/`RETURNING`, KMS/HSM externo, RIGHT/FULL/CROSS JOIN y JOIN con WHERE/ORDER BY. |
 | Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0 — resto)**: code review multi-agente cableado (FF-11); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |

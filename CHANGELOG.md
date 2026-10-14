@@ -258,6 +258,10 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   preservando el orden de primera aparición y se aplica **antes** de
   `OFFSET`/`LIMIT` en las rutas de escaneo, agregación y `JOIN`; `Display`
   canónico (`SELECT DISTINCT ...`) y roundtrip.
+- **SPEC-0099** (Ola 7): `LEFT [OUTER] JOIN` (y `INNER JOIN` canónico) — la fila
+  exterior sin contraparte se emite una vez con las columnas interiores a `NULL`
+  en las rutas indexada y no indexada; `JoinKind` en el AST con `Display`
+  canónico (`JOIN`/`LEFT JOIN`).
 - **SPEC-0098** (Ola 7): robustez del gate de mutación — `mutation_diff_gate.py`
   puntúa los dos esquemas de `outcomes.json` (dict legacy y cadena de
   cargo-mutants v25+) y mantiene el fallo ruidoso ante estados desconocidos;

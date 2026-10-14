@@ -228,13 +228,24 @@ pub struct ColumnRef {
     pub column: String,
 }
 
-/// Cláusula `JOIN <tabla> ON <izq> = <der>` (SPEC-0052).
+/// Tipo de `JOIN` (SPEC-0052 / SPEC-0099).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JoinKind {
+    /// `[INNER] JOIN`: solo filas con contraparte.
+    Inner,
+    /// `LEFT [OUTER] JOIN`: conserva las filas exteriores sin contraparte.
+    Left,
+}
+
+/// Cláusula `JOIN <tabla> ON <izq> = <der>` (SPEC-0052 / SPEC-0099).
 ///
-/// Solo `INNER JOIN` con una única igualdad entre columnas cualificadas
-/// (`a.x = b.y`); cualquier otra forma se rechaza en el parser con
+/// `INNER JOIN` o `LEFT [OUTER] JOIN` con una única igualdad entre columnas
+/// cualificadas (`a.x = b.y`); cualquier otra forma se rechaza en el parser con
 /// [`ParseError`](ruscadb_core::RuscaError::ParseError) accionable.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct JoinClause {
+    /// Tipo de `JOIN` (`INNER` por defecto).
+    pub kind: JoinKind,
     /// Tabla interior del JOIN.
     pub table: String,
     /// Lado izquierdo de la igualdad.
@@ -413,9 +424,13 @@ impl fmt::Display for ColumnRef {
 
 impl fmt::Display for JoinClause {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let keyword = match self.kind {
+            JoinKind::Inner => "JOIN",
+            JoinKind::Left => "LEFT JOIN",
+        };
         write!(
             formatter,
-            "JOIN {} ON {} = {}",
+            "{keyword} {} ON {} = {}",
             self.table, self.left, self.right
         )
     }

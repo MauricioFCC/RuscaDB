@@ -9,7 +9,7 @@
 //! fusionadas usan columnas prefijadas `tabla.columna`.
 
 use ruscadb_core::{Record, RuscaError, ScalarValue};
-use ruscadb_query::{JoinClause, Projection, Select};
+use ruscadb_query::{JoinClause, JoinKind, Projection, Select};
 use ruscadb_txn::Snapshot;
 
 use crate::catalog::TableDef;
@@ -54,26 +54,58 @@ pub(crate) fn execute_join_at(
     reject_unsupported(select)?;
     let sides = resolve_sides(database, select, join)?;
     let outer_rows = visible_records(database, &sides.outer, snapshot)?;
+    let left = join.kind == JoinKind::Left;
     let mut merged = Vec::new();
     if inner_is_indexed(&sides) {
         for outer in &outer_rows {
             let key = join_value(&sides.outer, &sides.outer_column, outer);
-            for inner in &inner_matches_indexed(database, &sides, &key, snapshot)? {
-                merged.push(merge_rows(&sides, outer, inner));
-            }
+            let matches = inner_matches_indexed(database, &sides, &key, snapshot)?;
+            push_matches(&mut merged, &sides, outer, matches, left);
         }
     } else {
         let inner_rows = visible_records(database, &sides.inner, snapshot)?;
         for outer in &outer_rows {
             let key = join_value(&sides.outer, &sides.outer_column, outer);
-            for inner in inner_rows.iter().filter(|record| {
-                keys_equal(&key, &join_value(&sides.inner, &sides.inner_column, record))
-            }) {
-                merged.push(merge_rows(&sides, outer, inner));
-            }
+            let matches: Vec<Record> = inner_rows
+                .iter()
+                .filter(|record| {
+                    keys_equal(&key, &join_value(&sides.inner, &sides.inner_column, record))
+                })
+                .cloned()
+                .collect();
+            push_matches(&mut merged, &sides, outer, matches, left);
         }
     }
     project_all(&sides, &merged, select)
+}
+
+/// Añade a `merged` los pares de una fila exterior y sus contrapartes.
+///
+/// En `LEFT JOIN` (SPEC-0099) una fila exterior **sin** contraparte se emite
+/// una vez con las columnas interiores a `NULL`; en `INNER` se omite.
+///
+/// Args:
+///     merged: Filas fusionadas acumuladas.
+///     sides: Lados resueltos del `JOIN`.
+///     outer: Registro exterior en curso.
+///     matches: Contrapartes interiores que emparejan con `outer`.
+///     left: `true` si el `JOIN` es `LEFT` (conserva las filas sin contraparte).
+fn push_matches(
+    merged: &mut Vec<Row>,
+    sides: &JoinSides,
+    outer: &Record,
+    matches: Vec<Record>,
+    left: bool,
+) {
+    if matches.is_empty() {
+        if left {
+            merged.push(merge_outer_only(sides, outer));
+        }
+        return;
+    }
+    for inner in &matches {
+        merged.push(merge_rows(sides, outer, inner));
+    }
 }
 
 /// Rechaza las cláusulas fuera del alcance de SPEC-0052.
@@ -113,7 +145,7 @@ fn reject_unsupported(select: &Select) -> Result<(), RuscaError> {
 fn join_unsupported(clause: &str) -> RuscaError {
     RuscaError::TypeMismatch {
         message: format!(
-            "{clause} no se admite con JOIN en SPEC-0052 (solo SELECT <cols|*> FROM a JOIN b ON a.x = b.y [LIMIT n])"
+            "{clause} no se admite con JOIN (SPEC-0052/SPEC-0099: solo SELECT <cols|*> FROM a [INNER|LEFT [OUTER]] JOIN b ON a.x = b.y [LIMIT n] [OFFSET m])"
         ),
     }
 }
@@ -304,33 +336,39 @@ fn keys_equal(left: &ScalarValue, right: &ScalarValue) -> bool {
 ///     La fila fusionada (ausente → `NULL`).
 fn merge_rows(sides: &JoinSides, outer: &Record, inner: &Record) -> Row {
     let mut row = Row::new();
-    for column in sides
-        .outer
-        .columns
-        .iter()
-        .map(|definition| &definition.name)
-    {
-        let value = outer
-            .scalars
-            .get(column)
-            .cloned()
-            .unwrap_or(ScalarValue::Null);
-        row.insert(format!("{}.{column}", sides.outer.name), value);
-    }
-    for column in sides
-        .inner
-        .columns
-        .iter()
-        .map(|definition| &definition.name)
-    {
-        let value = inner
-            .scalars
-            .get(column)
-            .cloned()
-            .unwrap_or(ScalarValue::Null);
-        row.insert(format!("{}.{column}", sides.inner.name), value);
-    }
+    fill_side(&mut row, &sides.outer, Some(outer));
+    fill_side(&mut row, &sides.inner, Some(inner));
     row
+}
+
+/// Fusiona una fila exterior sin contraparte (columnas interiores a `NULL`).
+///
+/// Args:
+///     sides: Lados resueltos (aportan los nombres de tabla y columnas).
+///     outer: Registro exterior sin emparejamiento.
+///
+/// Returns:
+///     La fila fusionada con el lado interior en `NULL` (`LEFT JOIN`).
+fn merge_outer_only(sides: &JoinSides, outer: &Record) -> Row {
+    let mut row = Row::new();
+    fill_side(&mut row, &sides.outer, Some(outer));
+    fill_side(&mut row, &sides.inner, None);
+    row
+}
+
+/// Vuelca las columnas de un lado en la fila fusionada (prefijo `tabla.col`).
+///
+/// Args:
+///     row: Fila fusionada en construcción.
+///     table: Definición de la tabla del lado.
+///     record: Registro del lado, o `None` para emitir todas las columnas `NULL`.
+fn fill_side(row: &mut Row, table: &TableDef, record: Option<&Record>) {
+    for column in table.columns.iter().map(|definition| &definition.name) {
+        let value = record
+            .and_then(|record| record.scalars.get(column).cloned())
+            .unwrap_or(ScalarValue::Null);
+        row.insert(format!("{}.{column}", table.name), value);
+    }
 }
 
 /// Proyecta todas las filas fusionadas y aplica `LIMIT`.

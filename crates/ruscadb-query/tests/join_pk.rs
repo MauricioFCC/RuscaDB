@@ -6,7 +6,7 @@
 
 #![allow(clippy::expect_used)]
 
-use ruscadb_query::{JoinClause, parse, parse_statement};
+use ruscadb_query::{JoinClause, JoinKind, parse, parse_statement};
 
 /// AC-0052-01 — `FROM a JOIN b ON a.x = b.y` puebla `Select::join`.
 #[test]
@@ -44,6 +44,7 @@ fn test_ac_0052_01_parse_join_reversed_sides() {
     assert_eq!(join.right.table, "authors");
     assert_eq!(
         JoinClause {
+            kind: JoinKind::Inner,
             table: "books".to_string(),
             left: ruscadb_query::ColumnRef {
                 table: "books".to_string(),

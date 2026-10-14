@@ -18,7 +18,8 @@ pub mod provider;
 
 pub use ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, Delete, Explain, Expr, HavingCondition, Insert,
-    JoinClause, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause, Update,
+    JoinClause, JoinKind, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause,
+    Update,
 };
 pub use limits::{
     COMPLEXITY_BUDGET, DEFAULT_TIMEOUT_MILLIS, FULL_SCAN_WARN_THRESHOLD, IMPLICIT_LIMIT,
@@ -992,5 +993,33 @@ mod tests {
         let plain = parse("SELECT a FROM t").expect("parse plain");
         assert!(!plain.distinct, "sin DISTINCT el flag debe ser false");
         assert!(!plain.to_string().contains("DISTINCT"));
+    }
+
+    /// AC-0099-03 — `LEFT [OUTER] JOIN` y `INNER JOIN` parsean y canonizan.
+    #[test] // @spec AC-0099-03
+    fn test_ac_0099_03_left_join_parses_and_displays() {
+        let left = parse("SELECT * FROM a LEFT JOIN b ON b.x = a.y").expect("left join");
+        assert_eq!(
+            left.join.as_ref().map(|join| join.kind),
+            Some(JoinKind::Left),
+            "LEFT JOIN debe fijar JoinKind::Left"
+        );
+        assert!(left.to_string().contains("LEFT JOIN b ON"), "{left}");
+
+        // `LEFT OUTER JOIN` canoniza a `LEFT JOIN`.
+        let outer = parse("SELECT * FROM a LEFT OUTER JOIN b ON b.x = a.y").expect("left outer");
+        assert_eq!(outer.to_string(), left.to_string(), "LEFT OUTER ≡ LEFT");
+
+        // `INNER JOIN` canoniza a `JOIN` (cero regresión).
+        let inner = parse("SELECT * FROM a INNER JOIN b ON b.x = a.y").expect("inner join");
+        assert_eq!(
+            inner.join.as_ref().map(|join| join.kind),
+            Some(JoinKind::Inner)
+        );
+        assert!(inner.to_string().contains(" JOIN b ON"), "{inner}");
+        assert_eq!(parse(&inner.to_string()).expect("reparse"), inner);
+
+        // `LEFT` sin `JOIN` es ParseError.
+        assert!(parse("SELECT * FROM a LEFT b").is_err());
     }
 }

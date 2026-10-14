@@ -2,7 +2,8 @@
 
 use crate::ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, Delete, Explain, Expr, HavingCondition, Insert,
-    JoinClause, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause, Update,
+    JoinClause, JoinKind, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause,
+    Update,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use crate::limits::check_depth;
@@ -404,8 +405,21 @@ impl Parser {
     ///     [`RuscaError::ParseError`] si el `JOIN` está mal formado.
     fn parse_from(&mut self) -> Result<(String, Option<JoinClause>), RuscaError> {
         let from = self.expect_ident()?;
+        // Tipo de JOIN (SPEC-0099): `[INNER] JOIN` (default) o `LEFT [OUTER] JOIN`.
+        let kind = if self.match_keyword(Keyword::Left) {
+            self.match_keyword(Keyword::Outer);
+            JoinKind::Left
+        } else {
+            self.match_keyword(Keyword::Inner);
+            JoinKind::Inner
+        };
         let join = if self.match_keyword(Keyword::Join) {
-            Some(self.parse_join(&from)?)
+            Some(self.parse_join(&from, kind)?)
+        } else if kind == JoinKind::Left {
+            return Err(self.error(
+                "LEFT/INNER exige un JOIN a continuación ('LEFT JOIN <tabla> ON a.x = b.y')"
+                    .to_string(),
+            ));
         } else {
             None
         };
@@ -424,7 +438,7 @@ impl Parser {
     ///     [`RuscaError::ParseError`] si el `ON` no es una única igualdad
     ///     `tabla.columna = tabla.columna`, si hay multi-condición (`AND`),
     ///     o si es un self-join sin alias (ambiguo, fuera de alcance).
-    fn parse_join(&mut self, from: &str) -> Result<JoinClause, RuscaError> {
+    fn parse_join(&mut self, from: &str, kind: JoinKind) -> Result<JoinClause, RuscaError> {
         let table = self.expect_ident()?;
         if table == from {
             return Err(self.error(
@@ -445,7 +459,12 @@ impl Parser {
                 "el ON del JOIN solo admite una condición (multi-condición con AND fuera de alcance de SPEC-0052)",
             ));
         }
-        Ok(JoinClause { table, left, right })
+        Ok(JoinClause {
+            kind,
+            table,
+            left,
+            right,
+        })
     }
 
     /// Parsea un lado del `ON`: referencia cualificada `tabla.columna`.

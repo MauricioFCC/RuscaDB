@@ -47,7 +47,7 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (actualizado 2026-10-14): **99 specs implementadas, 416
+Estado de referencia (actualizado 2026-10-14): **100 specs implementadas, 419
 AC trazados** (`cargo xtask trace`), **555+ tests** (`cargo test --workspace --
 --list`, sin `--all-features`).
 
@@ -433,6 +433,7 @@ el parseo de T1/T2/T3.
 | `docs/MVP.md` | SPEC-0095/AC-01..02 | `cargo test -p ruscadb --test mvp_doc_coherence` |
 | RQL (`LIMIT/OFFSET`) | SPEC-0096/AC-01..03 | `cargo test -p ruscadb --test query_pagination` + `cargo test -p ruscadb-query` |
 | RQL (`SELECT DISTINCT`) | SPEC-0097/AC-01..03 | `cargo test -p ruscadb --test query_distinct` + `cargo test -p ruscadb-query` |
+| RQL (`LEFT JOIN`) | SPEC-0099/AC-01..03 | `cargo test -p ruscadb --test join_left` + `cargo test -p ruscadb-query` |
 | `mutation_diff_gate.py` | SPEC-0098/AC-01..03 | `cargo test -p xtask --test mutation_gate` |
 | `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
 | `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |
