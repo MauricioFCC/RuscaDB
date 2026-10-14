@@ -6,7 +6,7 @@
 
 #![allow(clippy::expect_used)]
 
-use ruscadb_query::{JoinClause, JoinKind, parse, parse_statement};
+use ruscadb_query::{ColumnRef, JoinClause, JoinKind, parse, parse_statement};
 
 /// AC-0052-01 — `FROM a JOIN b ON a.x = b.y` puebla `Select::join`.
 #[test]
@@ -18,10 +18,12 @@ fn test_ac_0052_01_parse_inner_join() {
     assert_eq!(select.from, "authors");
     let join = select.join.clone().expect("cláusula JOIN");
     assert_eq!(join.table, "books");
-    assert_eq!(join.left.table, "authors");
-    assert_eq!(join.left.column, "id");
-    assert_eq!(join.right.table, "books");
-    assert_eq!(join.right.column, "author_id");
+    let left = join.left.as_ref().expect("lado izquierdo");
+    let right = join.right.as_ref().expect("lado derecho");
+    assert_eq!(left.table, "authors");
+    assert_eq!(left.column, "id");
+    assert_eq!(right.table, "books");
+    assert_eq!(right.column, "author_id");
     assert_eq!(
         select.to_string(),
         "SELECT authors.name FROM authors JOIN books ON authors.id = books.author_id"
@@ -40,20 +42,20 @@ fn test_ac_0052_01_parse_join_reversed_sides() {
     let select =
         parse("SELECT * FROM authors JOIN books ON books.author_id = authors.id").expect("parse");
     let join = select.join.clone().expect("cláusula JOIN");
-    assert_eq!(join.left.table, "books");
-    assert_eq!(join.right.table, "authors");
+    assert_eq!(join.left.as_ref().expect("lado izquierdo").table, "books");
+    assert_eq!(join.right.as_ref().expect("lado derecho").table, "authors");
     assert_eq!(
         JoinClause {
             kind: JoinKind::Inner,
             table: "books".to_string(),
-            left: ruscadb_query::ColumnRef {
+            left: Some(ColumnRef {
                 table: "books".to_string(),
                 column: "author_id".to_string(),
-            },
-            right: ruscadb_query::ColumnRef {
+            }),
+            right: Some(ColumnRef {
                 table: "authors".to_string(),
                 column: "id".to_string(),
-            },
+            }),
         },
         join
     );

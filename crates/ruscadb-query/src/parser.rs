@@ -435,19 +435,27 @@ impl Parser {
     ///     [`RuscaError::ParseError`] si el `JOIN` está mal formado.
     fn parse_from(&mut self) -> Result<(String, Option<JoinClause>), RuscaError> {
         let from = self.expect_ident()?;
-        // Tipo de JOIN (SPEC-0099): `[INNER] JOIN` (default) o `LEFT [OUTER] JOIN`.
+        // Tipo de JOIN (SPEC-0099/SPEC-0103).
         let kind = if self.match_keyword(Keyword::Left) {
             self.match_keyword(Keyword::Outer);
             JoinKind::Left
+        } else if self.match_keyword(Keyword::Right) {
+            self.match_keyword(Keyword::Outer);
+            JoinKind::Right
+        } else if self.match_keyword(Keyword::Full) {
+            self.match_keyword(Keyword::Outer);
+            JoinKind::Full
+        } else if self.match_keyword(Keyword::Cross) {
+            JoinKind::Cross
         } else {
             self.match_keyword(Keyword::Inner);
             JoinKind::Inner
         };
         let join = if self.match_keyword(Keyword::Join) {
             Some(self.parse_join(&from, kind)?)
-        } else if kind == JoinKind::Left {
+        } else if kind != JoinKind::Inner {
             return Err(self.error(
-                "LEFT/INNER exige un JOIN a continuación ('LEFT JOIN <tabla> ON a.x = b.y')"
+                "LEFT/RIGHT/FULL/CROSS/INNER exige un JOIN a continuación ('<tipo> JOIN <tabla> [ON a.x = b.y]')"
                     .to_string(),
             ));
         } else {
@@ -475,6 +483,14 @@ impl Parser {
                 "self-join sin alias no soportado: usa alias distintos para cada lado (fuera de alcance de SPEC-0052)",
             ));
         }
+        if kind == JoinKind::Cross {
+            return Ok(JoinClause {
+                kind,
+                table,
+                left: None,
+                right: None,
+            });
+        }
         self.expect_keyword(Keyword::On)?;
         let left = self.parse_join_side()?;
         if self.peek() != Some(&Token::Eq) {
@@ -492,8 +508,8 @@ impl Parser {
         Ok(JoinClause {
             kind,
             table,
-            left,
-            right,
+            left: Some(left),
+            right: Some(right),
         })
     }
 

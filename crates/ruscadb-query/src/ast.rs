@@ -242,23 +242,29 @@ pub enum JoinKind {
     Inner,
     /// `LEFT [OUTER] JOIN`: conserva las filas exteriores sin contraparte.
     Left,
+    /// `RIGHT [OUTER] JOIN`: conserva las filas interiores sin contraparte.
+    Right,
+    /// `FULL [OUTER] JOIN`: conserva las filas sin contraparte de ambos lados.
+    Full,
+    /// `CROSS JOIN`: producto cartesiano (sin `ON`).
+    Cross,
 }
 
-/// Cláusula `JOIN <tabla> ON <izq> = <der>` (SPEC-0052 / SPEC-0099).
+/// Cláusula `JOIN <tabla> [ON <izq> = <der>]` (SPEC-0052 / SPEC-0099 / SPEC-0103).
 ///
-/// `INNER JOIN` o `LEFT [OUTER] JOIN` con una única igualdad entre columnas
-/// cualificadas (`a.x = b.y`); cualquier otra forma se rechaza en el parser con
-/// [`ParseError`](ruscadb_core::RuscaError::ParseError) accionable.
+/// `[INNER]`, `LEFT`, `RIGHT`, `FULL` (con una única igualdad entre columnas
+/// cualificadas) o `CROSS` (sin `ON`); cualquier otra forma se rechaza en el
+/// parser con [`ParseError`](ruscadb_core::RuscaError::ParseError) accionable.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct JoinClause {
     /// Tipo de `JOIN` (`INNER` por defecto).
     pub kind: JoinKind,
     /// Tabla interior del JOIN.
     pub table: String,
-    /// Lado izquierdo de la igualdad.
-    pub left: ColumnRef,
-    /// Lado derecho de la igualdad.
-    pub right: ColumnRef,
+    /// Lado izquierdo de la igualdad (`None` en `CROSS JOIN`).
+    pub left: Option<ColumnRef>,
+    /// Lado derecho de la igualdad (`None` en `CROSS JOIN`).
+    pub right: Option<ColumnRef>,
 }
 
 /// Sentencia `SELECT` analizada.
@@ -434,12 +440,16 @@ impl fmt::Display for JoinClause {
         let keyword = match self.kind {
             JoinKind::Inner => "JOIN",
             JoinKind::Left => "LEFT JOIN",
+            JoinKind::Right => "RIGHT JOIN",
+            JoinKind::Full => "FULL JOIN",
+            JoinKind::Cross => "CROSS JOIN",
         };
-        write!(
-            formatter,
-            "{keyword} {} ON {} = {}",
-            self.table, self.left, self.right
-        )
+        match (&self.left, &self.right) {
+            (Some(left), Some(right)) => {
+                write!(formatter, "{keyword} {} ON {left} = {right}", self.table)
+            }
+            _ => write!(formatter, "{keyword} {}", self.table),
+        }
     }
 }
 

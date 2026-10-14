@@ -1060,4 +1060,49 @@ mod tests {
         // `RETURNING` sin columnas es ParseError.
         assert!(parse_statement("DELETE FROM t RETURNING").is_err());
     }
+
+    /// AC-0103-04 — `RIGHT`/`FULL`/`CROSS JOIN` parsean y canonizan.
+    #[test] // @spec AC-0103-04
+    fn test_ac_0103_04_outer_and_cross_join_parse_and_display() {
+        for (text, kind, expected) in [
+            (
+                "SELECT * FROM a RIGHT JOIN b ON b.x = a.y",
+                JoinKind::Right,
+                "RIGHT JOIN b ON",
+            ),
+            (
+                "SELECT * FROM a RIGHT OUTER JOIN b ON b.x = a.y",
+                JoinKind::Right,
+                "RIGHT JOIN b ON",
+            ),
+            (
+                "SELECT * FROM a FULL JOIN b ON b.x = a.y",
+                JoinKind::Full,
+                "FULL JOIN b ON",
+            ),
+            (
+                "SELECT * FROM a CROSS JOIN b",
+                JoinKind::Cross,
+                "CROSS JOIN b",
+            ),
+        ] {
+            let select = parse(text).expect("parse join");
+            let join = select.join.clone().expect("cláusula JOIN");
+            assert_eq!(join.kind, kind, "{text}");
+            assert!(
+                select.to_string().contains(expected),
+                "{text} => {}",
+                select
+            );
+            assert_eq!(parse(&select.to_string()).expect("reparse"), select);
+        }
+
+        // CROSS JOIN no tiene lados `ON`.
+        let cross = parse("SELECT * FROM a CROSS JOIN b").expect("cross");
+        let join = cross.join.expect("join");
+        assert!(join.left.is_none() && join.right.is_none());
+
+        // `RIGHT` sin `JOIN` es ParseError.
+        assert!(parse("SELECT * FROM a RIGHT b").is_err());
+    }
 }

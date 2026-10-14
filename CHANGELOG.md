@@ -266,6 +266,10 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   RETURNING *|<cols>` devuelven las filas afectadas (valores nuevos en UPDATE,
   valores borrados en DELETE) en lugar de `{"affected": N}`; sin RETURNING el
   contrato no cambia; `RETURNING` vacío es `ParseError`.
+- **SPEC-0103** (Ola 7): `RIGHT`/`FULL`/`CROSS JOIN` — `RIGHT [OUTER]` conserva
+  las filas interiores sin contraparte (exteriores a `NULL`), `FULL [OUTER]`
+  las de ambos lados y `CROSS` el producto cartesiano; `JoinClause.left/right`
+  pasan a `Option` (CROSS sin `ON`) con `Display` canónico.
 - **SPEC-0098** (Ola 7): robustez del gate de mutación — `mutation_diff_gate.py`
   puntúa los dos esquemas de `outcomes.json` (dict legacy y cadena de
   cargo-mutants v25+) y mantiene el fallo ruidoso ante estados desconocidos;

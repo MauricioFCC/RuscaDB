@@ -8,7 +8,9 @@
 //! MVCC (los mismos candidatos visibles que el `SELECT` normal). Las filas
 //! fusionadas usan columnas prefijadas `tabla.columna`.
 
-use ruscadb_core::{Record, RuscaError, ScalarValue};
+use std::collections::HashSet;
+
+use ruscadb_core::{Record, RecordId, RuscaError, ScalarValue};
 use ruscadb_query::{JoinClause, JoinKind, Projection, Select};
 use ruscadb_txn::Snapshot;
 
@@ -52,60 +54,90 @@ pub(crate) fn execute_join_at(
     snapshot: &Snapshot,
 ) -> Result<Vec<Row>, RuscaError> {
     reject_unsupported(select)?;
+    if join.kind == JoinKind::Cross {
+        return cross_join(database, select, join, snapshot);
+    }
     let sides = resolve_sides(database, select, join)?;
     let outer_rows = visible_records(database, &sides.outer, snapshot)?;
-    let left = join.kind == JoinKind::Left;
+    let inner_rows = visible_records(database, &sides.inner, snapshot)?;
     let mut merged = Vec::new();
+    let mut outer_matched = vec![false; outer_rows.len()];
+    let mut inner_matched: HashSet<RecordId> = HashSet::new();
     if inner_is_indexed(&sides) {
-        for outer in &outer_rows {
+        for (index, outer) in outer_rows.iter().enumerate() {
             let key = join_value(&sides.outer, &sides.outer_column, outer);
-            let matches = inner_matches_indexed(database, &sides, &key, snapshot)?;
-            push_matches(&mut merged, &sides, outer, matches, left);
+            for inner in inner_matches_indexed(database, &sides, &key, snapshot)? {
+                outer_matched[index] = true;
+                inner_matched.insert(inner.id);
+                merged.push(merge_rows(&sides, outer, &inner));
+            }
         }
     } else {
-        let inner_rows = visible_records(database, &sides.inner, snapshot)?;
-        for outer in &outer_rows {
+        for (index, outer) in outer_rows.iter().enumerate() {
             let key = join_value(&sides.outer, &sides.outer_column, outer);
-            let matches: Vec<Record> = inner_rows
-                .iter()
-                .filter(|record| {
-                    keys_equal(&key, &join_value(&sides.inner, &sides.inner_column, record))
-                })
-                .cloned()
-                .collect();
-            push_matches(&mut merged, &sides, outer, matches, left);
+            for inner in &inner_rows {
+                if keys_equal(&key, &join_value(&sides.inner, &sides.inner_column, inner)) {
+                    outer_matched[index] = true;
+                    inner_matched.insert(inner.id);
+                    merged.push(merge_rows(&sides, outer, inner));
+                }
+            }
+        }
+    }
+    // LEFT/FULL: filas exteriores sin contraparte (interiores a NULL).
+    if matches!(join.kind, JoinKind::Left | JoinKind::Full) {
+        for (index, outer) in outer_rows.iter().enumerate() {
+            if !outer_matched[index] {
+                merged.push(merge_outer_only(&sides, outer));
+            }
+        }
+    }
+    // RIGHT/FULL: filas interiores sin contraparte (exteriores a NULL).
+    if matches!(join.kind, JoinKind::Right | JoinKind::Full) {
+        for inner in &inner_rows {
+            if !inner_matched.contains(&inner.id) {
+                merged.push(merge_inner_only(&sides, inner));
+            }
         }
     }
     project_all(&sides, &merged, select)
 }
 
-/// Añade a `merged` los pares de una fila exterior y sus contrapartes.
-///
-/// En `LEFT JOIN` (SPEC-0099) una fila exterior **sin** contraparte se emite
-/// una vez con las columnas interiores a `NULL`; en `INNER` se omite.
+/// Ejecuta un `CROSS JOIN` (producto cartesiano, sin `ON`).
 ///
 /// Args:
-///     merged: Filas fusionadas acumuladas.
-///     sides: Lados resueltos del `JOIN`.
-///     outer: Registro exterior en curso.
-///     matches: Contrapartes interiores que emparejan con `outer`.
-///     left: `true` si el `JOIN` es `LEFT` (conserva las filas sin contraparte).
-fn push_matches(
-    merged: &mut Vec<Row>,
-    sides: &JoinSides,
-    outer: &Record,
-    matches: Vec<Record>,
-    left: bool,
-) {
-    if matches.is_empty() {
-        if left {
-            merged.push(merge_outer_only(sides, outer));
+///     database: Base abierta.
+///     select: Consulta analizada (aporta la tabla exterior).
+///     join: Cláusula `CROSS JOIN` (aporta la tabla interior).
+///     snapshot: Vista fija de visibilidad MVCC.
+///
+/// Returns:
+///     Todas las combinaciones de filas visibles, proyectadas.
+///
+/// Errors:
+///     [`RuscaError::TableNotFound`] si una tabla no existe.
+fn cross_join(
+    database: &mut Database,
+    select: &Select,
+    join: &JoinClause,
+    snapshot: &Snapshot,
+) -> Result<Vec<Row>, RuscaError> {
+    let catalog = crate::catalog::Catalog::load(database)?;
+    let sides = JoinSides {
+        outer: catalog.get(&select.from)?.clone(),
+        outer_column: String::new(),
+        inner: catalog.get(&join.table)?.clone(),
+        inner_column: String::new(),
+    };
+    let outer_rows = visible_records(database, &sides.outer, snapshot)?;
+    let inner_rows = visible_records(database, &sides.inner, snapshot)?;
+    let mut merged = Vec::with_capacity(outer_rows.len() * inner_rows.len());
+    for outer in &outer_rows {
+        for inner in &inner_rows {
+            merged.push(merge_rows(&sides, outer, inner));
         }
-        return;
     }
-    for inner in &matches {
-        merged.push(merge_rows(sides, outer, inner));
-    }
+    project_all(&sides, &merged, select)
 }
 
 /// Rechaza las cláusulas fuera del alcance de SPEC-0052.
@@ -172,27 +204,32 @@ fn resolve_sides(
     let catalog = crate::catalog::Catalog::load(database)?;
     let outer = catalog.get(&select.from)?.clone();
     let inner = catalog.get(&join.table)?.clone();
-    for side in [&join.left, &join.right] {
+    let (Some(left), Some(right)) = (&join.left, &join.right) else {
+        return Err(RuscaError::TypeMismatch {
+            message: "el ON del JOIN es obligatorio salvo en CROSS JOIN".to_string(),
+        });
+    };
+    for side in [left, right] {
         if side.table != select.from && side.table != join.table {
             return Err(RuscaError::TableNotFound {
                 table: side.table.clone(),
             });
         }
     }
-    let crossed = (join.left.table == select.from && join.right.table == join.table)
-        || (join.right.table == select.from && join.left.table == join.table);
+    let crossed = (left.table == select.from && right.table == join.table)
+        || (right.table == select.from && left.table == join.table);
     if !crossed {
         return Err(RuscaError::TypeMismatch {
             message: format!(
                 "el ON del JOIN debe cruzar ambas tablas ('{}.x = {}.y'), no '{}' con '{}'",
-                select.from, join.table, join.left.table, join.right.table
+                select.from, join.table, left.table, right.table
             ),
         });
     }
-    let (outer_column, inner_column) = if join.left.table == select.from {
-        (join.left.column.clone(), join.right.column.clone())
+    let (outer_column, inner_column) = if left.table == select.from {
+        (left.column.clone(), right.column.clone())
     } else {
-        (join.right.column.clone(), join.left.column.clone())
+        (right.column.clone(), left.column.clone())
     };
     outer.column_type(&outer_column)?;
     inner.column_type(&inner_column)?;
@@ -353,6 +390,21 @@ fn merge_outer_only(sides: &JoinSides, outer: &Record) -> Row {
     let mut row = Row::new();
     fill_side(&mut row, &sides.outer, Some(outer));
     fill_side(&mut row, &sides.inner, None);
+    row
+}
+
+/// Fusiona una fila interior sin contraparte (columnas exteriores a `NULL`).
+///
+/// Args:
+///     sides: Lados resueltos (aportan los nombres de tabla y columnas).
+///     inner: Registro interior sin emparejamiento.
+///
+/// Returns:
+///     La fila fusionada con el lado exterior en `NULL` (`RIGHT`/`FULL JOIN`).
+fn merge_inner_only(sides: &JoinSides, inner: &Record) -> Row {
+    let mut row = Row::new();
+    fill_side(&mut row, &sides.outer, None);
+    fill_side(&mut row, &sides.inner, Some(inner));
     row
 }
 

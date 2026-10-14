@@ -29,11 +29,11 @@ cifrado.
   `COUNT(*)`/`COUNT(col)`/`SUM`/`AVG`/`MIN`/`MAX` (hash aggregation; sin
   `GROUP BY` = una sola fila global) más `HAVING <agregado> <op> <literal>
   [AND ...]` post-agregación.
-- **JOIN en RQL**: `SELECT ... FROM a [INNER|LEFT [OUTER]] JOIN b ON a.x = b.y`
-  (una igualdad; nested-loop con lookups al índice secundario o barrido
-  filtrado; columnas fusionadas con prefijo `tabla.col`). `LEFT JOIN` conserva
-  la fila exterior sin contraparte con las columnas interiores a `NULL`
-  (SPEC-0052/SPEC-0099).
+- **JOIN en RQL**: `SELECT ... FROM a [INNER|LEFT|RIGHT|FULL [OUTER]|CROSS] JOIN
+  b [ON a.x = b.y]` (una igualdad; nested-loop con lookups al índice secundario
+  o barrido filtrado; columnas fusionadas con prefijo `tabla.col`). Los outer
+  joins conservan las filas sin contraparte con el otro lado a `NULL`
+  (SPEC-0052/SPEC-0099/SPEC-0103).
 - **Modelo documental**: `Record.doc` (JSON anidado) consultable desde RQL con
   `col -> 'a.b'` (extracción por ruta) y `col @> '{json}'` (contención).
 - **Modelo vectorial**: `insert_record` con `Embedding` (+ `EmbeddingMeta` con
@@ -105,8 +105,8 @@ cifrado.
   rotación de claves (SPEC-0088), pero no hay KMS/HSM ni custodia externa. El
   catálogo ya no tiene el techo de 64 KiB (SPEC-0086); su techo residual es
   `u32`.
-- **RQL acotado**: `JOIN` solo de dos tablas con una igualdad (`INNER` o
-  `LEFT`, sin RIGHT/FULL/CROSS, no-equi ni multi-condición) y sin subconsultas;
+- **RQL acotado**: `JOIN` solo de dos tablas con una igualdad (`INNER`, `LEFT`,
+  `RIGHT`, `FULL` o `CROSS`, sin no-equi ni multi-condición) y sin subconsultas;
   `ORDER BY` de una sola clave (sin `NULLS FIRST/LAST`); DML sin
   `UPSERT`/`MERGE`; el orden de `MATCH` lo fija BM25 y el de
   `KNN` la distancia. Los operadores `->`/`@>` no usan índice (scan por fila).

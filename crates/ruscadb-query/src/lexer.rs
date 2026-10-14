@@ -77,6 +77,12 @@ pub enum Keyword {
     Inner,
     /// `RETURNING` (DML devuelve filas, SPEC-0102).
     Returning,
+    /// `RIGHT` (`RIGHT JOIN`, SPEC-0103).
+    Right,
+    /// `FULL` (`FULL JOIN`, SPEC-0103).
+    Full,
+    /// `CROSS` (`CROSS JOIN`, SPEC-0103).
+    Cross,
 }
 
 impl Keyword {
@@ -119,6 +125,9 @@ impl Keyword {
             Self::Outer => "OUTER",
             Self::Inner => "INNER",
             Self::Returning => "RETURNING",
+            Self::Right => "RIGHT",
+            Self::Full => "FULL",
+            Self::Cross => "CROSS",
         }
     }
 
@@ -167,6 +176,9 @@ impl Keyword {
             "outer" => Some(Self::Outer),
             "inner" => Some(Self::Inner),
             "returning" => Some(Self::Returning),
+            "right" => Some(Self::Right),
+            "full" => Some(Self::Full),
+            "cross" => Some(Self::Cross),
             _ => None,
         }
     }
