@@ -47,7 +47,7 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (actualizado 2026-10-14): **95 specs implementadas, 407
+Estado de referencia (actualizado 2026-10-14): **99 specs implementadas, 416
 AC trazados** (`cargo xtask trace`), **555+ tests** (`cargo test --workspace --
 --list`, sin `--all-features`).
 
@@ -165,6 +165,30 @@ en curso del diff vía `scripts/red_first_gate.py --diff pr.diff`.
 cargo test -p xtask --test red_first                 # AC-0094-02..04 (CLI/script/wiring)
 cargo xtask red specs/<feature>.md                   # local: exige RED
 python scripts/red_first_gate.py --list              # specs en curso
+```
+
+### Paginación RQL (SPEC-0096) — T1
+
+`SELECT ... [ORDER BY ...] [LIMIT n] [OFFSET m]`: el `OFFSET` se aplica después
+del `ORDER BY` y antes del `LIMIT` (incluido el implícito anti-DoS) en la ruta
+de escaneo, la de agregación (`GROUP BY`) y el `JOIN`.
+
+```bash
+cargo test -p ruscadb --test query_pagination   # AC-0096-01/02
+cargo test -p ruscadb-query                     # AC-0096-03 (parseo/Display)
+cargo test -p ruscadb --test query_distinct     # AC-0097-01/02 (DISTINCT)
+```
+
+### Gate de mutación sobre el diff (SPEC-0098) — T2m
+
+`scripts/mutation_diff_gate.py` puntúa los dos esquemas de `outcomes.json` de
+cargo-mutants (dict legacy y cadena v25+) y falla ruidoso (exit 2) ante un
+estado desconocido; `timeout` cuenta como matado.
+
+```bash
+cargo test -p xtask --test mutation_gate
+cargo mutants --in-diff pr.diff --baseline=skip -o mutants.out
+python scripts/mutation_diff_gate.py mutants.out/outcomes.json --min-score 70
 ```
 
 ---
@@ -407,6 +431,9 @@ el parseo de T1/T2/T3.
 | `ruscadb` (`<data>.cache.json`) | SPEC-0093/AC-01..04 | `cargo test -p ruscadb --test semantic_cache_persistence` |
 | `ci.yml` (`red-first`) | SPEC-0094/AC-02 | `cargo xtask red` + `scripts/red_first_gate.py` |
 | `docs/MVP.md` | SPEC-0095/AC-01..02 | `cargo test -p ruscadb --test mvp_doc_coherence` |
+| RQL (`LIMIT/OFFSET`) | SPEC-0096/AC-01..03 | `cargo test -p ruscadb --test query_pagination` + `cargo test -p ruscadb-query` |
+| RQL (`SELECT DISTINCT`) | SPEC-0097/AC-01..03 | `cargo test -p ruscadb --test query_distinct` + `cargo test -p ruscadb-query` |
+| `mutation_diff_gate.py` | SPEC-0098/AC-01..03 | `cargo test -p xtask --test mutation_gate` |
 | `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
 | `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |
 | `xtask contract` | SPEC-0061 | `cargo xtask contract` (marcadores + estados) |

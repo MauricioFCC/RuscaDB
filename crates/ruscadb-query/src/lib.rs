@@ -233,6 +233,7 @@ mod tests {
             limit in prop::option::of(0u64..1000),
         ) {
             let select = Select {
+                distinct: false,
                 projection: Projection::Columns(columns),
                 aggregates: vec![],
                 group_by: vec![],
@@ -244,6 +245,7 @@ mod tests {
                 traverse: None,
                 order_by: None,
                 limit,
+                offset: None,
             };
             let text = select.to_string();
             let reparsed = parse(&text).expect("reparse");
@@ -598,6 +600,7 @@ mod tests {
             limit in prop::option::of(0u64..1000),
         ) {
             let select = Select {
+                distinct: false,
                 projection: Projection::Columns(columns),
                 aggregates: vec![],
                 group_by: vec![],
@@ -609,6 +612,7 @@ mod tests {
                 traverse: Some(TraverseClause { column: traverse_column, depth }),
                 order_by: None,
                 limit,
+                offset: None,
             };
             let text = select.to_string();
             let reparsed = parse(&text).expect("reparse");
@@ -623,6 +627,7 @@ mod tests {
             filter_value in 0i64..1000,
         ) {
             let select = Select {
+                distinct: false,
                 projection: Projection::All,
                 aggregates: vec![],
                 group_by: vec![],
@@ -638,6 +643,7 @@ mod tests {
                 traverse: None,
                 order_by: None,
                 limit: None,
+                offset: None,
             };
             let statement = Statement::Explain(Explain { inner: Box::new(select) });
             let text = statement.to_string();
@@ -653,6 +659,7 @@ mod tests {
             query in "[a-zA-Z0-9 ]{0,24}",
         ) {
             let select = Select {
+                distinct: false,
                 projection: Projection::All,
                 aggregates: vec![],
                 group_by: vec![],
@@ -664,6 +671,7 @@ mod tests {
                 traverse: None,
                 order_by: None,
                 limit: None,
+                offset: None,
             };
             let text = select.to_string();
             let reparsed = parse(&text).expect("reparse");
@@ -679,6 +687,7 @@ mod tests {
             limit in prop::option::of(0u64..1000),
         ) {
             let select = Select {
+                distinct: false,
                 projection: Projection::All,
                 aggregates: vec![],
                 group_by: vec![],
@@ -690,6 +699,7 @@ mod tests {
                 traverse: None,
                 order_by: Some(OrderBy { column, desc }),
                 limit,
+                offset: None,
             };
             let text = select.to_string();
             let reparsed = parse(&text).expect("reparse");
@@ -916,6 +926,7 @@ mod tests {
             value in -1_000_000i64..1_000_000,
         ) {
             let select = Select {
+                distinct: false,
                 projection: Projection::All,
                 aggregates: vec![],
                 group_by: vec![],
@@ -931,10 +942,55 @@ mod tests {
                 traverse: None,
                 order_by: None,
                 limit: None,
+                offset: None,
             };
             let text = select.to_string();
             let reparsed = parse(&text).expect("reparse");
             prop_assert_eq!(reparsed, select);
         }
+    }
+
+    /// AC-0096-03 — `OFFSET` parsea, canoniza y falla ruidoso si está mal formado.
+    #[test] // @spec AC-0096-03
+    fn test_ac_0096_03_offset_parses_and_rejects_malformed() {
+        // Canonización `LIMIT n OFFSET m` + roundtrip Display→parse.
+        let statement = parse("SELECT * FROM t ORDER BY a LIMIT 2 OFFSET 1").expect("parse");
+        let text = statement.to_string();
+        assert!(
+            text.contains("LIMIT 2 OFFSET 1"),
+            "Display debe conservar LIMIT/OFFSET: {text}"
+        );
+        assert_eq!(parse(&text).expect("reparse"), statement);
+
+        // `OFFSET` sin `LIMIT` (semántica Postgres) también es válido.
+        let only = parse("SELECT * FROM t OFFSET 2").expect("offset sin limit");
+        assert_eq!(only.to_string(), "SELECT * FROM t OFFSET 2");
+
+        // Mal formado: falta el número o el token no es un entero.
+        assert!(
+            parse("SELECT * FROM t LIMIT 1 OFFSET").is_err(),
+            "OFFSET sin número debe ser ParseError"
+        );
+        assert!(
+            parse("SELECT * FROM t OFFSET x").is_err(),
+            "OFFSET no numérico debe ser ParseError"
+        );
+    }
+
+    /// AC-0097-03 — `SELECT DISTINCT` parsea, canoniza y hace roundtrip.
+    #[test] // @spec AC-0097-03
+    fn test_ac_0097_03_distinct_parses_and_displays() {
+        let statement = parse("SELECT DISTINCT a, b FROM t WHERE a = 1").expect("parse");
+        let text = statement.to_string();
+        assert!(
+            text.starts_with("SELECT DISTINCT "),
+            "Display debe canonizar SELECT DISTINCT: {text}"
+        );
+        assert_eq!(parse(&text).expect("reparse"), statement);
+
+        // Sin DISTINCT el flag queda en false (cero regresión).
+        let plain = parse("SELECT a FROM t").expect("parse plain");
+        assert!(!plain.distinct, "sin DISTINCT el flag debe ser false");
+        assert!(!plain.to_string().contains("DISTINCT"));
     }
 }

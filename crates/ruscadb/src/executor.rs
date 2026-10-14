@@ -286,15 +286,16 @@ pub(crate) fn execute_with_plan_at(
     if let Some(order_by) = &select.order_by {
         sort_records(&table, order_by, &mut records)?;
     }
-    let limit = select.limit.map_or(usize::MAX, |value| value as usize);
-    let mut rows = Vec::new();
+    let mut rows = Vec::with_capacity(records.len());
     for record in &records {
-        if rows.len() >= limit {
-            break;
-        }
         rows.push(project_row(&table, &select.projection, &record.scalars)?);
     }
-    Ok(rows)
+    if select.distinct {
+        dedup_rows(&mut rows);
+    }
+    let offset = select.offset.unwrap_or(0) as usize;
+    let limit = select.limit.map_or(usize::MAX, |value| value as usize);
+    Ok(rows.into_iter().skip(offset).take(limit).collect())
 }
 
 /// Decide si un registro es visible para el snapshot MVCC (SPEC-0019).
@@ -856,6 +857,25 @@ fn compare_floats(first: f64, second: f64) -> Ordering {
     first.partial_cmp(&second).unwrap_or(Ordering::Less)
 }
 
+/// Deduplica filas preservando el orden de primera aparición (`SELECT DISTINCT`).
+///
+/// Compara filas completas (`Row` = mapa columna→escalar) con igualdad; el
+/// dedupe es O(n²) sobre las filas proyectadas, acotadas por el `LIMIT`
+/// implícito anti-DoS (SPEC-0054), y por eso no usa hashing (los `ScalarValue`
+/// con `Float` no son `Hash`/`Ord`).
+///
+/// Args:
+///     rows: Filas proyectadas (se reemplazan por su versión única).
+pub(crate) fn dedup_rows(rows: &mut Vec<Row>) {
+    let mut unique: Vec<Row> = Vec::with_capacity(rows.len());
+    for row in rows.drain(..) {
+        if !unique.contains(&row) {
+            unique.push(row);
+        }
+    }
+    *rows = unique;
+}
+
 /// Proyecta las columnas pedidas (valida el esquema primero).
 fn project_row(
     table: &TableDef,
@@ -1118,8 +1138,15 @@ fn aggregate_records(
         .filter(|group| group_satisfies_having(group, &all_aggregates, &select.having))
         .map(|group| group.to_row(&select.projection, &select.aggregates))
         .collect();
+    if select.distinct {
+        dedup_rows(&mut rows);
+    }
     if let Some(order_by) = &select.order_by {
         sort_rows(order_by, &mut rows)?;
+    }
+    let offset = select.offset.unwrap_or(0) as usize;
+    if offset > 0 {
+        rows.drain(0..offset.min(rows.len()));
     }
     if let Some(limit) = select.limit {
         rows.truncate(limit as usize);

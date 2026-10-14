@@ -324,6 +324,7 @@ impl Parser {
     /// Parsea una sentencia `SELECT` completa (cláusulas en orden canónico).
     fn parse_select(&mut self) -> Result<Select, RuscaError> {
         self.expect_keyword(Keyword::Select)?;
+        let distinct = self.match_keyword(Keyword::Distinct);
         let (projection, aggregates) = self.parse_projection()?;
         self.expect_keyword(Keyword::From)?;
         let (from, join) = self.parse_from()?;
@@ -366,7 +367,15 @@ impl Parser {
         } else {
             None
         };
+        // `OFFSET` (SPEC-0096): paginación; puede aparecer sin `LIMIT`
+        // (semántica Postgres: `OFFSET n` sola descarta las primeras n filas).
+        let offset = if self.match_keyword(Keyword::Offset) {
+            Some(self.parse_limit()?)
+        } else {
+            None
+        };
         let select = Select {
+            distinct,
             projection,
             aggregates,
             from,
@@ -378,6 +387,7 @@ impl Parser {
             having,
             order_by,
             limit,
+            offset,
         };
         // Guard clause anti-DoS: el árbol AND anidado crece con la cadena, así
         // que la profundidad se valida aquí, antes de planificar (SPEC-0054).

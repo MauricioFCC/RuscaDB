@@ -1,0 +1,9 @@
+{
+  "outcomes": [
+    { "scenario": { "Mutant": { "name": "a" } }, "summary": "CaughtMutant" },
+    { "scenario": { "Mutant": { "name": "b" } }, "summary": "CaughtMutant" },
+    { "scenario": { "Mutant": { "name": "c" } }, "summary": "Timeout" },
+    { "scenario": { "Mutant": { "name": "d" } }, "summary": "MissedMutant" },
+    { "scenario": { "Mutant": { "name": "e" } }, "summary": "Unviable" }
+  ]
+}

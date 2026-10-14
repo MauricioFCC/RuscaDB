@@ -65,6 +65,10 @@ pub enum Keyword {
     On,
     /// `HAVING` (filtro post-agregación, SPEC-0051).
     Having,
+    /// `OFFSET` (paginación, SPEC-0096).
+    Offset,
+    /// `DISTINCT` (proyección deduplicada, SPEC-0097).
+    Distinct,
 }
 
 impl Keyword {
@@ -101,6 +105,8 @@ impl Keyword {
             Self::Join => "JOIN",
             Self::On => "ON",
             Self::Having => "HAVING",
+            Self::Offset => "OFFSET",
+            Self::Distinct => "DISTINCT",
         }
     }
 
@@ -143,6 +149,8 @@ impl Keyword {
             "join" => Some(Self::Join),
             "on" => Some(Self::On),
             "having" => Some(Self::Having),
+            "offset" => Some(Self::Offset),
+            "distinct" => Some(Self::Distinct),
             _ => None,
         }
     }

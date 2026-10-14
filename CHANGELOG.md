@@ -250,6 +250,20 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   semántico persistente y keystore con rotación) y guard
   `mvp_doc_coherence.rs` que exige las capacidades clave y prohíbe reintroducir
   límites superados (64 KiB, sin rotación, sin GC de derivados).
+- **SPEC-0096** (Ola 7): paginación RQL — `LIMIT n OFFSET m` (y `OFFSET n` sin
+  `LIMIT`, semántica Postgres); el `OFFSET` se aplica tras `ORDER BY` y antes
+  del `LIMIT` (incluido el implícito anti-DoS) en la ruta de escaneo, la de
+  agregación (`GROUP BY`) y el `JOIN`; `Display` canónico y errores ruidosos.
+- **SPEC-0097** (Ola 7): `SELECT DISTINCT` — deduplica las filas proyectadas
+  preservando el orden de primera aparición y se aplica **antes** de
+  `OFFSET`/`LIMIT` en las rutas de escaneo, agregación y `JOIN`; `Display`
+  canónico (`SELECT DISTINCT ...`) y roundtrip.
+- **SPEC-0098** (Ola 7): robustez del gate de mutación — `mutation_diff_gate.py`
+  puntúa los dos esquemas de `outcomes.json` (dict legacy y cadena de
+  cargo-mutants v25+) y mantiene el fallo ruidoso ante estados desconocidos;
+  corregido tras detectar que la última versión de cargo-mutants dejaba el gate
+  en **PASS silencioso** (0 mutantes). La corrida adversarial de SPEC-0096 pasó
+  a puntuar **MS_diff = 100 %** (7/7).
 
 ### Retrospectiva
 

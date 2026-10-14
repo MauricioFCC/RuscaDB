@@ -817,7 +817,7 @@ Cada fase se ejecuta **spec-first**: se escriben `specs/<feature>.md` + tests
 RED antes de tocar código; el gate de fase es la matriz de trazabilidad
 actualizada.
 
-### 8.1 Plan de producción 2026 (Olas 0–6)
+### 8.1 Plan de producción 2026 (Olas 0–7)
 
 > Origen: auditoría *production readiness* (2026-10-12) con veredicto
 > «**NO apto para producción**» (10 criterios: API ❌, IA real ❌, resto ⚠️) y
@@ -847,12 +847,16 @@ actualizada.
 | SPEC-0093 | `semantic_cache_persistence` | 6 | Sidecar versionado `<data>.cache.json` para el caché semántico (atómico, best-effort, sin claro en bases cifradas) | caché como derivado persistible 2026 |
 | SPEC-0094 | `red_first_gate` | 6 | `cargo xtask red` + job PR `red-first`: los specs `planned`/`draft` deben tener sus tests en rojo | adversarial guardrails 2026 |
 | SPEC-0095 | `mvp_doc_coherence` | 6 | `docs/MVP.md` alineado con las Olas 0–6 + guard de contenido (capacidades clave, sin límites superados) | doc-as-contract (fitness function) |
+| SPEC-0096 | `query_pagination` | 7 | `LIMIT n OFFSET m` (y `OFFSET` sin `LIMIT`) en RQL, aplicado tras `ORDER BY` en escaneo/agregación/JOIN | Postgres/DuckDB |
+| SPEC-0097 | `query_distinct` | 7 | `SELECT DISTINCT` (proyección completa) con dedupe antes de `OFFSET`/`LIMIT` | SQL:2016 |
+| SPEC-0098 | `mutation_gate_schema` | 7 | Gate de mutación robusto a los dos esquemas de `outcomes.json` (dict legacy + cadena v25+); estado desconocido ⇒ exit 2 | cargo-mutants v27 (hallado por mutación adversarial de SPEC-0096) |
 
 **Secuencia crítica**: Ola 0 en paralelo (SPEC-0076 en la fachada ∥
 SPEC-0077 en `ruscadb-txn`) → Ola 1 en paralelo (0078 ∥ 0079 ∥ 0084) →
 Ola 2 (0080 ∥ 0085/0086, después 0081 en solitario por tocar el WAL) →
 Ola 3 (0082) → Ola 4 (0087 ∥ 0088 ∥ 0083) → Ola 5 (flujos P0: 0089 ∥ 0090) →
-Ola 6 (producto/frontera + proceso + coherencia del MVP: 0091 ∥ 0092 ∥ 0093 ∥ 0094 ∥ 0095).
+Ola 6 (producto/frontera + proceso + coherencia del MVP: 0091 ∥ 0092 ∥ 0093 ∥ 0094 ∥ 0095) →
+Ola 7 (cierre de límites del MVP: 0096 …).
 Cada cierre de ola exige T1
 completo + commit + CI verde antes de abrir la siguiente.
 
@@ -888,6 +892,10 @@ completo + commit + CI verde antes de abrir la siguiente.
 > y SPEC-0094 (`cargo xtask red` + job PR `red-first`: evidencia test-first
 > para specs en curso) y SPEC-0095 (`docs/MVP.md` alineado con las Olas 0–6 +
 > guard de contenido que evita drift silencioso).
+> **Ola 7 (2026-10-14, en curso)**: cierre de límites del MVP — SPEC-0096
+> (paginación `LIMIT ... OFFSET` en RQL), SPEC-0097 (`SELECT DISTINCT`) y
+> SPEC-0098 (robustez de esquema del gate de mutación, hallada por la corrida
+> adversarial de SPEC-0096; MS_diff real 100 %).
 > El resto de flujos P0 sigue en «Líneas futuras».
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
@@ -906,7 +914,8 @@ completo + commit + CI verde antes de abrir la siguiente.
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
 | **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ✅ 13/13 | Olas 0–4 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow), 0081 (group commit greedy-pipelined + FsyncPolicy + crash-harness), 0082 (gates SLO Mann-Whitney/bootstrap/A-A + slo.yml), 0083 (embeddings estáticos model2vec-rs + enmienda ADR-016), 0087 (examples ejecutables + `docs/api_guide.md`, smoke por subproceso), 0088 (session/auth MCP `-32001` + keystore KMS-lite con rotación). **386 AC trazados**. |
 | **Ola 5 — flujos P0 (SPEC-0089..0090)** | ✅ 2/2 | Cierra 2026-10-14: SPEC-0089 (automatización de releases/tags + validación CHANGELOG/commits: `check_commits.py`/`check_changelog.py`, job `commits` en PR, `release.yml` con SBOM) y SPEC-0090 (job `msrv` 1.89 en CI). |
-| **Ola 6 — escritura MCP + caché persistente + BRDA + RED-first + MVP doc (SPEC-0091..0095)** | ✅ 5/5 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` + tools MCP `update`/`delete` read_write-only con RBAC delegado); SPEC-0092 (reporte de ramas BRDA por crate + artefacto JSON en CI); SPEC-0093 (sidecar `<data>.cache.json`: restauración best-effort, invalidación por mutación y omisión en bases cifradas); SPEC-0094 (`cargo xtask red` + job PR `red-first` con `scripts/red_first_gate.py`); SPEC-0095 (`docs/MVP.md` coherente con las Olas 0–6 + guard de contenido). **407 AC trazados**. |
+| **Ola 6 — escritura MCP + caché persistente + BRDA + RED-first + MVP doc (SPEC-0091..0095)** | ✅ 5/5 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` + tools MCP `update`/`delete` read_write-only con RBAC delegado); SPEC-0092 (reporte de ramas BRDA por crate + artefacto JSON en CI); SPEC-0093 (sidecar `<data>.cache.json`: restauración best-effort, invalidación por mutación y omisión en bases cifradas); SPEC-0094 (`cargo xtask red` + job PR `red-first` con `scripts/red_first_gate.py`); SPEC-0095 (`docs/MVP.md` coherente con las Olas 0–6 + guard de contenido). |
+| **Ola 7 — cierre de límites del MVP (SPEC-0096…)** | ⏳ 3/n | 2026-10-14: SPEC-0096 (paginación `LIMIT n OFFSET m` y `OFFSET` sin `LIMIT` en RQL, tras `ORDER BY` en escaneo/agregación/JOIN), SPEC-0097 (`SELECT DISTINCT` con dedupe antes de `OFFSET`/`LIMIT`) y SPEC-0098 (gate de mutación robusto a cargo-mutants v25+; la corrida adversarial de SPEC-0096 dio MS_diff 100 %). **416 AC trazados**. Pendiente: `LEFT JOIN`, multi-índice por tabla, compactación de índices derivados, `rollback` cifrado, pool cifrado, `UPSERT`/`RETURNING`, KMS/HSM externo, JOIN avanzado. |
 | Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0 — resto)**: code review multi-agente cableado (FF-11); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |

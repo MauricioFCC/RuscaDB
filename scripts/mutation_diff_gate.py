@@ -24,23 +24,64 @@ TIMEOUT = {"timeout"}
 MISSED = {"missed"}
 EXCLUDED = {"unviable", "ignored", "skipped", "success"}
 KNOWN = CAUGHT | TIMEOUT | MISSED | EXCLUDED
+# cargo-mutants >= v25 serializa `summary` como cadena (p. ej. "CaughtMutant").
+CAUGHT_PREFIX = "caught"
+TIMEOUT_PREFIX = "timeout"
+MISSED_PREFIX = "missed"
+EXCLUDED_PREFIXES = ("unviable", "ignored", "skipped", "success")
 
 
 def collect_summaries(node, found):
-    """Recolecta dicts `summary` recorriendo el JSON (esquema tolerante).
+    """Recolecta los `summary` del JSON (dict legacy o cadena v25+).
 
     Args:
         node: Subárbol JSON actual.
-        found: Lista donde se acumulan los dicts `summary` hallados.
+        found: Lista donde se acumulan los `summary` hallados.
     """
     if isinstance(node, dict):
-        if isinstance(node.get("summary"), dict):
+        if "summary" in node:
             found.append(node["summary"])
         for value in node.values():
             collect_summaries(value, found)
     elif isinstance(node, list):
         for value in node:
             collect_summaries(value, found)
+
+
+def classify(summary):
+    """Clasifica un `summary` de cargo-mutants.
+
+    Args:
+        summary: Valor de `summary`: dict legacy (`{"caught": N, ...}`) o
+            cadena (`"CaughtMutant"`, `"MissedMutant"`, `"Timeout"`, ...).
+
+    Returns:
+        `(caught, missed, unknown)`: conteos y estados no reconocidos.
+    """
+    if isinstance(summary, dict):
+        caught = missed = 0
+        unknown = []
+        for status, count in summary.items():
+            key = str(status).lower()
+            if key in CAUGHT or key in TIMEOUT:
+                caught += int(count)
+            elif key in MISSED:
+                missed += int(count)
+            elif key in EXCLUDED:
+                continue
+            else:
+                unknown.append(str(status))
+        return caught, missed, unknown
+    if isinstance(summary, str):
+        key = summary.strip().lower()
+        if key.startswith(CAUGHT_PREFIX) or key.startswith(TIMEOUT_PREFIX):
+            return 1, 0, []
+        if key.startswith(MISSED_PREFIX):
+            return 0, 1, []
+        if any(key.startswith(prefix) for prefix in EXCLUDED_PREFIXES):
+            return 0, 0, []
+        return 0, 0, [summary]
+    return 0, 0, [repr(summary)]
 
 
 def score_outcomes(outcomes_path):
@@ -60,16 +101,10 @@ def score_outcomes(outcomes_path):
     caught = missed = 0
     unknown = set()
     for summary in summaries:
-        for status, count in summary.items():
-            key = str(status).lower()
-            if key in CAUGHT or key in TIMEOUT:
-                caught += int(count)
-            elif key in MISSED:
-                missed += int(count)
-            elif key in EXCLUDED:
-                continue
-            else:
-                unknown.add(str(status))
+        item_caught, item_missed, item_unknown = classify(summary)
+        caught += item_caught
+        missed += item_missed
+        unknown.update(item_unknown)
     return caught + missed, caught, missed, sorted(unknown)
 
 

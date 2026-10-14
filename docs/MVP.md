@@ -56,6 +56,10 @@ cifrado.
   manifiesto versionado (`manifest`, `tables`, `catalog`).
 - **Durabilidad total**: `close` persiste lo pendiente; al reabrir se recuperan
   tablas, filas e índices (secundario, HNSW, CSR, FTS e índice primario).
+- **Paginación y dedupe**: `LIMIT n OFFSET m` (y `OFFSET n` sin `LIMIT`,
+  semántica Postgres) y `SELECT DISTINCT` (proyección completa, dedupe antes de
+  `OFFSET`/`LIMIT`), aplicados **después** de `ORDER BY` en la ruta de escaneo,
+  la de agregación y el `JOIN` (SPEC-0096/SPEC-0097).
 - **Cifrado en reposo**: `EncryptionConfig::new(clave)` o
   `EncryptionConfig::from_passphrase(..)`; el WAL se cifra (AEAD) y en disco no
   queda ningún claro verificable.
@@ -81,8 +85,9 @@ cifrado.
 - **Single-writer**: una única conexión de escritura por fichero, garantizada
   por un lock exclusivo cross-proceso `<data>.lock` (SPEC-0076): otra apertura
   (proceso o misma app) falla con `DatabaseInUse`. Sin modo servidor.
-- **Sin streaming ni paginación por cursor**: `execute` materializa todas las
-  filas del resultado en memoria.
+- **Sin cursores con estado ni streaming**: `execute` materializa todas las
+  filas del resultado en memoria; la paginación es por `LIMIT`/`OFFSET`
+  (SPEC-0096), no *keyset* ni cursor de servidor.
 - **Un índice secundario por tabla** (una columna); sin optimizador de consultas
   más allá de `IndexScan` por igualdad.
 - **GC de derivados sin compactación**: `reap` purga el heap, alimenta la
@@ -99,7 +104,7 @@ cifrado.
   `u32`.
 - **RQL acotado**: `JOIN` solo INNER de dos tablas con una igualdad (sin
   LEFT/RIGHT/FULL, no-equi ni multi-condición) y sin subconsultas; `ORDER BY`
-  de una sola clave (sin `NULLS FIRST/LAST`); sin `DISTINCT`; DML sin
+  de una sola clave (sin `NULLS FIRST/LAST`); DML sin
   `UPSERT`/`MERGE`/`RETURNING`; el orden de `MATCH` lo fija BM25 y el de
   `KNN` la distancia. Los operadores `->`/`@>` no usan índice (scan por fila).
 

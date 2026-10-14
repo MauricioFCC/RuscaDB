@@ -1,0 +1,5 @@
+{
+  "outcomes": [
+    { "scenario": { "Mutant": { "name": "a" } }, "summary": "SomethingElse" }
+  ]
+}

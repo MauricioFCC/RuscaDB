@@ -246,6 +246,8 @@ pub struct JoinClause {
 /// Sentencia `SELECT` analizada.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Select {
+    /// `SELECT DISTINCT`: deduplica las filas proyectadas (SPEC-0097).
+    pub distinct: bool,
     /// Columnas proyectadas.
     pub projection: Projection,
     /// Agregados de la proyección (`COUNT(*)`, `SUM(a)`, ...).
@@ -272,6 +274,8 @@ pub struct Select {
     pub order_by: Option<OrderBy>,
     /// Límite `LIMIT` (opcional).
     pub limit: Option<u64>,
+    /// Desplazamiento `OFFSET` (opcional; paginación, SPEC-0096).
+    pub offset: Option<u64>,
 }
 
 /// Sentencia `EXPLAIN <select>`: envuelve el IR para inspeccionar el plan.
@@ -420,6 +424,9 @@ impl fmt::Display for JoinClause {
 impl fmt::Display for Select {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "SELECT ")?;
+        if self.distinct {
+            write!(formatter, "DISTINCT ")?;
+        }
         write_projection(formatter, &self.projection, &self.aggregates)?;
         write!(formatter, " FROM {}", self.from)?;
         if let Some(join) = &self.join {
@@ -451,6 +458,9 @@ impl fmt::Display for Select {
         }
         if let Some(limit) = self.limit {
             write!(formatter, " LIMIT {limit}")?;
+        }
+        if let Some(offset) = self.offset {
+            write!(formatter, " OFFSET {offset}")?;
         }
         Ok(())
     }

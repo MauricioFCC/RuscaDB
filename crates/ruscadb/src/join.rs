@@ -347,15 +347,16 @@ fn merge_rows(sides: &JoinSides, outer: &Record, inner: &Record) -> Row {
 ///     [`RuscaError::ColumnNotFound`] si una columna no existe;
 ///     [`RuscaError::TypeMismatch`] si una columna no cualificada colisiona.
 fn project_all(sides: &JoinSides, merged: &[Row], select: &Select) -> Result<Vec<Row>, RuscaError> {
-    let limit = select.limit.map_or(usize::MAX, |value| value as usize);
-    let mut rows = Vec::new();
+    let mut rows = Vec::with_capacity(merged.len());
     for fused in merged {
-        if rows.len() >= limit {
-            break;
-        }
         rows.push(project_row(sides, fused, &select.projection)?);
     }
-    Ok(rows)
+    if select.distinct {
+        crate::executor::dedup_rows(&mut rows);
+    }
+    let offset = select.offset.unwrap_or(0) as usize;
+    let limit = select.limit.map_or(usize::MAX, |value| value as usize);
+    Ok(rows.into_iter().skip(offset).take(limit).collect())
 }
 
 /// Proyecta una fila fusionada (cualificadas directas; resto con regla de colisión).
