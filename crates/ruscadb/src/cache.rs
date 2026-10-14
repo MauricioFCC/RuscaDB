@@ -104,7 +104,8 @@ impl Database {
     /// el sidecar previo. En bases **cifradas** no se persiste nada en claro
     /// (el `cache.json` se retira): los datos del caché son filas reales.
     ///
-    /// Args: ninguno (usa el estado en memoria y [`Database::cache_path`]).
+    /// Args: ninguno (usa el estado en memoria y la ruta del sidecar
+    /// `<data>.cache.json`).
     ///
     /// Returns:
     ///     `Ok(())` tras persistir o retirar el sidecar.
