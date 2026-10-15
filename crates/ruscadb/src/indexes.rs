@@ -883,7 +883,7 @@ mod tests {
             heap_start: PageId(16),
             pages: vec![16],
             row_count: 0,
-            index: None,
+            indexes: Vec::new(),
         }
     }
 

@@ -60,46 +60,52 @@ pub(crate) fn canonical_key(
     }
 }
 
-/// Mantiene el índice con una entrada nueva y reempaqueta las páginas.
+/// Mantiene el índice de una columna con una entrada nueva y reempaqueta sus
+/// páginas.
 ///
-/// Los valores `NULL` se omiten (nunca igualan en una búsqueda `Eq`).
+/// Los valores `NULL` se omiten (nunca igualan en una búsqueda `Eq`) y, si la
+/// tabla no tiene índice sobre `column`, la llamada es un no-op (SPEC-0104).
 ///
 /// Args:
 ///     database: Base abierta.
 ///     catalog: Catálogo (asignador *bump* + definición de la tabla).
 ///     table_name: Tabla dueña del índice.
+///     column: Columna del índice (SPEC-0104: una por cada índice de la tabla).
 ///     value: Valor indexado de la fila.
 ///     locator: Localizador de la fila.
 ///
 /// Errors:
-///     [`RuscaError::InvalidConfig`] si la tabla no tiene índice;
 ///     [`RuscaError::TypeMismatch`] si el valor no pertenece a la columna.
 pub(crate) fn index_insert(
     database: &mut Database,
     catalog: &mut Catalog,
     table_name: &str,
+    column: &str,
     value: &ScalarValue,
     locator: RowLocator,
 ) -> Result<(), RuscaError> {
     if *value == ScalarValue::Null {
         return Ok(());
     }
-    let column_type = indexed_column_type(catalog.get(table_name)?)?;
+    let (column_type, pages) = indexed_column(catalog.get(table_name)?, column)?;
     let key = canonical_key(column_type, value)?;
-    let mut entries = load_entries(database, catalog.get(table_name)?)?;
+    let mut entries = load_entries(database, &pages)?;
     entries.push((key, locator));
-    store_entries(database, catalog, table_name, entries)
+    store_entries(database, catalog, table_name, column, entries)
 }
 
-/// Retira del índice la entrada de una fila borrada y reempaqueta las páginas.
+/// Retira del índice de una columna la entrada de una fila borrada y
+/// reempaqueta sus páginas.
 ///
-/// No es un error que la tabla no tenga índice ni que el valor sea `NULL`: en
-/// ambos casos no hay entrada que retirar (mismo criterio que [`index_insert`]).
+/// No es un error que la tabla no tenga índice sobre esa columna ni que el
+/// valor sea `NULL`: en ambos casos no hay entrada que retirar (mismo criterio
+/// que [`index_insert`]).
 ///
 /// Args:
 ///     database: Base abierta.
 ///     catalog: Catálogo (asignador *bump* + definición de la tabla).
 ///     table_name: Tabla dueña del índice.
+///     column: Columna del índice.
 ///     value: Valor indexado de la fila borrada.
 ///     locator: Localizador de la fila borrada.
 ///
@@ -109,17 +115,22 @@ pub(crate) fn index_remove(
     database: &mut Database,
     catalog: &mut Catalog,
     table_name: &str,
+    column: &str,
     value: &ScalarValue,
     locator: RowLocator,
 ) -> Result<(), RuscaError> {
-    if *value == ScalarValue::Null || catalog.get(table_name)?.index.is_none() {
+    if *value == ScalarValue::Null {
         return Ok(());
     }
-    let column_type = indexed_column_type(catalog.get(table_name)?)?;
+    // Sin índice en esa columna no hay entrada que retirar (SPEC-0104).
+    if catalog.get(table_name)?.index_for(column).is_none() {
+        return Ok(());
+    }
+    let (column_type, pages) = indexed_column(catalog.get(table_name)?, column)?;
     let key = canonical_key(column_type, value)?;
-    let mut entries = load_entries(database, catalog.get(table_name)?)?;
+    let mut entries = load_entries(database, &pages)?;
     entries.retain(|(candidate, at)| !(candidate == &key && *at == locator));
-    store_entries(database, catalog, table_name, entries)
+    store_entries(database, catalog, table_name, column, entries)
 }
 
 /// Busca los localizadores con clave igual (`Eq` por búsqueda binaria).
@@ -127,26 +138,27 @@ pub(crate) fn index_remove(
 /// Args:
 ///     database: Base abierta.
 ///     table: Tabla dueña del índice.
+///     column: Columna del índice (SPEC-0104: puede haber varios índices).
 ///     value: Literal de igualdad (se admite coerción `Int↔Float`).
 ///
 /// Returns:
 ///     Localizadores coincidentes (vacío si no hay o si el literal es `NULL`).
 ///
 /// Errors:
-///     [`RuscaError::InvalidConfig`] si la tabla no tiene índice;
+///     [`RuscaError::InvalidConfig`] si la tabla no tiene índice en esa columna;
 ///     [`RuscaError::TypeMismatch`] si el literal no pertenece a la columna.
 pub(crate) fn index_lookup_eq(
     database: &mut Database,
     table: &TableDef,
+    column: &str,
     value: &ScalarValue,
 ) -> Result<Vec<RowLocator>, RuscaError> {
     if *value == ScalarValue::Null {
         return Ok(Vec::new());
     }
-    require_index(table)?;
-    let column_type = indexed_column_type(table)?;
+    let (column_type, pages) = indexed_column(table, column)?;
     let key = canonical_key(column_type, value)?;
-    let entries = load_entries(database, table)?;
+    let entries = load_entries(database, &pages)?;
     let lower = entries.partition_point(|(candidate, _)| *candidate < key);
     let upper = entries.partition_point(|(candidate, _)| *candidate <= key);
     Ok(entries[lower..upper]
@@ -155,60 +167,63 @@ pub(crate) fn index_lookup_eq(
         .collect())
 }
 
-/// Reconstruye el índice desde las filas del heap (usado en `create_index`).
+/// Reconstruye el índice de una columna desde las filas del heap.
 ///
 /// Args:
 ///     database: Base abierta.
 ///     catalog: Catálogo (asignador *bump* + definición de la tabla).
 ///     table_name: Tabla dueña del índice.
+///     column: Columna a indexar (debe tener índice en el catálogo).
+///
+/// Errors:
+///     [`RuscaError::InvalidConfig`] si la tabla no tiene índice en esa columna;
+///     [`RuscaError::ColumnNotFound`] si una fila no trae la columna indexada;
+///     [`RuscaError::TypeMismatch`] si un valor no pertenece a su columna.
 pub(crate) fn index_build(
     database: &mut Database,
     catalog: &mut Catalog,
     table_name: &str,
+    column: &str,
 ) -> Result<(), RuscaError> {
     let snapshot = catalog.get(table_name)?.clone();
-    require_index(&snapshot)?;
-    let column = snapshot.index.as_ref().map(|index| index.column.clone());
-    let column = column.unwrap_or_default();
+    let (column_type, _) = indexed_column(&snapshot, column)?;
     let rows = heap_scan(database, &snapshot)?;
     let mut entries = Vec::with_capacity(rows.len());
     for (locator, record) in &rows {
         let value = record
             .scalars
-            .get(&column)
+            .get(column)
             .ok_or_else(|| RuscaError::ColumnNotFound {
-                column: column.clone(),
+                column: column.to_string(),
             })?;
         if *value == ScalarValue::Null {
             continue;
         }
-        entries.push((
-            canonical_key(snapshot.column_type(&column)?, value)?,
-            *locator,
-        ));
+        entries.push((canonical_key(column_type, value)?, *locator));
     }
-    store_entries(database, catalog, table_name, entries)
+    store_entries(database, catalog, table_name, column, entries)
 }
 
-/// Exige que la tabla tenga índice y devuelve su definición clonada.
-fn require_index(table: &TableDef) -> Result<(), RuscaError> {
-    if table.index.is_none() {
+/// Tipo y páginas del índice de una columna de la tabla.
+///
+/// Args:
+///     table: Definición de la tabla.
+///     column: Columna indexada.
+///
+/// Returns:
+///     El tipo declarado de la columna y las páginas actuales de su índice.
+///
+/// Errors:
+///     [`RuscaError::InvalidConfig`] si la tabla no tiene índice en esa columna.
+fn indexed_column(table: &TableDef, column: &str) -> Result<(ColumnType, Vec<u64>), RuscaError> {
+    let Some(index) = table.index_for(column) else {
         return Err(RuscaError::InvalidConfig(format!(
-            "la tabla '{}' no tiene índice (créalo con create_index)",
+            "la tabla '{}' no tiene índice en la columna '{column}' \
+             (créalo con create_index)",
             table.name
         )));
-    }
-    Ok(())
-}
-
-/// Tipo de la columna indexada de la tabla.
-fn indexed_column_type(table: &TableDef) -> Result<ColumnType, RuscaError> {
-    let column = table
-        .index
-        .as_ref()
-        .map(|index| index.column.clone())
-        .unwrap_or_default();
-    table.column_type(&column)
+    };
+    Ok((table.column_type(column)?, index.pages.clone()))
 }
 
 /// Clave de un entero (inversión del signo + big-endian).
@@ -272,14 +287,23 @@ fn type_mismatch(message: &str) -> RuscaError {
     }
 }
 
-/// Carga todas las entradas del índice en memoria (ya ordenadas en disco).
-fn load_entries(database: &mut Database, table: &TableDef) -> Result<Vec<IndexEntry>, RuscaError> {
-    require_index(table)?;
-    let pages = table.index.as_ref().map(|index| index.pages.clone());
+/// Carga todas las entradas de un índice en memoria (ya ordenadas en disco).
+///
+/// Args:
+///     database: Base abierta.
+///     pages: Páginas del índice de la columna.
+///
+/// Returns:
+///     Las entradas `(clave canónica, localizador)` en orden de página.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si una página está truncada;
+///     [`RuscaError::PageOutOfRange`] si una página no existe.
+fn load_entries(database: &mut Database, pages: &[u64]) -> Result<Vec<IndexEntry>, RuscaError> {
     let mut entries = Vec::new();
-    for raw in pages.unwrap_or_default() {
-        let page = database.read_page(PageId(raw))?;
-        entries.extend(parse_index_page(&page, raw)?);
+    for raw in pages {
+        let page = database.read_page(PageId(*raw))?;
+        entries.extend(parse_index_page(&page, *raw)?);
     }
     Ok(entries)
 }
@@ -333,16 +357,28 @@ fn corrupt_index(raw: u64) -> RuscaError {
     RuscaError::CorruptManifest(format!("índice corrupto: página {raw} truncada"))
 }
 
-/// Ordena y escribe las entradas en las páginas del índice.
+/// Ordena y escribe las entradas en las páginas del índice de una columna.
+///
+/// Args:
+///     database: Base abierta.
+///     catalog: Catálogo (asignador *bump* + páginas del índice).
+///     table_name: Tabla dueña del índice.
+///     column: Columna cuyo índice se reescribe.
+///     entries: Entradas a empaquetar (se ordenan por clave canónica).
+///
+/// Errors:
+///     [`RuscaError::InvalidConfig`] si una clave no cabe en una página;
+///     [`RuscaError::Io`] si falla la escritura de una página.
 fn store_entries(
     database: &mut Database,
     catalog: &mut Catalog,
     table_name: &str,
+    column: &str,
     mut entries: Vec<IndexEntry>,
 ) -> Result<(), RuscaError> {
     entries.sort_by(|left, right| left.0.cmp(&right.0));
     let payloads = pack_entries(&entries)?;
-    let mut page_ids = catalog.get(table_name)?.index_pages();
+    let mut page_ids = catalog.get(table_name)?.index_pages(column);
     while page_ids.len() < payloads.len() {
         // Reutiliza páginas liberadas antes de crecer (SPEC-0085).
         page_ids.push(database.allocate_page(catalog).0);
@@ -353,7 +389,9 @@ fn store_entries(
         page.data_mut()[..payload.len()].copy_from_slice(payload);
         database.write_page(&page)?;
     }
-    catalog.get_mut(table_name)?.set_index_pages(page_ids);
+    catalog
+        .get_mut(table_name)?
+        .set_index_pages(column, page_ids);
     Ok(())
 }
 

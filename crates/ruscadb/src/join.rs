@@ -247,13 +247,13 @@ fn resolve_sides(
 ///     sides: Lados resueltos del `JOIN`.
 ///
 /// Returns:
-///     `true` si la tabla interior indexa su columna de igualdad.
+///     `true` si la tabla interior indexa su columna de igualdad (SPEC-0104:
+///     basta con que esa columna esté entre los índices de la tabla).
 fn inner_is_indexed(sides: &JoinSides) -> bool {
     sides
         .inner
-        .index
-        .as_ref()
-        .is_some_and(|index| index.column == sides.inner_column)
+        .index_for(&sides.inner_column)
+        .is_some_and(|_| true)
 }
 
 /// Lee las filas visibles de una tabla para el snapshot (como el `SELECT`).
@@ -316,7 +316,7 @@ fn inner_matches_indexed(
         return Ok(Vec::new());
     }
     let mut matches = Vec::new();
-    for locator in index_lookup_eq(database, &sides.inner, key)? {
+    for locator in index_lookup_eq(database, &sides.inner, &sides.inner_column, key)? {
         let record = heap_read(database, locator)?;
         let candidate = join_value(&sides.inner, &sides.inner_column, &record);
         if is_visible(snapshot, &record) && keys_equal(key, &candidate) {

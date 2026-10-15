@@ -176,26 +176,29 @@ impl Database {
         Ok(record.id)
     }
 
-    /// Crea el índice secundario de una columna y lo construye desde el heap.
+    /// Crea un índice secundario sobre una columna y lo construye desde el heap.
     ///
-    /// Confirma la operación (WAL-first) antes de retornar.
+    /// Una tabla puede tener varios índices (uno por columna, SPEC-0104); se
+    /// rechaza duplicar la misma columna. Confirma la operación (WAL-first)
+    /// antes de retornar.
     ///
     /// Args:
     ///     table: Tabla destino.
-    ///     column: Columna a indexar (una por tabla).
+    ///     column: Columna a indexar.
     ///
     /// Errors:
     ///     [`RuscaError::TableNotFound`] si la tabla no existe;
     ///     [`RuscaError::ColumnNotFound`] si la columna no existe;
-    ///     [`RuscaError::InvalidConfig`] si ya hay un índice.
+    ///     [`RuscaError::InvalidConfig`] si esa columna ya está indexada.
     pub fn create_index(&mut self, table: &str, column: &str) -> Result<(), RuscaError> {
         let mut catalog = Catalog::load(self)?;
         {
             let definition = catalog.get(table)?;
             definition.column_type(column)?;
-            if definition.index.is_some() {
+            if definition.index_for(column).is_some() {
                 return Err(RuscaError::InvalidConfig(format!(
-                    "la tabla '{table}' ya tiene un índice (solo se admite una columna indexada)"
+                    "la tabla '{table}' ya tiene un índice en la columna '{column}' \
+                     (cada columna se indexa una sola vez)"
                 )));
             }
         }
@@ -203,8 +206,8 @@ impl Database {
             column: column.to_string(),
             pages: Vec::new(),
         };
-        catalog.get_mut(table)?.index = Some(indexed);
-        crate::index::index_build(self, &mut catalog, table)?;
+        catalog.get_mut(table)?.indexes.push(indexed);
+        crate::index::index_build(self, &mut catalog, table, column)?;
         catalog.save(self)
     }
 
@@ -485,7 +488,18 @@ fn coerce_value(
     }
 }
 
-/// Actualiza el índice de la tabla con la fila recién insertada.
+/// Actualiza todos los índices de la tabla con la fila recién insertada.
+///
+/// Args:
+///     database: Base abierta.
+///     catalog: Catálogo (asignador *bump* + definición de la tabla).
+///     table: Tabla dueña de los índices.
+///     record: Registro insertado.
+///     locator: Localizador de la fila.
+///
+/// Errors:
+///     [`RuscaError::TableNotFound`] / [`RuscaError::TypeMismatch`] si el valor
+///     no pertenece a una columna indexada.
 pub(crate) fn maintain_index(
     database: &mut Database,
     catalog: &mut Catalog,
@@ -493,16 +507,17 @@ pub(crate) fn maintain_index(
     record: &Record,
     locator: crate::heap::RowLocator,
 ) -> Result<(), RuscaError> {
-    let indexed = catalog.get(table)?.index.clone();
-    let Some(definition) = indexed else {
-        return Ok(());
-    };
-    let value = record
-        .scalars
-        .get(&definition.column)
-        .cloned()
-        .unwrap_or(ScalarValue::Null);
-    index_insert(database, catalog, table, &value, locator)
+    // SPEC-0104: la tabla puede tener varios índices; se mantiene cada uno.
+    let columns = catalog.get(table)?.index_columns();
+    for column in columns {
+        let value = record
+            .scalars
+            .get(&column)
+            .cloned()
+            .unwrap_or(ScalarValue::Null);
+        index_insert(database, catalog, table, &column, &value, locator)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

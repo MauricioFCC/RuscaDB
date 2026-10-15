@@ -855,6 +855,7 @@ actualizada.
 | SPEC-0101 | `derived_index_compaction` | 7 | `reap` reconstruye HNSW/CSR/FTS desde filas vivas (sin entradas huérfanas) | SPEC-0085 (deuda) |
 | SPEC-0102 | `dml_returning` | 7 | `RETURNING *\|<cols>` en `INSERT`/`UPDATE`/`DELETE` | SQL:2016 |
 | SPEC-0103 | `outer_cross_join` | 7 | `RIGHT`/`FULL`/`CROSS JOIN` (dos tablas, una igualdad o cartesiano) | SQL:2016 |
+| SPEC-0104 | `multi_index` | 7 | Varios índices secundarios por tabla (una columna cada uno); catálogo v3/v4 con lectura v1/v2 | SQL:2016 |
 
 **Secuencia crítica**: Ola 0 en paralelo (SPEC-0076 en la fachada ∥
 SPEC-0077 en `ruscadb-txn`) → Ola 1 en paralelo (0078 ∥ 0079 ∥ 0084) →
@@ -901,9 +902,9 @@ completo + commit + CI verde antes de abrir la siguiente.
 > `LIMIT ... OFFSET`), SPEC-0097 (`SELECT DISTINCT`), SPEC-0098 (gate de
 > mutación robusto; MS_diff real 100 %), SPEC-0099 (`LEFT [OUTER] JOIN`),
 > SPEC-0100 (provider LLM del harness: llama.cpp local / OpenAI prod),
-> SPEC-0101 (compactación de índices derivados), SPEC-0102 (`RETURNING` en DML)
-> y SPEC-0103 (`RIGHT`/`FULL`/`CROSS JOIN`). En curso: multi-índice por tabla
-> y `rollback` cifrado.
+> SPEC-0101 (compactación de índices derivados), SPEC-0102 (`RETURNING` en DML),
+> SPEC-0103 (`RIGHT`/`FULL`/`CROSS JOIN`) y SPEC-0104 (varios índices
+> secundarios por tabla). En curso: `rollback` cifrado.
 > El resto de flujos P0 sigue en «Líneas futuras».
 > Convención: ✅ implementado y
 > trazado; ⏳ pendiente o desviado. La columna «Evidencia» apunta a las specs
@@ -923,7 +924,7 @@ completo + commit + CI verde antes de abrir la siguiente.
 | **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ✅ 13/13 | Olas 0–4 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow), 0081 (group commit greedy-pipelined + FsyncPolicy + crash-harness), 0082 (gates SLO Mann-Whitney/bootstrap/A-A + slo.yml), 0083 (embeddings estáticos model2vec-rs + enmienda ADR-016), 0087 (examples ejecutables + `docs/api_guide.md`, smoke por subproceso), 0088 (session/auth MCP `-32001` + keystore KMS-lite con rotación). **386 AC trazados**. |
 | **Ola 5 — flujos P0 (SPEC-0089..0090)** | ✅ 2/2 | Cierra 2026-10-14: SPEC-0089 (automatización de releases/tags + validación CHANGELOG/commits: `check_commits.py`/`check_changelog.py`, job `commits` en PR, `release.yml` con SBOM) y SPEC-0090 (job `msrv` 1.89 en CI). |
 | **Ola 6 — escritura MCP + caché persistente + BRDA + RED-first + MVP doc (SPEC-0091..0095)** | ✅ 5/5 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` + tools MCP `update`/`delete` read_write-only con RBAC delegado); SPEC-0092 (reporte de ramas BRDA por crate + artefacto JSON en CI); SPEC-0093 (sidecar `<data>.cache.json`: restauración best-effort, invalidación por mutación y omisión en bases cifradas); SPEC-0094 (`cargo xtask red` + job PR `red-first` con `scripts/red_first_gate.py`); SPEC-0095 (`docs/MVP.md` coherente con las Olas 0–6 + guard de contenido). |
-| **Ola 7 — cierre de límites del MVP (SPEC-0096…0103)** | ✅ 8/8 (2 en curso) | 2026-10-14: SPEC-0096 (paginación `LIMIT/OFFSET`), SPEC-0097 (`SELECT DISTINCT`), SPEC-0098 (gate de mutación robusto; MS_diff 100 %), SPEC-0099 (`LEFT [OUTER] JOIN`), SPEC-0100 (provider LLM del harness: llama.cpp local / OpenAI prod), SPEC-0101 (compactación de índices derivados tras `reap`), SPEC-0102 (`RETURNING` en DML) y SPEC-0103 (`RIGHT`/`FULL`/`CROSS JOIN`). **435 AC trazados**. En curso (paralelo): SPEC-0104 (multi-índice por tabla) y SPEC-0105 (`rollback` cifrado). Pendiente: pool cifrado, `UPSERT`/`MERGE`, JOIN con `WHERE`/`ORDER BY`, KMS/HSM externo. |
+| **Ola 7 — cierre de límites del MVP (SPEC-0096…0104)** | ✅ 9/9 (1 en curso) | 2026-10-14: SPEC-0096 (paginación `LIMIT/OFFSET`), SPEC-0097 (`SELECT DISTINCT`), SPEC-0098 (gate de mutación robusto; MS_diff 100 %), SPEC-0099 (`LEFT [OUTER] JOIN`), SPEC-0100 (provider LLM del harness: llama.cpp local / OpenAI prod), SPEC-0101 (compactación de índices derivados tras `reap`), SPEC-0102 (`RETURNING` en DML), SPEC-0103 (`RIGHT`/`FULL`/`CROSS JOIN`) y SPEC-0104 (varios índices secundarios por tabla; catálogo v3/v4 con lectura v1/v2). **443 AC trazados**. En curso: `rollback` cifrado (SPEC-0105). Pendiente: pool cifrado, `UPSERT`/`MERGE`, JOIN con `WHERE`/`ORDER BY`, KMS/HSM externo. |
 | Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0 — resto)**: code review multi-agente cableado (FF-11); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083) |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |

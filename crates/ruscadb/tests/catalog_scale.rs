@@ -7,8 +7,9 @@
 //! SPEC-0031) sigue cargando sin migración.
 //!
 //! Clave de observabilidad: el superblock vive en la página 0 (magic `u64` +
-//! versión `u32`), por lo que la versión `2` (formato paginado) frente a la `1`
-//! (reservado legacy) se verifica leyendo la página 0 por la API pública.
+//! versión `u32`), por lo que la versión `4` (formato paginado) frente a la `3`
+//! (región reservada) se verifica leyendo la página 0 por la API pública. El
+//! formato legacy de un índice por tabla (`1`/`2`) sigue leyéndose (SPEC-0104).
 
 // El oráculo puede fallar ruidosamente (equivalente a `allow-expect-in-tests`).
 #![allow(clippy::expect_used)]
@@ -27,11 +28,13 @@ const COLUMNS_PER_TABLE: usize = 200;
 /// Filas sembradas en la tabla de heap del test de no-colisión.
 const ROWS_TO_SEED: usize = 6;
 
-/// Versión del formato legacy (región reservada contigua, SPEC-0031).
-const CATALOG_VERSION_RESERVED: u32 = 1;
+/// Versión del formato reservado con multi-índice (SPEC-0104; era `1` con un
+/// único índice por tabla en SPEC-0031, que sigue siendo leída).
+const CATALOG_VERSION_RESERVED: u32 = 3;
 
-/// Versión del formato paginado con cadena de overflow (SPEC-0086).
-const CATALOG_VERSION_OVERFLOW: u32 = 2;
+/// Versión del formato paginado con cadena de overflow y multi-índice
+/// (SPEC-0104; era `2` con un único índice en SPEC-0086, que sigue leyéndose).
+const CATALOG_VERSION_OVERFLOW: u32 = 4;
 
 /// Nombre determinista de la tabla ancha `index`.
 ///

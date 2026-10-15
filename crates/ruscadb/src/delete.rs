@@ -132,15 +132,18 @@ fn stamp_deleted(mut record: Record, tx: TxId, lsn: Lsn) -> Record {
 /// Retira la entrada del índice secundario de escalares de la fila borrada.
 ///
 /// Args:
+/// Retira de **todos** los índices de la tabla la entrada de la fila borrada.
+///
+/// Args:
 ///     database: Base abierta.
 ///     catalog: Catálogo (asignador *bump* + definición de la tabla).
-///     table: Tabla dueña del índice.
-///     record: Registro borrado (para leer el valor de la columna indexada).
+///     table: Tabla dueña de los índices.
+///     record: Registro borrado (para leer el valor de cada columna indexada).
 ///     locator: Localizador de la fila.
 ///
 /// Errors:
 ///     [`RuscaError::TableNotFound`] / [`RuscaError::TypeMismatch`] si el valor
-///     no pertenece a la columna indexada.
+///     no pertenece a una columna indexada.
 fn remove_secondary_entry(
     database: &mut Database,
     catalog: &mut Catalog,
@@ -148,18 +151,15 @@ fn remove_secondary_entry(
     record: &Record,
     locator: RowLocator,
 ) -> Result<(), RuscaError> {
-    let Some(column) = catalog
-        .get(table)?
-        .index
-        .as_ref()
-        .map(|index| index.column.clone())
-    else {
-        return Ok(());
-    };
-    let value = record
-        .scalars
-        .get(&column)
-        .cloned()
-        .unwrap_or(ScalarValue::Null);
-    index_remove(database, catalog, table, &value, locator)
+    // SPEC-0104: varios índices por tabla; se retira la entrada de cada uno.
+    let columns = catalog.get(table)?.index_columns();
+    for column in columns {
+        let value = record
+            .scalars
+            .get(&column)
+            .cloned()
+            .unwrap_or(ScalarValue::Null);
+        index_remove(database, catalog, table, &column, &value, locator)?;
+    }
+    Ok(())
 }

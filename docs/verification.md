@@ -47,8 +47,8 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (actualizado 2026-10-14): **103 specs implementadas, 435
-AC trazados** (`cargo xtask trace`), **555+ tests** (`cargo test --workspace --
+Estado de referencia (actualizado 2026-10-14): **104 specs implementadas, 443
+AC trazados** (`cargo xtask trace`), **560+ tests** (`cargo test --workspace --
 --list`, sin `--all-features`).
 
 Atajo opcional (mismos comandos, vía pre-commit):
@@ -456,6 +456,7 @@ el parseo de T1/T2/T3.
 | Índices derivados (`reap`) | SPEC-0101/AC-01..04 | `cargo test -p ruscadb --test derived_index_compaction` |
 | RQL (`RETURNING`) | SPEC-0102/AC-01..03 | `cargo test -p ruscadb --test dml_returning` |
 | RQL (`RIGHT`/`FULL`/`CROSS`) | SPEC-0103/AC-01..04 | `cargo test -p ruscadb --test join_outer` |
+| Índices secundarios (multi) | SPEC-0104/AC-01..08 | `cargo test -p ruscadb --test multi_index` (AC-01..04) + `cargo test -p ruscadb --lib catalog` (AC-05..08) |
 | `mutation_diff_gate.py` | SPEC-0098/AC-01..03 | `cargo test -p xtask --test mutation_gate` |
 | `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
 | `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |

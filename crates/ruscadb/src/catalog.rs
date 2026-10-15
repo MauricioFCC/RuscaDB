@@ -22,6 +22,17 @@
 //! y del heap nunca colisionan. El techo práctico desaparece (queda el máximo de
 //! `u32` páginas de overflow, ~16 TiB, con error accionable).
 //!
+//! ## Versiones 3/4 (SPEC-0104, multi-índice)
+//!
+//! El payload de cada tabla guarda la **lista** de índices secundarios en lugar
+//! de un único índice opcional. La versión **3** conserva el layout reservado
+//! (superblock de 16 bytes, ≤ 64 KiB) y la **4** el layout paginado con cadena
+//! de overflow (superblock de 24 bytes); ambas son la escritura por defecto. El
+//! decodificador sigue leyendo las versiones **1** y **2** (un índice por tabla,
+//! marcador `u8`), por lo que una base persistida con el formato anterior carga
+//! sin migración; una versión desconocida produce [`RuscaError::CorruptManifest`]
+//! accionable en vez de leer datos a ciegas.
+//!
 //! El códec es manual (enteros LE y cadenas con prefijo `u32 LE`) para no
 //! añadir dependencias de serialización a la fachada.
 
@@ -35,11 +46,21 @@ use crate::Database;
 /// Magia del superblock (`"RUSCDB01"`): distingue la página 0 del catálogo.
 pub(crate) const CATALOG_MAGIC: u64 = 0x5255_5343_4442_3031;
 
-/// Versión del formato del catálogo persistido (región reservada, SPEC-0031).
+/// Versión legacy del formato del catálogo persistido (región reservada contigua
+/// con **un** índice por tabla, SPEC-0031). Sigue siendo leída (SPEC-0104).
 pub(crate) const CATALOG_VERSION: u32 = 1;
 
-/// Versión del formato paginado con cadena de overflow (SPEC-0086).
+/// Versión legacy del formato paginado con cadena de overflow y **un** índice
+/// por tabla (SPEC-0086). Sigue siendo leída (SPEC-0104).
 const CATALOG_VERSION_OVERFLOW: u32 = 2;
+
+/// Versión del formato reservado con **varios** índices por tabla (SPEC-0104).
+/// Mismo layout que v1 (superblock de 16 bytes) y payload con lista de índices.
+const CATALOG_VERSION_MULTI: u32 = 3;
+
+/// Versión del formato paginado con overflow y **varios** índices por tabla
+/// (SPEC-0104). Mismo layout que v2 (superblock de 24 bytes + cadena).
+const CATALOG_VERSION_MULTI_OVERFLOW: u32 = 4;
 
 /// Tamaño del superblock v1 en bytes (magic u64 + versión u32 + páginas u32).
 const SUPERBLOCK_SIZE: usize = 16;
@@ -81,7 +102,8 @@ pub struct ColumnDef {
     pub col_type: ColumnType,
 }
 
-/// Definición del índice secundario de una tabla (una columna, SPEC-0012 §FR-0012-03).
+/// Definición de un índice secundario de una tabla (una columna, SPEC-0012
+/// §FR-0012-03; SPEC-0104 admite varios por tabla).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexDef {
     /// Columna indexada.
@@ -104,8 +126,8 @@ pub struct TableDef {
     pub pages: Vec<u64>,
     /// Número de filas vivas.
     pub row_count: u64,
-    /// Índice secundario (una columna por tabla).
-    pub index: Option<IndexDef>,
+    /// Índices secundarios de la tabla (uno por columna indexada, SPEC-0104).
+    pub indexes: Vec<IndexDef>,
 }
 
 /// Catálogo de tablas + asignador *bump* de páginas libres.
@@ -189,10 +211,11 @@ impl Catalog {
 
     /// Carga el catálogo desde las páginas de la base.
     ///
-    /// Despacha según la versión del superblock: v1 (región reservada contigua,
-    /// SPEC-0031) o v2 (payload paginado con cadena de overflow, SPEC-0086). Si
-    /// la página 0 no existe o no contiene la magia, devuelve un catálogo vacío
-    /// (base nueva).
+    /// Despacha según la versión del superblock: v1/v3 (región reservada,
+    /// SPEC-0031/SPEC-0104) o v2/v4 (payload paginado con cadena de overflow,
+    /// SPEC-0086/SPEC-0104); las versiones v1/v2 (un índice por tabla) se
+    /// leen sin migración. Si la página 0 no existe o no contiene la magia,
+    /// devuelve un catálogo vacío (base nueva).
     ///
     /// Args:
     ///     database: Base abierta.
@@ -208,18 +231,25 @@ impl Catalog {
         if read_magic(first.data()) != CATALOG_MAGIC {
             return Ok(Self::new());
         }
-        if read_version(first.data()) == CATALOG_VERSION_OVERFLOW {
-            return load_overflow(database, &first);
+        match read_version(first.data()) {
+            CATALOG_VERSION_OVERFLOW => load_overflow(database, &first, false),
+            CATALOG_VERSION_MULTI_OVERFLOW => load_overflow(database, &first, true),
+            CATALOG_VERSION => load_reserved(database, &first, false),
+            CATALOG_VERSION_MULTI => load_reserved(database, &first, true),
+            other => Err(corrupt(&format!(
+                "versión de superblock desconocida: {other} (esperaba {CATALOG_VERSION}..\
+                 {CATALOG_VERSION_MULTI_OVERFLOW}); abre la base con una versión compatible"
+            ))),
         }
-        load_reserved(database, &first)
     }
 
     /// Persiste el catálogo y confirma (WAL-first).
     ///
-    /// Con ≤ 16 páginas escribe el formato legacy v1 contiguo en la región
-    /// reservada. Si el payload la supera, paga páginas extra con el mismo
-    /// asignador *bump* (`next_page`) y las enlaza en una cadena de overflow
-    /// (patrón SPEC-0071, SPEC-0086). Incluye en el mismo commit las páginas
+    /// Con ≤ 16 páginas escribe el formato reservado **v3** (superblock de
+    /// 16 bytes, multi-índice, SPEC-0104) en la región reservada. Si el payload
+    /// la supera, paga páginas extra con el mismo asignador *bump* (`next_page`)
+    /// y las enlaza en una cadena de overflow (patrón SPEC-0071, SPEC-0086) con
+    /// el formato paginado **v4**. Incluye en el mismo commit las páginas
     /// sucias previas (heap/índice), por lo que `insert` logra atomicidad con
     /// una sola llamada.
     ///
@@ -278,7 +308,7 @@ impl Catalog {
                 heap_start,
                 pages: vec![heap_start.0],
                 row_count: 0,
-                index: None,
+                indexes: Vec::new(),
             },
         );
         Ok(())
@@ -303,20 +333,45 @@ impl TableDef {
             })
     }
 
-    /// Páginas del índice secundario (vacío si no hay índice).
-    pub(crate) fn index_pages(&self) -> Vec<u64> {
-        self.index
-            .as_ref()
+    /// Índice secundario sobre una columna, si existe (SPEC-0104).
+    ///
+    /// Args:
+    ///     column: Nombre de la columna.
+    ///
+    /// Returns:
+    ///     El [`IndexDef`] de esa columna, o `None` si no está indexada.
+    pub(crate) fn index_for(&self, column: &str) -> Option<&IndexDef> {
+        self.indexes.iter().find(|index| index.column == column)
+    }
+
+    /// Columnas con índice secundario, en orden de creación.
+    ///
+    /// Returns:
+    ///     Una cadena por cada índice de la tabla.
+    pub fn index_columns(&self) -> Vec<String> {
+        self.indexes
+            .iter()
+            .map(|index| index.column.clone())
+            .collect()
+    }
+
+    /// Páginas del índice de una columna (vacío si esa columna no tiene índice).
+    ///
+    /// Args:
+    ///     column: Nombre de la columna.
+    pub(crate) fn index_pages(&self, column: &str) -> Vec<u64> {
+        self.index_for(column)
             .map(|index| index.pages.clone())
             .unwrap_or_default()
     }
 
-    /// Sustituye las páginas del índice (no-op si no hay índice).
+    /// Sustituye las páginas del índice de una columna (no-op si no existe).
     ///
     /// Args:
+    ///     column: Nombre de la columna.
     ///     pages: Nuevas páginas del índice.
-    pub(crate) fn set_index_pages(&mut self, pages: Vec<u64>) {
-        if let Some(index) = self.index.as_mut() {
+    pub(crate) fn set_index_pages(&mut self, column: &str, pages: Vec<u64>) {
+        if let Some(index) = self.indexes.iter_mut().find(|index| index.column == column) {
             index.pages = pages;
         }
     }
@@ -360,11 +415,13 @@ fn read_next(data: &[u8]) -> u64 {
     u64::from_le_bytes(next)
 }
 
-/// Carga un catálogo legacy v1 (contiguo, `0..catalog_pages`).
+/// Carga un catálogo reservado (contiguo, `0..catalog_pages`).
 ///
 /// Args:
 ///     database: Base abierta.
 ///     first: Página 0 ya leída (contenía la magia).
+///     multi: `true` si el payload guarda varios índices por tabla (v3,
+///         SPEC-0104); `false` para el formato un índice (v1, SPEC-0031).
 ///
 /// Returns:
 ///     El catálogo decodificado.
@@ -372,7 +429,11 @@ fn read_next(data: &[u8]) -> u64 {
 /// Errors:
 ///     [`RuscaError::CorruptManifest`] si el superblock declara 0 páginas o
 ///     falta una página declarada.
-fn load_reserved(database: &mut Database, first: &Page) -> Result<Catalog, RuscaError> {
+fn load_reserved(
+    database: &mut Database,
+    first: &Page,
+    multi: bool,
+) -> Result<Catalog, RuscaError> {
     let catalog_pages = read_catalog_pages(first.data()) as u64;
     if catalog_pages == 0 {
         return Err(corrupt("el superblock declara 0 páginas de catálogo"));
@@ -383,14 +444,16 @@ fn load_reserved(database: &mut Database, first: &Page) -> Result<Catalog, Rusca
         let skip = if raw == 0 { SUPERBLOCK_SIZE } else { 0 };
         payload.extend_from_slice(&page.data()[skip..]);
     }
-    decode_catalog(&payload)
+    decode_catalog(&payload, multi)
 }
 
-/// Carga un catálogo v2: región reservada + cadena de páginas de overflow.
+/// Carga un catálogo paginado: región reservada + cadena de páginas de overflow.
 ///
 /// Args:
 ///     database: Base abierta.
-///     first: Página 0 ya leída (superblock v2).
+///     first: Página 0 ya leída (superblock de 24 bytes, v2 o v4).
+///     multi: `true` si el payload guarda varios índices por tabla (v4,
+///         SPEC-0104); `false` para el formato un índice (v2, SPEC-0086).
 ///
 /// Returns:
 ///     El catálogo decodificado.
@@ -398,7 +461,11 @@ fn load_reserved(database: &mut Database, first: &Page) -> Result<Catalog, Rusca
 /// Errors:
 ///     [`RuscaError::CorruptManifest`] si falta una página reservada, la cadena
 ///     de overflow se trunca o el payload no decodifica.
-fn load_overflow(database: &mut Database, first: &Page) -> Result<Catalog, RuscaError> {
+fn load_overflow(
+    database: &mut Database,
+    first: &Page,
+    multi: bool,
+) -> Result<Catalog, RuscaError> {
     let overflow_pages = read_catalog_pages(first.data()) as usize;
     let mut payload = Vec::with_capacity(RESERVED_PAYLOAD_V2 + overflow_pages * OVERFLOW_CHUNK);
     payload.extend_from_slice(&first.data()[SUPERBLOCK_V2_SIZE..]);
@@ -425,14 +492,15 @@ fn load_overflow(database: &mut Database, first: &Page) -> Result<Catalog, Rusca
         payload.extend_from_slice(&page.data()[OVERFLOW_HEADER..]);
         current = read_next(page.data());
     }
-    decode_catalog(&payload)
+    decode_catalog(&payload, multi)
 }
 
-/// Lee la cadena de overflow existente (v2) desde la página 0.
+/// Lee la cadena de overflow existente (v2/v4) desde la página 0.
 ///
-/// Devuelve vacío si la base es nueva, no tiene magia o guarda un catálogo v1.
-/// Se usa en `save` para reutilizar las páginas de overflow ya asignadas y no
-/// filtrar una página por cada escritura (sin free-list, SPEC-0086).
+/// Devuelve vacío si la base es nueva, no tiene magia o guarda un catálogo de
+/// región reservada (v1/v3). Se usa en `save` para reutilizar las páginas de
+/// overflow ya asignadas y no filtrar una página por cada escritura (sin
+/// free-list, SPEC-0086).
 ///
 /// Args:
 ///     database: Base abierta.
@@ -449,7 +517,10 @@ fn existing_overflow_chain(database: &mut Database) -> Result<Vec<u64>, RuscaErr
     }
     let first = database.read_page(PageId(0))?;
     if read_magic(first.data()) != CATALOG_MAGIC
-        || read_version(first.data()) != CATALOG_VERSION_OVERFLOW
+        || !matches!(
+            read_version(first.data()),
+            CATALOG_VERSION_OVERFLOW | CATALOG_VERSION_MULTI_OVERFLOW
+        )
     {
         return Ok(Vec::new());
     }
@@ -508,7 +579,7 @@ fn read_overflow_page(database: &mut Database, page_id: u64) -> Result<Page, Rus
         })
 }
 
-/// Escribe el formato legacy v1 (contiguo) en la región reservada y confirma.
+/// Escribe el formato reservado **v3** (contiguo, multi-índice) y confirma.
 ///
 /// Args:
 ///     database: Base abierta.
@@ -521,7 +592,7 @@ fn write_reserved(database: &mut Database, bytes: &[u8]) -> Result<(), RuscaErro
     let total = pages * PAGE_SIZE;
     let mut buffer = vec![0u8; total];
     buffer[0..8].copy_from_slice(&CATALOG_MAGIC.to_le_bytes());
-    buffer[8..12].copy_from_slice(&CATALOG_VERSION.to_le_bytes());
+    buffer[8..12].copy_from_slice(&CATALOG_VERSION_MULTI.to_le_bytes());
     buffer[12..16].copy_from_slice(&(pages as u32).to_le_bytes());
     buffer[SUPERBLOCK_SIZE..SUPERBLOCK_SIZE + bytes.len()].copy_from_slice(bytes);
     for (index, chunk) in buffer.chunks(PAGE_SIZE).enumerate() {
@@ -533,7 +604,8 @@ fn write_reserved(database: &mut Database, bytes: &[u8]) -> Result<(), RuscaErro
     Ok(())
 }
 
-/// Escribe el formato v2: 16 páginas reservadas + cadena de overflow, y confirma.
+/// Escribe el formato paginado **v4**: 16 páginas reservadas + cadena de
+/// overflow (multi-índice), y confirma.
 ///
 /// Args:
 ///     database: Base abierta.
@@ -556,7 +628,7 @@ fn write_overflow(database: &mut Database, bytes: &[u8], chain: &[u64]) -> Resul
     let reserved_payload = RESERVED_PAYLOAD_V2.min(bytes.len());
     let mut buffer = vec![0u8; CATALOG_RESERVED_PAGES as usize * PAGE_SIZE];
     buffer[0..8].copy_from_slice(&CATALOG_MAGIC.to_le_bytes());
-    buffer[8..12].copy_from_slice(&CATALOG_VERSION_OVERFLOW.to_le_bytes());
+    buffer[8..12].copy_from_slice(&CATALOG_VERSION_MULTI_OVERFLOW.to_le_bytes());
     buffer[12..16].copy_from_slice(&count.to_le_bytes());
     buffer[16..24].copy_from_slice(&chain[0].to_le_bytes());
     buffer[SUPERBLOCK_V2_SIZE..SUPERBLOCK_V2_SIZE + reserved_payload]
@@ -644,16 +716,13 @@ fn encode_table(buffer: &mut Vec<u8>, table: &TableDef) {
         push_u64(buffer, *page);
     }
     push_u64(buffer, table.row_count);
-    match &table.index {
-        Some(index) => {
-            buffer.push(1);
-            push_str(buffer, &index.column);
-            push_u32(buffer, index.pages.len() as u32);
-            for page in &index.pages {
-                push_u64(buffer, *page);
-            }
+    push_u32(buffer, table.indexes.len() as u32);
+    for index in &table.indexes {
+        push_str(buffer, &index.column);
+        push_u32(buffer, index.pages.len() as u32);
+        for page in &index.pages {
+            push_u64(buffer, *page);
         }
-        None => buffer.push(0),
     }
 }
 
@@ -717,13 +786,25 @@ impl<'bytes> Decoder<'bytes> {
 }
 
 /// Deserializa el catálogo (los bytes sobrantes deben ser relleno cero).
-fn decode_catalog(payload: &[u8]) -> Result<Catalog, RuscaError> {
+///
+/// Args:
+///     payload: Bytes del payload (región reservada + overflow concatenados).
+///     multi: `true` para el formato multi-índice (v3/v4, SPEC-0104); `false`
+///         para el legacy de un índice (v1/v2).
+///
+/// Returns:
+///     El catálogo decodificado.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si el payload está truncado, tiene
+///     marcas/tipos inválidos o bytes no nulos al final.
+fn decode_catalog(payload: &[u8], multi: bool) -> Result<Catalog, RuscaError> {
     let mut decoder = Decoder::new(payload);
     let table_count = decoder.read_u32()?;
     let mut tables = BTreeMap::new();
     for _ in 0..table_count {
         let name = decoder.read_str()?;
-        let table = decode_table(&mut decoder)?;
+        let table = decode_table(&mut decoder, multi)?;
         tables.insert(name, table);
     }
     let next_page = decoder.read_u64()?;
@@ -735,7 +816,18 @@ fn decode_catalog(payload: &[u8]) -> Result<Catalog, RuscaError> {
 }
 
 /// Deserializa una tabla.
-fn decode_table(decoder: &mut Decoder<'_>) -> Result<TableDef, RuscaError> {
+///
+/// Args:
+///     decoder: Lector con comprobación de límites.
+///     multi: `true` para el formato multi-índice (v3/v4); `false` para el
+///         legacy de un índice (v1/v2, marcador `u8`).
+///
+/// Returns:
+///     La definición de la tabla.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si el payload está truncado o inválido.
+fn decode_table(decoder: &mut Decoder<'_>, multi: bool) -> Result<TableDef, RuscaError> {
     let name = decoder.read_str()?;
     let column_count = decoder.read_u32()?;
     let mut columns = Vec::with_capacity(column_count.min(1024) as usize);
@@ -752,11 +844,20 @@ fn decode_table(decoder: &mut Decoder<'_>) -> Result<TableDef, RuscaError> {
         pages.push(decoder.read_u64()?);
     }
     let row_count = decoder.read_u64()?;
-    let has_index = decoder.read_u8()?;
-    let index = match has_index {
-        0 => None,
-        1 => Some(decode_index(decoder)?),
-        other => return Err(corrupt(&format!("marca de índice inválida: {other}"))),
+    let indexes = if multi {
+        let index_count = decoder.read_u32()?;
+        let mut indexes = Vec::with_capacity(index_count.min(1024) as usize);
+        for _ in 0..index_count {
+            indexes.push(decode_index(decoder)?);
+        }
+        indexes
+    } else {
+        // Formato legacy (SPEC-0031/0086): 0 = sin índice, 1 = su único índice.
+        match decoder.read_u8()? {
+            0 => Vec::new(),
+            1 => vec![decode_index(decoder)?],
+            other => return Err(corrupt(&format!("marca de índice inválida: {other}"))),
+        }
     };
     Ok(TableDef {
         name,
@@ -764,7 +865,7 @@ fn decode_table(decoder: &mut Decoder<'_>) -> Result<TableDef, RuscaError> {
         heap_start,
         pages,
         row_count,
-        index,
+        indexes,
     })
 }
 
@@ -787,5 +888,109 @@ fn decode_column_type(tag: u8) -> Result<ColumnType, RuscaError> {
         2 => Ok(ColumnType::Float),
         3 => Ok(ColumnType::Text),
         other => Err(corrupt(&format!("tipo de columna inválido: {other}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Payload legacy (v1/v2, un índice) escrito a mano con el marcador `u8`.
+    ///
+    /// Args:
+    ///     marker: `0` sin índice, `1` con el índice `idx` (columna `id`).
+    ///
+    /// Returns:
+    ///     El payload `table_count | tabla | next_page` con el formato antiguo.
+    fn legacy_payload(marker: u8) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        push_u32(&mut buffer, 1);
+        push_str(&mut buffer, "t");
+        push_str(&mut buffer, "t");
+        push_u32(&mut buffer, 2);
+        push_str(&mut buffer, "id");
+        buffer.push(column_tag(ColumnType::Int));
+        push_str(&mut buffer, "name");
+        buffer.push(column_tag(ColumnType::Text));
+        push_u64(&mut buffer, 16);
+        push_u32(&mut buffer, 1);
+        push_u64(&mut buffer, 16);
+        push_u64(&mut buffer, 0);
+        buffer.push(marker);
+        if marker == 1 {
+            push_str(&mut buffer, "id");
+            push_u32(&mut buffer, 1);
+            push_u64(&mut buffer, 20);
+        }
+        push_u64(&mut buffer, CATALOG_RESERVED_PAGES);
+        buffer
+    }
+
+    /// Roundtrip multi-índice (SPEC-0104): varios índices por tabla sobreviven.
+    #[test]
+    // @spec AC-0104-05
+    fn test_ac_0104_05_catalog_roundtrip_multi_index() {
+        let mut catalog = Catalog::new();
+        catalog
+            .register_table(
+                "t",
+                vec![ColumnDef {
+                    name: "id".to_string(),
+                    col_type: ColumnType::Int,
+                }],
+            )
+            .expect("register");
+        catalog.tables.get_mut("t").expect("tabla").indexes = vec![
+            IndexDef {
+                column: "id".to_string(),
+                pages: vec![16, 17],
+            },
+            IndexDef {
+                column: "name".to_string(),
+                pages: vec![18],
+            },
+        ];
+        let bytes = encode_catalog(&catalog);
+        let decoded = decode_catalog(&bytes, true).expect("decode multi");
+        assert_eq!(decoded, catalog, "roundtrip multi-índice exacto");
+        let table = decoded.get("t").expect("tabla");
+        assert_eq!(table.index_columns(), vec!["id", "name"]);
+        assert_eq!(table.index_pages("id"), vec![16, 17]);
+        assert_eq!(table.index_pages("name"), vec![18]);
+        assert!(table.index_pages("missing").is_empty());
+    }
+
+    /// Compatibilidad (SPEC-0104): el payload legacy sin índice (marcador 0)
+    /// decodifica como tabla sin índices.
+    #[test]
+    // @spec AC-0104-06
+    fn test_ac_0104_06_legacy_payload_without_index_loads() {
+        let catalog = decode_catalog(&legacy_payload(0), false).expect("decode legacy");
+        let table = catalog.get("t").expect("tabla");
+        assert!(table.indexes.is_empty(), "marcador 0 = sin índice");
+        assert_eq!(table.row_count, 0);
+        assert_eq!(table.columns.len(), 2);
+    }
+
+    /// Compatibilidad (SPEC-0104): el payload legacy con su único índice
+    /// (marcador 1) decodifica como un índice de una columna.
+    #[test]
+    // @spec AC-0104-07
+    fn test_ac_0104_07_legacy_payload_with_single_index_loads() {
+        let catalog = decode_catalog(&legacy_payload(1), false).expect("decode legacy");
+        let table = catalog.get("t").expect("tabla");
+        assert_eq!(table.index_columns(), vec!["id"], "marcador 1 = un índice");
+        assert_eq!(table.index_pages("id"), vec![20]);
+    }
+
+    /// Un marcador de índice legacy inválido es un error accionable.
+    #[test]
+    // @spec AC-0104-08
+    fn test_ac_0104_08_legacy_invalid_index_marker_is_actionable() {
+        let error = decode_catalog(&legacy_payload(7), false).expect_err("marcador 7");
+        assert!(
+            error.to_string().contains("marca de índice inválida"),
+            "mensaje accionable: {error}"
+        );
     }
 }

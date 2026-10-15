@@ -280,6 +280,11 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   las filas interiores sin contraparte (exteriores a `NULL`), `FULL [OUTER]`
   las de ambos lados y `CROSS` el producto cartesiano; `JoinClause.left/right`
   pasan a `Option` (CROSS sin `ON`) con `Display` canónico.
+- **SPEC-0104** (Ola 7): varios índices secundarios por tabla — `TableDef`
+  guarda una lista de índices (uno por columna), `create_index` admite varios y
+  rechaza duplicar la misma columna, el mantenimiento DML/JOIN/planner itera
+  todos ellos y el catálogo persiste en las versiones v3/v4 con lectura
+  retrocompatible de las bases v1/v2 de un solo índice (marcador `u8`).
 - **SPEC-0098** (Ola 7): robustez del gate de mutación — `mutation_diff_gate.py`
   puntúa los dos esquemas de `outcomes.json` (dict legacy y cadena de
   cargo-mutants v25+) y mantiene el fallo ruidoso ante estados desconocidos;

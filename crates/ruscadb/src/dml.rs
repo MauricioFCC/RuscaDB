@@ -268,12 +268,19 @@ pub(crate) fn persist_row_update(
     updated: &Record,
     locator: RowLocator,
 ) -> Result<(), RuscaError> {
-    if let Some(old_value) = indexed_value(table, previous) {
-        index_remove(database, catalog, &table.name, &old_value, locator)?;
+    // SPEC-0104: se retira la entrada vieja de cada índice, se persiste la
+    // fila una sola vez y se inserta la entrada nueva en cada índice.
+    let columns = table.index_columns();
+    for column in &columns {
+        if let Some(old_value) = indexed_value(table, previous, column) {
+            index_remove(database, catalog, &table.name, column, &old_value, locator)?;
+        }
     }
     heap_update(database, catalog, &table.name, locator, updated)?;
-    if let Some(new_value) = indexed_value(table, updated) {
-        index_insert(database, catalog, &table.name, &new_value, locator)?;
+    for column in &columns {
+        if let Some(new_value) = indexed_value(table, updated, column) {
+            index_insert(database, catalog, &table.name, column, &new_value, locator)?;
+        }
     }
     if let Some(indexes) = database.indexes.get_mut(&table.name) {
         indexes.refresh_text(updated, table);
@@ -314,20 +321,22 @@ fn apply_assignments(
     Ok(updated)
 }
 
-/// Valor de la columna indexada de un registro, si la tabla tiene índice.
+/// Valor de una columna indexada de un registro, si la tabla la indexa.
 ///
 /// Args:
 ///     table: Definición de la tabla.
 ///     record: Registro consultado.
+///     column: Columna del índice (SPEC-0104: una por cada índice de la tabla).
 ///
 /// Returns:
-///     `Some(valor)` (posiblemente `NULL`) si hay índice; `None` si no.
-fn indexed_value(table: &TableDef, record: &Record) -> Option<ScalarValue> {
-    let column = table.index.as_ref().map(|index| index.column.clone())?;
+///     `Some(valor)` (posiblemente `NULL`) si la tabla tiene índice en esa
+///     columna; `None` si no la indexa.
+fn indexed_value(table: &TableDef, record: &Record, column: &str) -> Option<ScalarValue> {
+    table.index_for(column)?;
     Some(
         record
             .scalars
-            .get(&column)
+            .get(column)
             .cloned()
             .unwrap_or(ScalarValue::Null),
     )

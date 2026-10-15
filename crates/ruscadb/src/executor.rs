@@ -149,12 +149,12 @@ pub(crate) fn plan_for(select: &Select, catalog: &Catalog) -> Result<Plan, Rusca
             column: traverse.column.clone(),
         });
     }
-    let indexed = table.index.as_ref().map(|index| index.column.clone());
-    let Some(column) = indexed else {
-        return Ok(Plan::FullScan);
-    };
-    if find_eq_literal(select.filter.as_ref(), &column).is_some() {
-        return Ok(Plan::IndexScan { column });
+    // SPEC-0104: varios índices por tabla; se usa el primero cuya columna
+    // aparezca en una igualdad del `WHERE`.
+    for column in table.index_columns() {
+        if find_eq_literal(select.filter.as_ref(), &column).is_some() {
+            return Ok(Plan::IndexScan { column });
+        }
     }
     Ok(Plan::FullScan)
 }
@@ -332,7 +332,7 @@ fn fetch_candidates(
             heap_scan(database, table)
         }
         Plan::IndexScan { column } => match find_eq_literal(filter, column) {
-            Some(literal) => fetch_by_index(database, table, &literal),
+            Some(literal) => fetch_by_index(database, table, column, &literal),
             None => heap_scan(database, table),
         },
     }
@@ -655,13 +655,27 @@ fn non_null(value: Option<&ScalarValue>) -> Option<&ScalarValue> {
 }
 
 /// Lee por índice los registros que igualan el literal.
+///
+/// Args:
+///     database: Base abierta.
+///     table: Tabla dueña del índice.
+///     column: Columna del `IndexScan` (SPEC-0104: puede haber varios índices).
+///     literal: Valor de igualdad.
+///
+/// Returns:
+///     Los registros leídos por sus localizadores.
+///
+/// Errors:
+///     [`RuscaError::InvalidConfig`] si la tabla no tiene índice en la columna;
+///     [`RuscaError::CorruptManifest`] si una página del índice/heap falla.
 fn fetch_by_index(
     database: &mut Database,
     table: &TableDef,
+    column: &str,
     literal: &ScalarValue,
 ) -> Result<Vec<(crate::heap::RowLocator, Record)>, RuscaError> {
     let mut rows = Vec::new();
-    for locator in index_lookup_eq(database, table, literal)? {
+    for locator in index_lookup_eq(database, table, column, literal)? {
         rows.push((locator, heap_read(database, locator)?));
     }
     Ok(rows)

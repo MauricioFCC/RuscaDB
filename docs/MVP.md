@@ -17,8 +17,8 @@ cifrado.
   (`Database::builder().data_path(..).pool_capacity(..).encryption(..).open()`),
   con recovery WAL-first idempotente al arrancar.
 - **Modelo relacional**: `create_table` con esquema (`title: Text`,
-  `score: Float`, …), `insert` escalar con coerción `Int→Float`, índice
-  secundario (`create_index`, una columna por tabla) y RQL
+  `score: Float`, …), `insert` escalar con coerción `Int→Float`, varios índices
+  secundarios (`create_index`, una columna por índice, SPEC-0104) y RQL
   (`SELECT *`, `WHERE`, proyección, `LIMIT`).
 - **DML en RQL**: `INSERT INTO t (cols) VALUES (...)` (multi-fila = un solo
   commit vía `insert_many`), `UPDATE t SET col = ... [WHERE ...]` y
@@ -74,7 +74,9 @@ cifrado.
   actualiza columnas de una fila viva por `RecordId` con la misma ruta de
   índices que el `UPDATE ... WHERE` en RQL.
 - **Catálogo escalable**: sin techo de 64 KiB (SPEC-0086); el catálogo crece por
-  una cadena de páginas de overflow (techo residual `u32`).
+  una cadena de páginas de overflow (techo residual `u32`). Su formato persiste
+  la lista de índices por tabla (v3/v4, SPEC-0104) y sigue leyendo las bases
+  v1/v2 de un solo índice.
 - **Reclamación de storage**: `reap` purga el heap, da de alta las páginas en la
   free-list y retira las entradas de los índices derivados (CSR/FTS) (SPEC-0085).
 - **Caché semántico persistente**: `close` guarda las claves KNN en
@@ -91,8 +93,8 @@ cifrado.
 - **Sin cursores con estado ni streaming**: `execute` materializa todas las
   filas del resultado en memoria; la paginación es por `LIMIT`/`OFFSET`
   (SPEC-0096), no *keyset* ni cursor de servidor.
-- **Un índice secundario por tabla** (una columna); sin optimizador de consultas
-  más allá de `IndexScan` por igualdad.
+- **Sin optimizador de consultas**: el plan solo elige `IndexScan` por igualdad
+  (la primera columna indexada del `WHERE`); sin costos, stats ni join reordering.
 - **Compactación de índices derivados**: `reap` reconstruye HNSW/CSR/FTS desde
   las filas vivas (SPEC-0101), de modo que las entradas de filas purgadas
   desaparecen (sin tombstones residuales).
