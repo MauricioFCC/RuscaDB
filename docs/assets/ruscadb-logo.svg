@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="RuscaDB">
+  <!-- Celda de panal (rusca = colmena) + grafo KNN: hexagonal architecture, graph & vector -->
+  <g fill="none" stroke="#F59E0B" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Hexágono exterior (página de almacenamiento / celda de panal) -->
+    <path d="M48 6 L83.43 26.5 L83.43 67.5 L48 88 L12.57 67.5 L12.57 26.5 Z" stroke-width="5"/>
+    <!-- Hexágono interior tintado -->
+    <path d="M48 22 L70.5 35 L70.5 61 L48 74 L25.5 61 L25.5 35 Z" stroke-width="2" stroke-opacity="0.55" fill="#F59E0B" fill-opacity="0.10"/>
+    <!-- Aristas del grafo: triángulo de nodos + radios al centro -->
+    <path d="M48 22 L70.5 61 L25.5 61 Z" stroke-width="2.5"/>
+    <path d="M48 48 L48 22 M48 48 L70.5 61 M48 48 L25.5 61" stroke-width="2" stroke-opacity="0.75"/>
+  </g>
+  <!-- Nodos (graph / vector embeddings) -->
+  <g fill="#F59E0B">
+    <circle cx="48" cy="22" r="5.5"/>
+    <circle cx="70.5" cy="61" r="5.5"/>
+    <circle cx="25.5" cy="61" r="5.5"/>
+    <circle cx="48" cy="48" r="3.5"/>
+  </g>
+</svg>

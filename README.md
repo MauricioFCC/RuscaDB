@@ -1,22 +1,31 @@
 <!-- hand-maintained README: do NOT regenerate with SWARMIND deploy_all.py;
      run it with `--sync-only` for this project. See AGENTS.md. -->
 
-# RuscaDB
+<p align="center">
+  <img src="docs/assets/ruscadb-logo.svg" width="96" height="96" alt="RuscaDB logo">
+</p>
 
-**Embedded, multi-model and multimodal database written in Rust** — *“SQLite for
-AI, graphs and multimedia”*.
+<h1 align="center">RuscaDB</h1>
 
-[![CI](https://github.com/MauricioFCC/RuscaDB/actions/workflows/ci.yml/badge.svg)](https://github.com/MauricioFCC/RuscaDB/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
-[![MSRV](https://img.shields.io/badge/MSRV-1.89-informational.svg)](rust-toolchain.toml)
+<p align="center">
+  <strong>Embedded, multi-model and multimodal database written in Rust</strong><br>
+  — <em>“SQLite for AI, graphs and multimedia”</em>.
+</p>
+
+<p align="center">
+  <a href="https://github.com/MauricioFCC/RuscaDB/actions/workflows/ci.yml"><img src="https://github.com/MauricioFCC/RuscaDB/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://deps.rs/repo/github/MauricioFCC/RuscaDB"><img src="https://deps.rs/repo/github/MauricioFCC/RuscaDB/status.svg" alt="dependencies up to date"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-2024%20edition-orange.svg" alt="Rust 2024 edition"></a>
+  <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/MSRV-1.89-informational.svg" alt="MSRV 1.89"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License Apache-2.0"></a>
+</p>
 
 RuscaDB runs **in-process** (no server, no network, no daemon) and stores
 relational, document, graph, vector and time-series data plus multimodal blobs in
 a single database directory, queried through **one extended-SQL language (RQL)**.
 
 > **Status: early development (`0.1.0`, unreleased).** The workspace spans
-> **21 crates** with **689 tests** (`cargo test --workspace -- --list`, without
+> **22 crates** with **754 tests** (`cargo test --workspace -- --list`, without
 > `--all-features`). The engine is
 > under active construction; public APIs may change. Design source of truth:
 > [`docs/RuscaDB-roadmap.md`](docs/RuscaDB-roadmap.md) (see the *Estado de
@@ -138,6 +147,7 @@ facade and filters by MVCC snapshot visibility.
 | `ruscadb-ffi` | Stable C-ABI. |
 | `ruscadb-py` / `ruscadb-node` | Python / Node bindings. |
 | `ruscadb-wasm` | WebAssembly (browser) bindings. |
+| `ruscadb-mcp` | MCP server over stdio (tools + resources). |
 | `ruscadb` | **Facade / composition root** (wires everything; `Database`). |
 | `ruscadb-testkit` | Test utilities and oracles. |
 | `xtask` | Developer tasks (`cargo xtask trace`). |
@@ -148,6 +158,25 @@ Hexagonal (ports & adapters). **Dependency arrows always point toward
 `ruscadb-core`**; an adapter never depends on another adapter — composition lives
 in the `ruscadb` facade. The guard `scripts/check_architecture.py` enforces
 0 cycles and 0 forbidden edges.
+
+```mermaid
+flowchart TB
+    Clients["Applications · Python · Node · C · WASM · MCP"] --> DB["<b>ruscadb</b> — facade / composition root (Database)"]
+    DB --> Query["query — RQL lexer, parser & IR"]
+    DB --> Txn["txn — MVCC snapshot isolation + manifest"]
+    DB --> Wal["wal — CRC32C frames, recovery, encryption"]
+    DB --> Storage["storage — LRU-K buffer pool + paged file"]
+    DB --> Indexes["vector · fvs · graph · fts · btree · ts · multimodal · ai · crypto"]
+    Query --> Core["<b>ruscadb-core</b> — domain: Record, ScalarValue, RuscaError, ports"]
+    Txn --> Core
+    Wal --> Core
+    Storage --> Core
+    Indexes --> Core
+    classDef amber fill:#FFF7E6,stroke:#F59E0B,color:#1F2328
+    classDef core fill:#F59E0B,stroke:#B45309,color:#FFFFFF
+    class Clients,DB,Query,Txn,Wal,Storage,Indexes amber
+    class Core core
+```
 
 ## Security
 
