@@ -1,19 +1,63 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="RuscaDB">
-  <!-- Celda de panal (rusca = colmena) + grafo KNN: hexagonal architecture, graph & vector -->
-  <g fill="none" stroke="#F59E0B" stroke-linejoin="round" stroke-linecap="round">
-    <!-- Hexágono exterior (página de almacenamiento / celda de panal) -->
-    <path d="M48 6 L83.43 26.5 L83.43 67.5 L48 88 L12.57 67.5 L12.57 26.5 Z" stroke-width="5"/>
-    <!-- Hexágono interior tintado -->
-    <path d="M48 22 L70.5 35 L70.5 61 L48 74 L25.5 61 L25.5 35 Z" stroke-width="2" stroke-opacity="0.55" fill="#F59E0B" fill-opacity="0.10"/>
-    <!-- Aristas del grafo: triángulo de nodos + radios al centro -->
-    <path d="M48 22 L70.5 61 L25.5 61 Z" stroke-width="2.5"/>
-    <path d="M48 48 L48 22 M48 48 L70.5 61 M48 48 L25.5 61" stroke-width="2" stroke-opacity="0.75"/>
+  <!-- Rusca (cucaracha) minimalista construida como diagrama de nodos:      -->
+  <!-- identidad oficial de docs/Nombre y logo.md — "estilizada como un       -->
+  <!-- diagrama de nodos". Simetría axial en x=48; nodos = articulaciones.    -->
+  <g stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Antenas -->
+    <path d="M48 15 L38 8 L30 4 M48 15 L58 8 L66 4"/>
+    <!-- Cabeza -> prónoto -->
+    <path d="M48 15 L48 24"/>
+    <!-- Silueta del cuerpo -->
+    <path d="M48 24 L36 32 L33 46 L35 60 L42 70 L48 74"/>
+    <path d="M48 24 L60 32 L63 46 L61 60 L54 70 L48 74"/>
+    <!-- Espina / separación de élitros -->
+    <path d="M48 24 L48 40 L48 56 L48 74"/>
+    <!-- Costillas-malla (mesh) -->
+    <path d="M36 32 L48 40 L60 32 M33 46 L48 56 L63 46"/>
+    <!-- Patas (3 por lado) -->
+    <path d="M36 32 L24 25 L16 28 M33 46 L19 48 L13 56 M35 60 L21 66 L17 76"/>
+    <path d="M60 32 L72 25 L80 28 M63 46 L77 48 L83 56 M61 60 L75 66 L79 76"/>
+    <!-- Cercos -->
+    <path d="M48 74 L44 84 M48 74 L52 84"/>
   </g>
-  <!-- Nodos (graph / vector embeddings) -->
   <g fill="#F59E0B">
-    <circle cx="48" cy="22" r="5.5"/>
-    <circle cx="70.5" cy="61" r="5.5"/>
-    <circle cx="25.5" cy="61" r="5.5"/>
-    <circle cx="48" cy="48" r="3.5"/>
+    <!-- Cabeza y prónoto -->
+    <circle cx="48" cy="15" r="5.5"/>
+    <circle cx="48" cy="24" r="4"/>
+    <!-- Articulaciones del cuerpo -->
+    <circle cx="36" cy="32" r="3.4"/>
+    <circle cx="60" cy="32" r="3.4"/>
+    <circle cx="33" cy="46" r="3.2"/>
+    <circle cx="63" cy="46" r="3.2"/>
+    <circle cx="35" cy="60" r="3"/>
+    <circle cx="61" cy="60" r="3"/>
+    <circle cx="42" cy="70" r="2.6"/>
+    <circle cx="54" cy="70" r="2.6"/>
+    <circle cx="48" cy="74" r="3"/>
+    <!-- Espina -->
+    <circle cx="48" cy="40" r="2.4"/>
+    <circle cx="48" cy="56" r="2.4"/>
+    <!-- Antenas -->
+    <circle cx="38" cy="8" r="2.2"/>
+    <circle cx="58" cy="8" r="2.2"/>
+    <circle cx="30" cy="4" r="1.8"/>
+    <circle cx="66" cy="4" r="1.8"/>
+    <!-- Rodillas de patas -->
+    <circle cx="24" cy="25" r="2.2"/>
+    <circle cx="72" cy="25" r="2.2"/>
+    <circle cx="19" cy="48" r="2.2"/>
+    <circle cx="77" cy="48" r="2.2"/>
+    <circle cx="21" cy="66" r="2.2"/>
+    <circle cx="75" cy="66" r="2.2"/>
+    <!-- Puntas de patas -->
+    <circle cx="16" cy="28" r="1.8"/>
+    <circle cx="80" cy="28" r="1.8"/>
+    <circle cx="13" cy="56" r="1.8"/>
+    <circle cx="83" cy="56" r="1.8"/>
+    <circle cx="17" cy="76" r="1.8"/>
+    <circle cx="79" cy="76" r="1.8"/>
+    <!-- Cercos -->
+    <circle cx="44" cy="84" r="1.8"/>
+    <circle cx="52" cy="84" r="1.8"/>
   </g>
 </svg>

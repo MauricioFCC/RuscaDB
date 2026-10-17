@@ -9,7 +9,8 @@
 
 <p align="center">
   <strong>Embedded, multi-model and multimodal database written in Rust</strong><br>
-  — <em>“SQLite for AI, graphs and multimedia”</em>.
+  — <em>“SQLite for AI, graphs and multimedia”</em>.<br>
+  <strong>Small. Omnivorous. Indestructible.</strong>
 </p>
 
 <p align="center">
