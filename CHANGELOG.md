@@ -285,6 +285,15 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   rechaza duplicar la misma columna, el mantenimiento DML/JOIN/planner itera
   todos ellos y el catálogo persiste en las versiones v3/v4 con lectura
   retrocompatible de las bases v1/v2 de un solo índice (marcador `u8`).
+- **SPEC-0105** (Ola 7): `rollback` en modo cifrado — al ser el WAL la única
+  fuente de verdad (SPEC-0013), el rollback aborta la transacción, vacía el
+  buffer pool y **reaplica los commit records con la clave de apertura**
+  (`replay`, el mismo camino que la reapertura): el estado vuelve byte a byte
+  al último commit **sin tocar `.data` ni `.wal`**; las páginas creadas sin
+  commit no están en el WAL y dejan de existir, y los índices en memoria
+  (primario + HNSW/CSR/FTS) se reconstruyen desde el heap. Retira el límite
+  «rollback no soportado en cifrado» de `docs/MVP.md` (su AC de SPEC-0027
+  queda superseded) y lo añade al guard de coherencia del MVP.
 - **SPEC-0098** (Ola 7): robustez del gate de mutación — `mutation_diff_gate.py`
   puntúa los dos esquemas de `outcomes.json` (dict legacy y cadena de
   cargo-mutants v25+) y mantiene el fallo ruidoso ante estados desconocidos;

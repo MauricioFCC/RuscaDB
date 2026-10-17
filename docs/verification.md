@@ -47,8 +47,8 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (actualizado 2026-10-14): **104 specs implementadas, 443
-AC trazados** (`cargo xtask trace`), **560+ tests** (`cargo test --workspace --
+Estado de referencia (actualizado 2026-10-16): **105 specs implementadas, 448
+AC trazados** (`cargo xtask trace`), **754 tests** (`cargo test --workspace --
 --list`, sin `--all-features`).
 
 Atajo opcional (mismos comandos, vía pre-commit):

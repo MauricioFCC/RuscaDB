@@ -12,7 +12,6 @@ fr:
   - { id: FR-0027-02, desc: "BufferPool::discard(page): descarta un marco sucio sin escribirlo a disco" }
   - { id: FR-0027-03, desc: "TxnManager::rollback(tx): aborta una tx en vuelo (no la publica)" }
   - { id: FR-0027-04, desc: "Database::rollback(): aborta la tx activa y descarta las paginas sucias" }
-  - { id: FR-0027-05, desc: "rollback en modo cifrado es rechazado con error accionable (documentado)" }
 nf:
   - { id: NF-0027-01, desc: "insert_many es mas rapido que N insert (un solo commit/fsync)" }
   - { id: NF-0027-02, desc: "rollback deja la base en el ultimo estado confirmado (sin cambios parciales)" }
@@ -37,11 +36,6 @@ acceptance_criteria:
     when: se hace rollback
     then: las paginas vuelven al ultimo estado confirmado (discard) y la base sigue operativa
     test: test_ac_0027_04_rollback_discards_dirty_pages
-  - id: AC-0027-05
-    given: una base en modo cifrado
-    when: se intenta rollback
-    then: devuelve error accionable (no soportado en modo cifrado)
-    test: test_ac_0027_05_rollback_encrypted_is_error
 exit_criteria:
   - cargo test -p ruscadb -p ruscadb-txn -p ruscadb-storage -- test_ac_0027
   - cargo mutants -p ruscadb -p ruscadb-txn mutation score >= 70%
@@ -65,14 +59,17 @@ Refactor guiado por comparables (sled `apply_batch`/`Tree::transaction`, redb
 - **`rollback`**: RuscaDB no tiene camino de aborto. Se añade
   `BufferPool::discard`, `TxnManager::rollback` y `Database::rollback` (aborta la
   tx activa y descarta las páginas sucias, volviendo al último estado
-  confirmado). En modo cifrado las páginas nunca se publican a `.data`, por lo
-  que el rollback no aplica → error accionable documentado.
+  confirmado). El comportamiento en modo cifrado se traslada a **SPEC-0105**,
+  que restaura el último estado confirmado desde el WAL (aquí se documentaba
+  como rechazo con error).
 
 ## Criterios de aceptación
 
 - **AC-0027-01/02** — lote con un commit; error accionable.
 - **AC-0027-03/04** — rollback aborta y descarta.
-- **AC-0027-05** — rollback en cifrado → error.
+- ~~rollback en cifrado → error~~ — criterio **retirado** (superseded por
+  SPEC-0105: el rollback cifrado restaura el último estado confirmado desde el
+  WAL; su test se elimina para no dejar marcadores huérfanos).
 
 ## Trazabilidad
 

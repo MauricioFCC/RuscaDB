@@ -365,34 +365,37 @@ impl Database {
     /// primario se reconstruyen desde el heap persistido para eliminar las
     /// entradas de las filas abortadas y dejar la base operativa.
     ///
-    /// ## Límite documentado (modo cifrado)
+    /// ## Modo cifrado (SPEC-0105)
     ///
-    /// En modo cifrado las páginas nunca se publican a `.data` (el WAL es la
-    /// fuente de verdad), así que un `rollback` no puede revertir el estado en
-    /// memoria sin rehacer el replay. Se rechaza con
-    /// [`RuscaError::InvalidConfig`]: para volver al último estado confirmado,
-    /// cierra y reabre la base con la clave.
+    /// En modo cifrado el WAL es la única fuente de verdad: `publish()` no
+    /// escribe `.data`, así que **todas** las páginas del pool están sucias y
+    /// no existen marcas limpias restaurables. El rollback descarta el pool
+    /// entero y **reaplica los commit records del WAL** con la clave de
+    /// apertura (`replay`, el mismo camino que la reapertura): el resultado es
+    /// byte-idéntico al último estado confirmado y no se escribe ni `.data` ni
+    /// `.wal`. Las páginas creadas sin commit no están en el WAL, por lo que
+    /// dejan de existir (su `read_page` posterior falla con
+    /// [`RuscaError::PageOutOfRange`]).
     ///
     /// Returns:
     ///     `Ok(())` tras abortar y descartar; es un *no-op* sin cambios.
     ///
     /// Errors:
-    ///     [`RuscaError::InvalidConfig`] si la base está en modo cifrado o si
-    ///     una página sucia está pinneada (invariante interno roto);
+    ///     [`RuscaError::InvalidConfig`] si una página sucia está pinneada
+    ///     (invariante interno roto);
+    ///     [`RuscaError::WalCorrupt`] si el WAL está truncado o no admite el
+    ///     descifrado con la clave de apertura (modo cifrado);
     ///     [`RuscaError::CorruptManifest`] si el heap persistido es inválido.
     pub fn rollback(&mut self) -> Result<(), RuscaError> {
-        if self.encryption.is_some() {
-            return Err(RuscaError::InvalidConfig(
-                "rollback no está soportado en modo cifrado: las páginas viven en el WAL y \
-                 nunca se publican a .data; cierra y reabre la base para volver al último \
-                 estado confirmado"
-                    .to_string(),
-            ));
-        }
         if let Some(tx) = self.active_tx.take() {
             self.txn.rollback(tx)?;
         }
         self.discard_dirty_pages()?;
+        if self.encryption.is_some() {
+            // SPEC-0105: en cifrado el pool descartado se restaura desde el
+            // WAL (única fuente de verdad), igual que en la reapertura.
+            self.replay()?;
+        }
         self.rebuild_indexes()?;
         self.rebuild_primary_index()?;
         Ok(())

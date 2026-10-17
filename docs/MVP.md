@@ -98,9 +98,6 @@ cifrado.
 - **Compactación de índices derivados**: `reap` reconstruye HNSW/CSR/FTS desde
   las filas vivas (SPEC-0101), de modo que las entradas de filas purgadas
   desaparecen (sin tombstones residuales).
-- **Rollback no soportado en cifrado**: en modo cifrado las páginas viven en el
-  WAL y nunca se publican a `.data`; `rollback` devuelve `InvalidConfig` (cerrar
-  y reabrir para volver al último estado confirmado).
 - **Pool dimensionado en cifrado**: las páginas cifradas permanecen `dirty` en
   el pool (nunca se desalojan); un pool lleno falla con `BufferPoolFull`.
 - **KMS/HSM externos fuera de alcance**: el keystore KMS-lite local soporta

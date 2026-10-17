@@ -79,7 +79,13 @@ impl std::fmt::Debug for EncryptionConfig {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::{ColumnDef, ColumnType, Database, DbConfig, ScalarMap, ScalarValue};
+    use crate::catalog::Catalog;
+    use crate::heap::heap_insert;
+    use crate::table_api::maintain_index;
+    use crate::{
+        ColumnDef, ColumnType, Database, DbConfig, EdgeSet, Record, RecordId, RecordMeta,
+        ScalarMap, ScalarValue,
+    };
     use proptest::prelude::*;
 
     /// Clave fija de pruebas (32 B deterministas).
@@ -192,6 +198,129 @@ mod tests {
         let mut database =
             Database::open(encrypted_config(&path, key)).expect("la clave válida sigue abriendo");
         assert_marker(&mut database, &marker);
+    }
+
+    /// AC-0105-06 — el rollback cifrado reconstruye los índices en memoria.
+    ///
+    /// Deja entradas fantasma en vuelo (primario + índice de texto + índice
+    /// persistido de la columna, replicando los pasos de `insert_record`) y
+    /// verifica que tras `rollback` ninguna estructura conserva la fila
+    /// abortada y la base sigue operativa.
+    #[test]
+    // @spec AC-0105-06
+    fn test_ac_0105_06_encrypted_rollback_rebuilds_indexes() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("ac010506.data");
+        let mut database = Database::open(encrypted_config(&path, test_key())).expect("open");
+        database
+            .create_table(
+                "t",
+                vec![
+                    ColumnDef {
+                        name: "a".to_string(),
+                        col_type: ColumnType::Int,
+                    },
+                    ColumnDef {
+                        name: "b".to_string(),
+                        col_type: ColumnType::Text,
+                    },
+                ],
+            )
+            .expect("create_table");
+        database.create_index("t", "b").expect("indice texto");
+
+        // Fila confirmada (insert con auto-commit): primario=1, FTS=1.
+        let mut scalars = ScalarMap::new();
+        scalars.insert("a".to_string(), ScalarValue::Int(1));
+        scalars.insert("b".to_string(), ScalarValue::Text("confirmado".to_string()));
+        database.insert("t", scalars).expect("insert confirmado");
+        assert_eq!(database.primary_index_len("t"), 1, "primario confirmado");
+        assert_eq!(database.fts_doc_count("t", "b"), 1, "FTS confirmado");
+
+        // Transaccion en vuelo con entradas fantasma (pasos de insert_record:
+        // heap -> primario -> indice persistido -> indices en memoria).
+        let tx = database.begin();
+        let mut catalog = Catalog::load(&mut database).expect("catalogo");
+        let definition = catalog.get("t").expect("tabla").clone();
+        let mut ghost_scalars = ScalarMap::new();
+        ghost_scalars.insert("a".to_string(), ScalarValue::Int(99));
+        ghost_scalars.insert("b".to_string(), ScalarValue::Text("fantasma".to_string()));
+        let lsn = database.wal.next_lsn();
+        let ghost = Record {
+            id: RecordId::new(),
+            scalars: ghost_scalars,
+            doc: None,
+            edges: EdgeSet::default(),
+            vector: None,
+            blob: None,
+            meta: RecordMeta {
+                created_tx: tx,
+                deleted_tx: None,
+                lsn,
+                embedding_version: None,
+            },
+        };
+        let locator = heap_insert(&mut database, &mut catalog, "t", &ghost).expect("heap fantasma");
+        database
+            .primary_insert("t", ghost.id, locator)
+            .expect("primario fantasma");
+        maintain_index(&mut database, &mut catalog, "t", &ghost, locator)
+            .expect("indice persistido fantasma");
+        let entry = database.indexes.entry("t".to_string()).or_default();
+        entry
+            .index_record(&ghost, &definition)
+            .expect("indices en memoria fantasma");
+        entry.finalize();
+        assert_eq!(
+            database.primary_index_len("t"),
+            2,
+            "el fantasma entro en el primario"
+        );
+        assert_eq!(
+            database.fts_doc_count("t", "b"),
+            2,
+            "el fantasma entro en el FTS"
+        );
+
+        database.rollback().expect("rollback cifrado");
+
+        assert_eq!(
+            database.primary_index_len("t"),
+            1,
+            "primario reconstruido sin fantasma"
+        );
+        assert_eq!(
+            database.fts_doc_count("t", "b"),
+            1,
+            "FTS reconstruido sin fantasma"
+        );
+        assert!(
+            database
+                .get_record("t", &ghost.id)
+                .expect("point lookup del fantasma")
+                .is_none(),
+            "el id fantasma no debe resolver en el primario"
+        );
+        assert_eq!(
+            database.execute("SELECT * FROM t").expect("select").len(),
+            1,
+            "solo la fila confirmada es visible"
+        );
+
+        // La base sigue operativa tras el rebuild de indices.
+        let mut after = ScalarMap::new();
+        after.insert("a".to_string(), ScalarValue::Int(3));
+        after.insert(
+            "b".to_string(),
+            ScalarValue::Text("post-rollback".to_string()),
+        );
+        database.insert("t", after).expect("insert tras rollback");
+        assert_eq!(
+            database.fts_doc_count("t", "b"),
+            2,
+            "el nuevo documento se indexa"
+        );
+        database.close().expect("close");
     }
 
     proptest! {

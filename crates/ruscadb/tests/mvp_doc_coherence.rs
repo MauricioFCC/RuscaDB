@@ -50,6 +50,7 @@ fn test_ac_0095_02_mvp_doc_drops_stale_limits() {
         "16 páginas = 64 KiB",
         "Sin rotación de claves ni KMS/HSM",
         "Sin GC en grafo/FTS",
+        "Rollback no soportado en cifrado",
     ] {
         assert!(
             !doc.contains(stale),

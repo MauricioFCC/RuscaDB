@@ -105,7 +105,7 @@ mod tests {
     use super::*;
     use crate::catalog::{ColumnDef, ColumnType};
     use crate::heap::heap_insert;
-    use crate::{DbConfig, EdgeSet, EncryptionConfig, RecordMeta, ScalarMap, ScalarValue};
+    use crate::{DbConfig, EdgeSet, RecordMeta, ScalarMap, ScalarValue};
     use pretty_assertions::assert_eq;
     use proptest::prelude::*;
     use ruscadb_wal::RecordKind;
@@ -326,27 +326,6 @@ mod tests {
             1,
             "la fila confirmada sigue viva y la base operativa"
         );
-    }
-
-    /// AC-0027-05 — `rollback` en modo cifrado es rechazado con error accionable.
-    #[test]
-    // @spec AC-0027-05
-    fn test_ac_0027_05_rollback_encrypted_is_error() {
-        let dir = tempfile::tempdir().expect("directorio temporal");
-        let path = dir.path().join("vault.db");
-        let mut config = DbConfig::new(&path, 64);
-        config.encryption = Some(EncryptionConfig::new([0x2A; 32]));
-        let mut database = Database::open(config).expect("apertura cifrada");
-        create_table(&mut database);
-
-        let error = database
-            .rollback()
-            .expect_err("rollback en modo cifrado debe fallar");
-        assert!(
-            matches!(error, RuscaError::InvalidConfig(ref message) if message.contains("cifrado")),
-            "se esperaba un InvalidConfig accionable, se obtuvo {error:?}"
-        );
-        assert!(error.to_string().contains("rollback"));
     }
 
     proptest! {
