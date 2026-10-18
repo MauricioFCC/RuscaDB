@@ -63,8 +63,9 @@ pub(crate) fn canonical_key(
 /// Mantiene el índice de una columna con una entrada nueva y reempaqueta sus
 /// páginas.
 ///
-/// Los valores `NULL` se omiten (nunca igualan en una búsqueda `Eq`) y, si la
-/// tabla no tiene índice sobre `column`, la llamada es un no-op (SPEC-0104).
+/// Los valores `NULL` se omiten (nunca igualan en una búsqueda `Eq`). A
+/// diferencia de [`index_remove`], que falte el índice en esa columna es un
+/// error: un caller que indexe una columna sin índice es un bug, no un no-op.
 ///
 /// Args:
 ///     database: Base abierta.
@@ -75,6 +76,7 @@ pub(crate) fn canonical_key(
 ///     locator: Localizador de la fila.
 ///
 /// Errors:
+///     [`RuscaError::InvalidConfig`] si la tabla no tiene índice en `column`;
 ///     [`RuscaError::TypeMismatch`] si el valor no pertenece a la columna.
 pub(crate) fn index_insert(
     database: &mut Database,
@@ -98,8 +100,8 @@ pub(crate) fn index_insert(
 /// reempaqueta sus páginas.
 ///
 /// No es un error que la tabla no tenga índice sobre esa columna ni que el
-/// valor sea `NULL`: en ambos casos no hay entrada que retirar (mismo criterio
-/// que [`index_insert`]).
+/// valor sea `NULL`: en ambos casos no hay entrada que retirar (a diferencia
+/// de [`index_insert`], que exige el índice para escribir).
 ///
 /// Args:
 ///     database: Base abierta.
