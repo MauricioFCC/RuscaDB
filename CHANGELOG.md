@@ -294,6 +294,17 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   (primario + HNSW/CSR/FTS) se reconstruyen desde el heap. Retira el límite
   «rollback no soportado en cifrado» de `docs/MVP.md` (su AC de SPEC-0027
   queda superseded) y lo añade al guard de coherencia del MVP.
+- **SPEC-0106** (Ola 8): pool acotado en modo cifrado — `open` deja de
+  precargar el WAL al pool y construye un índice *overlay*
+  `page_id → (lsn, offset)` a partir de los commit records; `commit` marca las
+  páginas confirmadas limpias (víctimas LRU-K válidas) y `read_page` resuelve
+  en tres vías (pool → overlay → `.data`) con un *seek* O(1) al record
+  (NF-0106-01). `rollback` descarta solo las sucias sin `replay()` preservando
+  la semántica de último estado confirmado. Resultado: una base cifrada mayor
+  que el pool abre y barre completa (AC-0106-01/02) y `BufferPoolFull` queda
+  reservado al dirty sin confirmar (AC-0106-07). Retira el límite «pool
+  dimensionado en cifrado» de `docs/MVP.md` y lo sustituye por el honesto:
+  WAL sin checkpoint en cifrado.
 - **SPEC-0098** (Ola 7): robustez del gate de mutación — `mutation_diff_gate.py`
   puntúa los dos esquemas de `outcomes.json` (dict legacy y cadena de
   cargo-mutants v25+) y mantiene el fallo ruidoso ante estados desconocidos;

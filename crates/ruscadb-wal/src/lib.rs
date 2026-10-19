@@ -517,6 +517,33 @@ impl Wal {
     ///     [`RuscaError::WalCorrupt`] si el payload excede el tamaño máximo por
     ///     frame; [`RuscaError::Io`] si falla la escritura.
     pub fn append(&self, tx_id: u64, kind: RecordKind, payload: &[u8]) -> Result<Lsn, RuscaError> {
+        self.append_at(tx_id, kind, payload)
+            .map(|(lsn, _offset)| lsn)
+    }
+
+    /// Igual que [`Wal::append`] pero devuelve también el offset de fichero
+    /// del frame escrito (SPEC-0106).
+    ///
+    /// El offset es lo que registra el overlay del pool cifrado para volver a
+    /// leer este registro con [`read_record_at`] sin barrer el log.
+    ///
+    /// Args:
+    ///     tx_id: Transacción propietaria.
+    ///     kind: Tipo de registro.
+    ///     payload: Carga útil opaca.
+    ///
+    /// Returns:
+    ///     El `Lsn` asignado y el offset de comienzo del frame.
+    ///
+    /// Errors:
+    ///     [`RuscaError::WalCorrupt`] si el payload excede el tamaño máximo por
+    ///     frame; [`RuscaError::Io`] si falla la escritura.
+    pub fn append_at(
+        &self,
+        tx_id: u64,
+        kind: RecordKind,
+        payload: &[u8],
+    ) -> Result<(Lsn, u64), RuscaError> {
         let mut appender = self.lock_appender()?;
         let stored: Vec<u8> = match self.key.as_ref() {
             None => payload.to_vec(),
@@ -535,9 +562,10 @@ impl Wal {
             kind,
             payload: stored,
         };
+        let offset = appender.file.stream_position()?;
         appender.file.write_all(&frame::encode(&record))?;
         appender.next_lsn += 1;
-        Ok(record.lsn)
+        Ok((record.lsn, offset))
     }
 
     /// Toma el lock del escritor o falla con error accionable si está envenenado.
@@ -661,6 +689,92 @@ pub fn read_records_with_key(
     let bytes = std::fs::read(path.as_ref())?;
     let (records, _valid_offset) = scan_with_key(&bytes, key)?;
     Ok(records)
+}
+
+/// Registro del WAL con su offset de fichero (SPEC-0106).
+///
+/// Es la unidad que consume el overlay del pool cifrado: el offset permite
+/// volver al frame con [`read_record_at`] sin barrer el log.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WalEntry {
+    /// Offset de comienzo del frame en el archivo.
+    pub offset: u64,
+    /// Registro decodificado (payload en claro si había clave).
+    pub record: WalRecord,
+}
+
+/// Lee los registros válidos del WAL con su offset de fichero (SPEC-0106).
+///
+/// Args:
+///     path: Ruta del archivo de log.
+///     key: Clave AEAD (`None` = modo claro).
+///
+/// Returns:
+///     Los registros válidos hasta el primer frame inválido, cada uno con el
+///     offset donde comienza su frame.
+///
+/// Raises:
+///     [`RuscaError::WalCorrupt`] ante payload versionado sin clave o AEAD
+///     inválido; [`RuscaError::Io`] si el archivo no se puede leer.
+pub fn read_records_with_offsets(
+    path: impl AsRef<Path>,
+    key: Option<&[u8; 32]>,
+) -> Result<Vec<WalEntry>, RuscaError> {
+    let bytes = std::fs::read(path.as_ref())?;
+    let mut entries = Vec::new();
+    let mut offset = 0usize;
+    while let Some((raw, next)) = frame::decode(&bytes, offset) {
+        let payload = open_payload(key, raw.lsn, &raw.payload)?;
+        entries.push(WalEntry {
+            offset: offset as u64,
+            record: WalRecord {
+                lsn: raw.lsn,
+                tx_id: raw.tx_id,
+                kind: raw.kind,
+                payload,
+            },
+        });
+        offset = next;
+    }
+    Ok(entries)
+}
+
+/// Lee un registro del WAL en un offset de fichero conocido (SPEC-0106).
+///
+/// Es la lectura dirigida que usa el overlay `page_id -> (lsn, offset)` del
+/// pool cifrado: un *seek* al offset del commit record sin barrer el WAL.
+/// Los frames son auto-delimitados (prefijo de longitud), así que el offset
+/// basta para decodificar el registro completo.
+///
+/// Args:
+///     path: Ruta del archivo de log.
+///     key: Clave AEAD (`None` = modo claro).
+///     offset: Offset de comienzo del frame a leer.
+///
+/// Returns:
+///     El registro decodificado en ese offset, con payload en claro.
+///
+/// Raises:
+///     [`RuscaError::WalCorrupt`] si no hay frame válido en ese offset o el
+///     payload no autentica; [`RuscaError::Io`] si falla la lectura.
+pub fn read_record_at(
+    path: impl AsRef<Path>,
+    key: Option<&[u8; 32]>,
+    offset: u64,
+) -> Result<WalRecord, RuscaError> {
+    let bytes = std::fs::read(path.as_ref())?;
+    let Some((raw, _next)) = frame::decode(&bytes, offset as usize) else {
+        return Err(RuscaError::WalCorrupt(format!(
+            "no hay frame válido en el offset {offset} del WAL"
+        )));
+    };
+    let payload = open_payload(key, raw.lsn, &raw.payload)?;
+    Ok(WalRecord {
+        lsn: raw.lsn,
+        tx_id: raw.tx_id,
+        kind: raw.kind,
+        payload,
+    })
 }
 
 /// Resultado de la verificación estricta del WAL (SPEC-0062).

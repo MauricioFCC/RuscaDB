@@ -98,8 +98,11 @@ cifrado.
 - **Compactación de índices derivados**: `reap` reconstruye HNSW/CSR/FTS desde
   las filas vivas (SPEC-0101), de modo que las entradas de filas purgadas
   desaparecen (sin tombstones residuales).
-- **Pool dimensionado en cifrado**: las páginas cifradas permanecen `dirty` en
-  el pool (nunca se desalojan); un pool lleno falla con `BufferPoolFull`.
+- **WAL sin checkpoint en cifrado**: las páginas confirmadas se sirven desde
+  un overlay que las reconstruye desde su commit record (SPEC-0106), así que
+  el pool queda acotado (solo el dirty sin confirmar puede agotarlo con
+  `BufferPoolFull`, igual que en modo claro); el WAL, en cambio, no se trunca
+  en cifrado y crece sin límite hasta un checkpoint futuro (fuera de alcance).
 - **KMS/HSM externos fuera de alcance**: el keystore KMS-lite local soporta
   rotación de claves (SPEC-0088), pero no hay KMS/HSM ni custodia externa. El
   catálogo ya no tiene el techo de 64 KiB (SPEC-0086); su techo residual es

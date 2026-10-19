@@ -457,6 +457,7 @@ el parseo de T1/T2/T3.
 | RQL (`RETURNING`) | SPEC-0102/AC-01..03 | `cargo test -p ruscadb --test dml_returning` |
 | RQL (`RIGHT`/`FULL`/`CROSS`) | SPEC-0103/AC-01..04 | `cargo test -p ruscadb --test join_outer` |
 | Índices secundarios (multi) | SPEC-0104/AC-01..08 | `cargo test -p ruscadb --test multi_index` (AC-01..04) + `cargo test -p ruscadb --lib catalog` (AC-05..08) |
+| Pool cifrado (overlay WAL) | SPEC-0106/AC-01..07 | `cargo test -p ruscadb --test encrypted_pool` (AC-01/02/05/06) + `cargo test -p ruscadb --lib database` (AC-03/04/07) |
 | `mutation_diff_gate.py` | SPEC-0098/AC-01..03 | `cargo test -p xtask --test mutation_gate` |
 | `nightly.yml` (`benches`) | SPEC-0059 | `bench_smoke` (AC-0059-01, `#[ignore]`) |
 | `nightly.yml` (`loom`) | SPEC-0053 | `RUSTFLAGS="--cfg loom"` |

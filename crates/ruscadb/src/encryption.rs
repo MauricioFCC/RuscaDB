@@ -9,10 +9,11 @@
 //! ## Límites documentados
 //!
 //! - El heap `.data` hereda el cifrado vía WAL: en modo cifrado `commit()` no
-//!   publica páginas al `.data` (el WAL es la fuente de verdad) y las páginas
-//!   permanecen `dirty` en el pool (nunca se desalojan: un pool lleno falla en
-//!   voz alta con `BufferPoolFull`, nunca sirve datos rancios). Dimensiona
-//!   `pool_capacity` para el conjunto de trabajo.
+//!   publica páginas al `.data` (el WAL es la fuente de verdad); las páginas
+//!   confirmadas se marcan limpias y, al desalojarse, se reconstruyen desde su
+//!   commit record vía overlay (SPEC-0106), de modo que el pool queda acotado:
+//!   solo el dirty sin confirmar puede agotarlo con `BufferPoolFull`. El WAL,
+//!   en cambio, crece sin checkpoint mientras dure el modo cifrado.
 //! - Páginas `.data` escritas antes de activar el cifrado siguen en claro hasta
 //!   su reescritura; además, abrir con clave un WAL creado en claro (o al revés)
 //!   falla en modo estricto con `WalCorrupt`, sin exponer claro.
