@@ -972,3 +972,10 @@ SI-4 (buffer pool ≤ budget).
 
 *Fin de la hoja de ruta. Fuente de verdad de diseño; toda modificación mayor
 requiere ADR y actualización de este documento antes de tocar código.*
+
+## Estado de produccion (actualizado 2026-10-21)
+- Ola 8: 2/3 cerradas (SPEC-0106, SPEC-0107). Pendiente: SPEC-0108 (JOIN con WHERE/ORDER BY).
+- SPEC-0107 hardening: test de regresion de filas afectadas (affected count) + gates T1 verdes.
+- Lineas futuras: code review multi-agente cableado, T2 LLM-judge programado, modelo cross-encoder (opcional), KMS/HSM externo.
+- Gates: cargo test workspace OK, clippy/fmt/doc/architecture/unsafe/ci-config OK, xtask trace/contract OK.
+
