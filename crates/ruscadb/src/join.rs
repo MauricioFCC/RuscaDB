@@ -8,10 +8,11 @@
 //! MVCC (los mismos candidatos visibles que el `SELECT` normal). Las filas
 //! fusionadas usan columnas prefijadas `tabla.columna`.
 
+use std::cmp::Ordering;
 use std::collections::HashSet;
 
 use ruscadb_core::{Record, RecordId, RuscaError, ScalarValue};
-use ruscadb_query::{JoinClause, JoinKind, Projection, Select};
+use ruscadb_query::{CompareOp, Expr, JoinClause, JoinKind, Projection, Select};
 use ruscadb_txn::Snapshot;
 
 use crate::catalog::TableDef;
@@ -100,6 +101,8 @@ pub(crate) fn execute_join_at(
             }
         }
     }
+    // SPEC-0108: WHERE y ORDER BY sobre las filas fusionadas.
+    let merged = apply_join_filter_and_sort(&merged, select)?;
     project_all(&sides, &merged, select)
 }
 
@@ -137,6 +140,7 @@ fn cross_join(
             merged.push(merge_rows(&sides, outer, inner));
         }
     }
+    let merged = apply_join_filter_and_sort(&merged, select)?;
     project_all(&sides, &merged, select)
 }
 
@@ -149,17 +153,11 @@ fn cross_join(
 ///     `Ok(())` si solo usa proyección y `LIMIT`.
 ///
 /// Errors:
-///     [`RuscaError::TypeMismatch`] si combina `JOIN` con `WHERE`, agregados,
-///     `GROUP BY`, `ORDER BY`, `KNN` o `TRAVERSE`.
+///     [`RuscaError::TypeMismatch`] si combina `JOIN` con agregados,
+///     `GROUP BY`, `KNN` o `TRAVERSE`.
 fn reject_unsupported(select: &Select) -> Result<(), RuscaError> {
-    if select.filter.is_some() {
-        return Err(join_unsupported("WHERE"));
-    }
     if !select.aggregates.is_empty() || !select.group_by.is_empty() {
         return Err(join_unsupported("agregados o GROUP BY"));
-    }
-    if select.order_by.is_some() {
-        return Err(join_unsupported("ORDER BY"));
     }
     if select.knn.is_some() || select.traverse.is_some() {
         return Err(join_unsupported("KNN o TRAVERSE"));
@@ -560,4 +558,115 @@ fn unqualified_value(
             .cloned()
             .unwrap_or(ScalarValue::Null),
     ))
+}
+/// Aplica `WHERE` y `ORDER BY` sobre las filas fusionadas (SPEC-0108).
+fn apply_join_filter_and_sort(merged: &[Row], select: &Select) -> Result<Vec<Row>, RuscaError> {
+    let mut out = merged.to_vec();
+    if let Some(filter) = &select.filter {
+        let mut filtered = Vec::with_capacity(out.len());
+        for row in out {
+            if eval_join_filter(filter, &row)? {
+                filtered.push(row);
+            }
+        }
+        out = filtered;
+    }
+    if let Some(order_by) = &select.order_by {
+        out.sort_by(|left, right| {
+            let left_value = join_row_value(left, &order_by.column).unwrap_or(ScalarValue::Null);
+            let right_value = join_row_value(right, &order_by.column).unwrap_or(ScalarValue::Null);
+            let ordering = compare_join_scalars(&left_value, &right_value);
+            if order_by.desc {
+                ordering.reverse()
+            } else {
+                ordering
+            }
+        });
+    }
+    Ok(out)
+}
+
+/// Eval�a un filtro `WHERE` sobre una fila fusionada (SPEC-0108).
+fn eval_join_filter(expression: &Expr, row: &Row) -> Result<bool, RuscaError> {
+    match expression {
+        Expr::And(left, right) => Ok(eval_join_filter(left, row)? && eval_join_filter(right, row)?),
+        Expr::Compare { left, op, right } => {
+            let first = eval_join_operand(left, row)?;
+            let second = eval_join_operand(right, row)?;
+            compare_join_values(*op, &first, &second)
+        }
+        _ => Err(RuscaError::TypeMismatch {
+            message: "el filtro WHERE del JOIN debe ser una comparacion o AND de comparaciones"
+                .to_string(),
+        }),
+    }
+}
+
+/// Eval�a un operando del filtro sobre una fila fusionada (SPEC-0108).
+fn eval_join_operand(expression: &Expr, row: &Row) -> Result<ScalarValue, RuscaError> {
+    match expression {
+        Expr::Column(name) => Ok(join_row_value(row, name).unwrap_or(ScalarValue::Null)),
+        Expr::Int(number) => Ok(ScalarValue::Int(*number)),
+        Expr::Float(number) => Ok(ScalarValue::Float(*number)),
+        Expr::Text(text) => Ok(ScalarValue::Text(text.clone())),
+        _ => Err(RuscaError::TypeMismatch {
+            message: "operando no soportado en el filtro del JOIN".to_string(),
+        }),
+    }
+}
+
+/// Obtiene el valor de una columna en una fila fusionada, admitiendo nombre
+/// cualificado (`tabla.columna`) o no cualificado si es unico (SPEC-0108).
+fn join_row_value(row: &Row, name: &str) -> Option<ScalarValue> {
+    if let Some(value) = row.get(name) {
+        return Some(value.clone());
+    }
+    let suffix = format!(".{name}");
+    let matches: Vec<&String> = row.keys().filter(|key| key.ends_with(&suffix)).collect();
+    if matches.len() == 1 {
+        row.get(matches[0]).cloned()
+    } else {
+        None
+    }
+}
+
+/// Compara dos valores del filtro del JOIN (SPEC-0108).
+fn compare_join_values(
+    operation: CompareOp,
+    left: &ScalarValue,
+    right: &ScalarValue,
+) -> Result<bool, RuscaError> {
+    if *left == ScalarValue::Null || *right == ScalarValue::Null {
+        return Ok(false);
+    }
+    let ordering = compare_join_scalars(left, right);
+    Ok(match operation {
+        CompareOp::Eq => ordering == Ordering::Equal,
+        CompareOp::NotEq => ordering != Ordering::Equal,
+        CompareOp::Lt => ordering == Ordering::Less,
+        CompareOp::LtEq => ordering != Ordering::Greater,
+        CompareOp::Gt => ordering == Ordering::Greater,
+        CompareOp::GtEq => ordering != Ordering::Less,
+    })
+}
+
+/// Ordena dos escalares del JOIN (SPEC-0108).
+fn compare_join_scalars(left: &ScalarValue, right: &ScalarValue) -> Ordering {
+    match (left, right) {
+        (ScalarValue::Int(first), ScalarValue::Int(second)) => first.cmp(second),
+        (ScalarValue::Float(first), ScalarValue::Float(second)) => {
+            first.partial_cmp(second).unwrap_or(Ordering::Less)
+        }
+        (ScalarValue::Int(number), ScalarValue::Float(other)) => (*number as f64)
+            .partial_cmp(other)
+            .unwrap_or(Ordering::Less),
+        (ScalarValue::Float(other), ScalarValue::Int(number)) => other
+            .partial_cmp(&(*number as f64))
+            .unwrap_or(Ordering::Less),
+        (ScalarValue::Text(first), ScalarValue::Text(second)) => first.cmp(second),
+        (ScalarValue::Bool(first), ScalarValue::Bool(second)) => first.cmp(second),
+        (ScalarValue::Null, _) => Ordering::Less,
+        (_, ScalarValue::Null) => Ordering::Greater,
+        _ => Ordering::Equal,
+    }
 }
