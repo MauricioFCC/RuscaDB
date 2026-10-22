@@ -1,0 +1,23 @@
+[package]
+name = "ruscadb-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+license = "Apache-2.0"
+description = "CLI de RuscaDB: ejecutable multiplataforma para consultar, ejecutar scripts RQL y servir MCP por stdio"
+publish = false
+
+[[bin]]
+name = "ruscadb"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Fachada (composition root) + servidor MCP: el CLI es un adapter mas.
+ruscadb = { workspace = true }
+ruscadb-mcp = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

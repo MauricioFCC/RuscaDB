@@ -28,6 +28,7 @@ members = [
     "crates/ruscadb-testkit",
     "crates/ruscadb-crypto",
     "crates/ruscadb-mcp",
+    "crates/ruscadb-cli",
     "crates/xtask",
 ]
 
@@ -58,6 +59,7 @@ ruscadb-testkit = { path = "crates/ruscadb-testkit" }
 ruscadb-crypto = { path = "crates/ruscadb-crypto" }
 ruscadb-ts = { path = "crates/ruscadb-ts" }
 ruscadb = { path = "crates/ruscadb" }
+ruscadb-mcp = { path = "crates/ruscadb-mcp" }
 
 # Dependencias externas (versiones estables verificadas 2026-10-06).
 serde = { version = "1.0.229", features = ["derive"] }

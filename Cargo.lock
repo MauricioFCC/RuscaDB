@@ -3370,6 +3370,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruscadb-cli"
+version = "0.1.0"
+dependencies = [
+ "ruscadb",
+ "ruscadb-mcp",
+ "tempfile",
+]
+
+[[package]]
 name = "ruscadb-core"
 version = "0.1.0"
 dependencies = [

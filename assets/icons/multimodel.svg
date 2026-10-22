@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-labelledby="mm-title mm-desc">
+  <title id="mm-title">Multimodel</title>
+  <desc id="mm-desc">Icono de datos multimodelo: tres capas superpuestas (relacional, documento, vector).</desc>
+  <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8" y="12" width="48" height="14" rx="3"/>
+    <rect x="8" y="30" width="48" height="14" rx="3"/>
+    <rect x="8" y="48" width="48" height="8" rx="3"/>
+    <circle cx="16" cy="19" r="2" fill="currentColor"/>
+    <circle cx="16" cy="37" r="2" fill="currentColor"/>
+  </g>
+</svg>

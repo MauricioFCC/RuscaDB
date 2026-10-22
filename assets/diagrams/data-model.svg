@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" width="1200" height="520"
+     role="img" aria-labelledby="dm-title dm-desc">
+  <title id="dm-title">RuscaDB data model</title>
+  <desc id="dm-desc">Un unico Record fisico proyecta cinco modelos (relacional, documento, grafo, vector, series temporales) mas multimodal (blob + embedding).</desc>
+
+  <defs>
+    <linearGradient id="dm-accent" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1200" y2="520">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="520" fill="#0b1020"/>
+
+  <text x="48" y="56" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="28" font-weight="700" fill="#f8fafc">One record, five models + multimodal</text>
+  <text x="48" y="84" font-family="JetBrains Mono, ui-monospace, monospace" font-size="14" fill="#94a3b8">a single physical Record projects onto relational, document, graph, vector, time-series and multimodal</text>
+
+  <!-- Nucleo Record -->
+  <rect x="480" y="150" width="240" height="220" rx="16" fill="#111834" stroke="url(#dm-accent)" stroke-width="2"/>
+  <text x="504" y="186" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="22" font-weight="700" fill="#f8fafc">Record</text>
+  <text x="504" y="214" font-family="JetBrains Mono, ui-monospace, monospace" font-size="14" fill="#22d3ee">id, meta, scalars</text>
+  <text x="504" y="238" font-family="JetBrains Mono, ui-monospace, monospace" font-size="14" fill="#22d3ee">doc, vector, edges</text>
+  <text x="504" y="262" font-family="JetBrains Mono, ui-monospace, monospace" font-size="14" fill="#22d3ee">ts, blob hash</text>
+  <text x="504" y="300" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" fill="#94a3b8">created_tx, deleted_tx</text>
+  <text x="504" y="324" font-family="JetBrains Mono, ui-monospace, monospace" font-size="13" fill="#94a3b8">lsn, version</text>
+
+  <!-- Modelos alrededor -->
+  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="16" fill="#f8fafc">
+    <!-- Relacional -->
+    <rect x="60" y="120" width="260" height="80" rx="12" fill="#111834" stroke="#2a3354"/>
+    <text x="82" y="152" font-weight="700">Relational</text>
+    <text x="82" y="180" font-size="13" fill="#94a3b8">scalars - B+tree - WHERE</text>
+    <!-- Documento -->
+    <rect x="60" y="220" width="260" height="80" rx="12" fill="#111834" stroke="#2a3354"/>
+    <text x="82" y="252" font-weight="700">Document</text>
+    <text x="82" y="280" font-size="13" fill="#94a3b8">doc -> path - @> containment</text>
+    <!-- Grafo -->
+    <rect x="60" y="320" width="260" height="80" rx="12" fill="#111834" stroke="#2a3354"/>
+    <text x="82" y="352" font-weight="700">Graph</text>
+    <text x="82" y="380" font-size="13" fill="#94a3b8">CSR - TRAVERSE edges</text>
+
+    <!-- Vector -->
+    <rect x="880" y="120" width="260" height="80" rx="12" fill="#111834" stroke="#2a3354"/>
+    <text x="902" y="152" font-weight="700">Vector</text>
+    <text x="902" y="180" font-size="13" fill="#94a3b8">HNSW - KNN - fvs</text>
+    <!-- Time-series -->
+    <rect x="880" y="220" width="260" height="80" rx="12" fill="#111834" stroke="#2a3354"/>
+    <text x="902" y="252" font-weight="700">Time-series</text>
+    <text x="902" y="280" font-size="13" fill="#94a3b8">bucket - window - resample</text>
+    <!-- Multimodal -->
+    <rect x="880" y="320" width="260" height="80" rx="12" fill="#111834" stroke="#2a3354"/>
+    <text x="902" y="352" font-weight="700">Multimodal</text>
+    <text x="902" y="380" font-size="13" fill="#94a3b8">blob (CAS) + embedding</text>
+  </g>
+
+  <!-- Flechas -->
+  <g stroke="#94a3b8" stroke-width="2" fill="none" opacity="0.9">
+    <path d="M320 160 L480 210"/>
+    <path d="M320 260 L480 260"/>
+    <path d="M320 360 L480 310"/>
+    <path d="M720 210 L880 160"/>
+    <path d="M720 260 L880 260"/>
+    <path d="M720 310 L880 360"/>
+  </g>
+
+  <text x="48" y="480" font-family="JetBrains Mono, ui-monospace, monospace" font-size="14" fill="#64748b">One storage, many indexes - WAL (CRC32C) + MVCC snapshot isolation - LRU-K buffer pool</text>
+</svg>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>RuscaDB - Asset Preview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 32px;
+      background: #f8fafc;
+      color: #0b1020;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+    h1 { font-size: 24px; margin: 0 0 4px; }
+    p.sub { margin: 0 0 28px; color: #64748b; font-size: 14px; }
+    h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: #475569; margin: 32px 0 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .card.dark { background: #0b1020; border-color: #2a3354; color: #f8fafc; }
+    .card img { max-width: 100%; height: auto; display: block; }
+    .meta { font-family: ui-monospace, monospace; font-size: 12px; color: #64748b; }
+    .dark .meta { color: #94a3b8; }
+    .row { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <h1>RuscaDB assets</h1>
+  <p class="sub">Brand kit: marks, lockups, favicon, social cards, diagrams and feature icons. Palette: ink #0b1020, cyan #22d3ee, indigo #6366f1.</p>
+
+  <h2>Social and banner</h2>
+  <div class="grid">
+    <div class="card dark"><img src="banner.svg" alt="banner"><span class="meta">banner.svg - 1280x640</span></div>
+    <div class="card dark"><img src="social-preview.svg" alt="social preview"><span class="meta">social-preview.svg - 1200x630</span></div>
+    <div class="card dark"><img src="og-image.svg" alt="open graph card"><span class="meta">og-image.svg - 1200x630</span></div>
+  </div>
+
+  <h2>Marks and lockups</h2>
+  <div class="grid">
+    <div class="card"><img src="logo.svg" alt="logo lockup"><span class="meta">logo.svg - 440x128</span></div>
+    <div class="card"><img src="logo-mark.svg" width="128" height="128" alt="logo mark"><span class="meta">logo-mark.svg - 128x128</span></div>
+    <div class="card dark"><img src="logo-mark-dark.svg" width="128" height="128" alt="logo mark on dark tile"><span class="meta">logo-mark-dark.svg - 128x128</span></div>
+    <div class="card"><img src="favicon.svg" width="32" height="32" alt="favicon"><span class="meta">favicon.svg - 32x32</span></div>
+  </div>
+
+  <h2>Diagrams</h2>
+  <div class="grid">
+    <div class="card dark"><img src="diagrams/architecture.svg" alt="architecture diagram"><span class="meta">diagrams/architecture.svg</span></div>
+    <div class="card dark"><img src="diagrams/data-model.svg" alt="data model diagram"><span class="meta">diagrams/data-model.svg</span></div>
+  </div>
+
+  <h2>Feature icons</h2>
+  <div class="grid">
+    <div class="card"><img src="icons/multimodel.svg" width="64" height="64" alt="multimodel icon"><span class="meta">icons/multimodel.svg</span></div>
+    <div class="card"><img src="icons/durability.svg" width="64" height="64" alt="durability icon"><span class="meta">icons/durability.svg</span></div>
+    <div class="card"><img src="icons/search.svg" width="64" height="64" alt="search icon"><span class="meta">icons/search.svg</span></div>
+    <div class="card"><img src="icons/security.svg" width="64" height="64" alt="security icon"><span class="meta">icons/security.svg</span></div>
+  </div>
+
+  <h2>Tokens</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="row">
+        <span style="width:56px;height:56px;border-radius:8px;background:#22d3ee"></span>
+        <span style="width:56px;height:56px;border-radius:8px;background:#6366f1"></span>
+        <span style="width:56px;height:56px;border-radius:8px;background:#0b1020"></span>
+        <span style="width:56px;height:56px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0"></span>
+      </div>
+      <span class="meta">brand-tokens.json - cyan, indigo, ink, text</span>
+    </div>
+  </div>
+</body>
+</html>

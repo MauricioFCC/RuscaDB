@@ -53,6 +53,32 @@ a single database directory, queried through **one extended-SQL language (RQL)**
 
 ## Quick start
 
+Add the facade crate to your project with a single command:
+
+```bash
+cargo add ruscadb --git https://github.com/MauricioFCC/RuscaDB
+```
+
+Or install the `ruscadb` executable (CLI + MCP server) for your platform:
+
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/MauricioFCC/RuscaDB/main/scripts/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+```
+
+```bash
+# or from source
+cargo install --git https://github.com/MauricioFCC/RuscaDB --package ruscadb-cli --locked
+```
+
+Full matrix of targets, MCP client configuration and language bindings:
+[`docs/instalacion.md`](docs/instalacion.md).
+
 Add the facade crate to your project (path/git for now; not yet published):
 
 ```toml
@@ -149,6 +175,7 @@ facade and filters by MVCC snapshot visibility.
 | `ruscadb-py` / `ruscadb-node` | Python / Node bindings. |
 | `ruscadb-wasm` | WebAssembly (browser) bindings. |
 | `ruscadb-mcp` | MCP server over stdio (tools + resources). |
+| `ruscadb-cli` | Executable `ruscadb`: RQL shell, DDL and MCP stdio server. |
 | `ruscadb` | **Facade / composition root** (wires everything; `Database`). |
 | `ruscadb-testkit` | Test utilities and oracles. |
 | `xtask` | Developer tasks (`cargo xtask trace`). |

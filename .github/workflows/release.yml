@@ -4,8 +4,10 @@
 # raíz; el job `release` eleva a `contents: write` solo para crear el Release.
 #
 # Flujo: valida que el CHANGELOG tenga la sección [X.Y.Z] del tag, corre los
-# gates de arquitectura/config, genera el SBOM CycloneDX como artefacto y
-# publica el Release con las notas extraídas del CHANGELOG.
+# gates de arquitectura/config, genera el SBOM CycloneDX como artefacto,
+# compila el ejecutable `ruscadb` para todas las plataformas soportadas
+# (Windows x64/arm64, Linux x64/arm64 gnu+musl, macOS x64/arm64) y publica el
+# Release con los binarios, los checksums SHA-256 y las notas del CHANGELOG.
 
 name: Release
 
@@ -63,9 +65,75 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+  binaries:
+    name: Build ${{ matrix.target }}
+    needs: gate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: "true"
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: "true"
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: "true"
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: "true"
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            cross: "false"
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            cross: "true"
+          - target: x86_64-apple-darwin
+            os: macos-13
+            cross: "false"
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            cross: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain de cruce (${{ matrix.target }})
+        if: matrix.cross == 'true'
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: "release-${{ matrix.target }}"
+      - name: Build del ejecutable
+        run: cargo build --release --locked -p ruscadb-cli --target ${{ matrix.target }}
+      - name: Empaquetado + checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          bin="target/${{ matrix.target }}/release/ruscadb"
+          if [ "${{ runner.os }}" = "Windows" ]; then bin="${bin}.exe"; fi
+          cp "$bin" "dist/ruscadb-${{ matrix.target }}"
+          tar -czf "dist/ruscadb-${{ matrix.target }}.tar.gz" -C dist "ruscadb-${{ matrix.target }}"
+          cd dist
+          sha256sum "ruscadb-${{ matrix.target }}" > "ruscadb-${{ matrix.target }}.sha256"
+          rm "ruscadb-${{ matrix.target }}"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: binary-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 90
+
   release:
     name: Publish GitHub Release
-    needs: gate
+    needs: [gate, binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -74,9 +142,25 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Download binaries
+        uses: actions/download-artifact@v6
+        with:
+          pattern: binary-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums consolidados
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum ruscadb-* > SHA256SUMS || true
+          cat SHA256SUMS
       - name: Extract release notes from CHANGELOG
         run: python scripts/check_changelog.py CHANGELOG.md --tag "${{ needs.gate.outputs.tag }}" --notes-out release-notes.md
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ needs.gate.outputs.tag }}" --title "${{ needs.gate.outputs.tag }}" --notes-file release-notes.md
+        run: |
+          gh release create "${{ needs.gate.outputs.tag }}" \
+            --title "${{ needs.gate.outputs.tag }}" \
+            --notes-file release-notes.md \
+            dist/*

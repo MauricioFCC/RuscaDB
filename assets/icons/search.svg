@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-labelledby="se-title se-desc">
+  <title id="se-title">Search</title>
+  <desc id="se-desc">Icono de busqueda: lupa con una hoja de resultados.</desc>
+  <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="26" cy="26" r="14"/>
+    <path d="M36 36 L52 52"/>
+    <path d="M18 26 H34"/>
+    <path d="M18 20 H30"/>
+    <path d="M18 32 H26"/>
+  </g>
+</svg>

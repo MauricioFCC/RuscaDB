@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-labelledby="sc-title sc-desc">
+  <title id="sc-title">Security</title>
+  <desc id="sc-desc">Icono de seguridad: candado cerrado.</desc>
+  <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="14" y="28" width="36" height="26" rx="4"/>
+    <path d="M22 28 V20 C22 14 26 10 32 10 C38 10 42 14 42 20 V28"/>
+    <circle cx="32" cy="41" r="3" fill="currentColor"/>
+    <path d="M32 44 V48"/>
+  </g>
+</svg>

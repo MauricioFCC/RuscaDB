@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RuscaDB - Tarjeta social (Open Graph / Twitter), 1200x630.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630"
+     role="img" aria-labelledby="og-title og-desc">
+  <title id="og-title">RuscaDB - Embedded, multi-model and multimodal database in Rust</title>
+  <desc id="og-desc">Tarjeta social de RuscaDB con la marca geometrica de chip hexagonal y cucaracha, el eslogan Small. Omnivorous. Indestructible. y las capacidades WAL, MVCC, RQL, HNSW y cifrado XChaCha20-Poly1305.</desc>
+
+  <defs>
+    <linearGradient id="og-gradient" gradientUnits="userSpaceOnUse" x1="90" y1="70" x2="520" y2="560">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <radialGradient id="og-glow" gradientUnits="userSpaceOnUse" cx="280" cy="300" r="520">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0b1020"/>
+  <rect width="1200" height="630" fill="url(#og-glow)"/>
+  <g stroke="#1b2340" stroke-width="1">
+    <path d="M0 210 H1200 M0 420 H1200"/>
+    <path d="M200 0 V630 M400 0 V630 M600 0 V630 M800 0 V630 M1000 0 V630"/>
+  </g>
+
+  <g transform="translate(86,190) scale(1.9)">
+    <path d="M64 12 L108 38 L108 90 L64 116 L20 90 L20 38 Z"
+          fill="none" stroke="url(#og-gradient)" stroke-width="5" stroke-linejoin="round"/>
+    <g fill="#22d3ee">
+      <circle cx="64" cy="12" r="6"/>
+      <circle cx="108" cy="38" r="6"/>
+      <circle cx="108" cy="90" r="6"/>
+      <circle cx="64" cy="116" r="6"/>
+      <circle cx="20" cy="90" r="6"/>
+      <circle cx="20" cy="38" r="6"/>
+    </g>
+    <g stroke="#22d3ee" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.92">
+      <path d="M54 63 L40 52"/>
+      <path d="M50 74 L36 74"/>
+      <path d="M55 84 L42 96"/>
+      <path d="M74 63 L88 52"/>
+      <path d="M78 74 L92 74"/>
+      <path d="M73 84 L86 96"/>
+    </g>
+    <g stroke="#22d3ee" stroke-width="4" stroke-linecap="round" fill="none">
+      <path d="M59 48 C54 42 49 36 44 27"/>
+      <path d="M69 48 C74 42 79 36 84 27"/>
+    </g>
+    <path d="M64 57 L49 62 L48 74 L53 87 L64 96 Z" fill="url(#og-gradient)"/>
+    <path d="M64 57 L79 62 L80 74 L75 87 L64 96 Z" fill="url(#og-gradient)"/>
+    <path d="M64 44 L74 49 L77 60 L51 60 L54 49 Z" fill="url(#og-gradient)" opacity="0.98"/>
+  </g>
+
+  <text x="400" y="262" font-family="Inter, ui-sans-serif, system-ui, sans-serif"
+        font-size="92" font-weight="700" fill="#f8fafc">RuscaDB</text>
+  <text x="404" y="310" font-family="JetBrains Mono, ui-monospace, monospace"
+        font-size="28" font-weight="600" fill="url(#og-gradient)">Small. Omnivorous. Indestructible.</text>
+  <text x="404" y="362" font-family="Inter, ui-sans-serif, system-ui, sans-serif"
+        font-size="24" fill="#94a3b8">Embedded, multi-model and multimodal database in Rust</text>
+
+  <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="19" fill="#cbd5e1">
+    <rect x="404" y="404" width="146" height="38" rx="8" fill="#111834" stroke="#2a3354"/>
+    <text x="422" y="430">WAL + MVCC</text>
+    <rect x="562" y="404" width="110" height="38" rx="8" fill="#111834" stroke="#2a3354"/>
+    <text x="580" y="430">RQL</text>
+    <rect x="684" y="404" width="110" height="38" rx="8" fill="#111834" stroke="#2a3354"/>
+    <text x="702" y="430">HNSW</text>
+    <rect x="806" y="404" width="212" height="38" rx="8" fill="#111834" stroke="#2a3354"/>
+    <text x="824" y="430">XCHACHA20-POLY</text>
+  </g>
+
+  <text x="400" y="520" font-family="JetBrains Mono, ui-monospace, monospace"
+        font-size="22" fill="#64748b">github.com/MauricioFCC/RuscaDB</text>
+</svg>

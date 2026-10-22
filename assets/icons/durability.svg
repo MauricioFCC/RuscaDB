@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-labelledby="du-title du-desc">
+  <title id="du-title">Durability</title>
+  <desc id="du-desc">Icono de durabilidad: escudo con una marca de verificacion.</desc>
+  <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 6 L54 16 L54 34 C54 46 44 54 32 58 C20 54 10 46 10 34 L10 16 Z"/>
+    <path d="M20 34 L28 42 L44 26"/>
+  </g>
+</svg>
