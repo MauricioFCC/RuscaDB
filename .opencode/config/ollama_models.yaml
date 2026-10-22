@@ -1,12 +1,12 @@
 # Ollama local delegation — tiers por capacidad (minimiza tokens cloud)
-# Flota REDUCIDA 2026-10-08 (RTX 4060 8GB, backend llama.cpp / llama-swap en
-# 127.0.0.1:11434). 4 modelos servidos por nombre corto + alias (llama-swap
-# expone ambos). Ya NO hay 9B (jackod/mimo/ornith) ni vision (qwen3-vl):
-# no caben/utilizan en 8GB con el escritorio WDDM (retirados 2026-10-08).
-#   fast:      qwen3-5-4b-gguf-ud-q4-k-xl — borradores, tareas simples
-#   quality:   phi-4-mini-instruct-q4-k-m — calidad/razonamiento general
-#   coding:    qwen2.5-coder-3b-iq4-xs — codigo agentico multi-turn
+# Flota INSTALADA 2026-10-14 (RTX 4060 8GB, backend llama.cpp / llama-swap en
+# 127.0.0.1:11434), alineada a la SSOT harness/model_router/local_models.yaml.
+# 5 modelos servidos por nombre corto + alias (llama-swap expone ambos).
+#   fast:      phi-4-mini-reasoning-q4-k-m — borradores, tareas simples
+#   quality:   mimo-v2-6-distill-qwen-9b-gguf-iq4-xs — calidad/razonamiento general
+#   coding:    qwen3-4b-thinking-2507-q4-k-m — codigo agentico multi-turn
 #   embedding: qwen3-embedding-0-6b — RAG (auto_pull lo restaura si se usa)
+#   (deep:     ternary-bonsai-2-27b-ptq1-0 — modelo de decision; no es tier)
 # num_ctx: llama-server sirve los modelos a 32768, pero el harness DECLARA
 # 8192 (techo anti-TDR `gpu_guard.SAFE_CTX_MAX`, post-BSOD VIDEO_TDR_FAILURE
 # 0x116 del 2026-10-01). El harness envia num_ctx explicito por options
@@ -19,10 +19,10 @@ ollama:
   # demanda (y con el guard de gpu_guard.py). NO reactivar en 8GB.
   warm_on_start: []
   tiers:
-    fast:      {model: "qwen3-5-4b-gguf-ud-q4-k-xl", keep_alive: "0", auto_pull: true}
-    quality:   {model: "phi-4-mini-instruct-q4-k-m",  keep_alive: "0", auto_pull: true}
-    coding:    {model: "qwen2.5-coder-3b-iq4-xs",     keep_alive: "0", auto_pull: true}
-    embedding: {model: "qwen3-embedding-0-6b",        keep_alive: "0", auto_pull: true}
+    fast:      {model: "phi-4-mini-reasoning-q4-k-m",           keep_alive: "0", auto_pull: true}
+    quality:   {model: "mimo-v2-6-distill-qwen-9b-gguf-iq4-xs", keep_alive: "0", auto_pull: true}
+    coding:    {model: "qwen3-4b-thinking-2507-q4-k-m",         keep_alive: "0", auto_pull: true}
+    embedding: {model: "qwen3-embedding-0-6b",                  keep_alive: "0", auto_pull: true}
 # Politica local-first con supervision cloud como oraculo 1% (ADR-0084/0097):
 # 99% local en destilados potentes; el cloud solo verifica muestras.
 local_first:

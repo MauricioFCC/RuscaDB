@@ -267,3 +267,28 @@ fn test_ac_0107_09_upsert_preserves_unmentioned_columns() {
     assert_eq!(stored.len(), 1);
     assert_eq!(pair(&stored[0]), (1, "actualizado".to_string()));
 }
+
+/// Regresion: el upsert reporta el numero de filas afectadas sin RETURNING.
+#[test]
+fn test_upsert_reports_affected_count() {
+    let (_dir, mut database) = open_test_db("upsert_affected");
+    create_t(&mut database);
+
+    let rows = database
+        .execute("INSERT INTO t (id, name) VALUES (1, 'uno') ON CONFLICT (id) DO UPDATE SET name = excluded.name")
+        .expect("insert");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].get("affected"), Some(&ScalarValue::Int(1)));
+
+    let rows = database
+        .execute("INSERT INTO t (id, name) VALUES (1, 'dos') ON CONFLICT (id) DO UPDATE SET name = excluded.name")
+        .expect("update");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].get("affected"), Some(&ScalarValue::Int(1)));
+
+    let rows = database
+        .execute("INSERT INTO t (id, name) VALUES (1, 'tres') ON CONFLICT (id) DO NOTHING")
+        .expect("do nothing");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].get("affected"), Some(&ScalarValue::Int(0)));
+}
