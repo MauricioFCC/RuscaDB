@@ -17,9 +17,9 @@ mod parser;
 pub mod provider;
 
 pub use ast::{
-    AggFunc, Aggregate, ColumnRef, CompareOp, Delete, Explain, Expr, HavingCondition, Insert,
-    JoinClause, JoinKind, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause,
-    Update,
+    AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Delete, Explain, Expr,
+    HavingCondition, Insert, JoinClause, JoinKind, KnnClause, OnConflict, OrderBy, Projection,
+    Select, Statement, TraverseClause, Update,
 };
 pub use limits::{
     COMPLEXITY_BUDGET, DEFAULT_TIMEOUT_MILLIS, FULL_SCAN_WARN_THRESHOLD, IMPLICIT_LIMIT,
@@ -891,6 +891,7 @@ mod tests {
                 columns,
                 rows,
                 returning: None,
+                on_conflict: None,
             });
             let text = statement.to_string();
             let reparsed = parse_statement(&text).expect("reparse");

@@ -6,7 +6,9 @@
 //! `{"affected": N}` (documentado en [`Database::execute`]).
 
 use ruscadb_core::{EdgeSet, Record, RecordId, RecordMeta, RuscaError, ScalarMap, ScalarValue};
-use ruscadb_query::{Delete, Expr, Insert, Projection, Update};
+use ruscadb_query::{
+    ConflictAction, ConflictValue, Delete, Expr, Insert, OnConflict, Projection, Update,
+};
 use ruscadb_txn::Snapshot;
 
 use crate::catalog::{Catalog, TableDef};
@@ -30,6 +32,9 @@ impl Database {
     ///     [`RuscaError::ColumnNotFound`] si falta/sobra una columna;
     ///     [`RuscaError::TypeMismatch`] si un literal no pertenece a su columna.
     pub(crate) fn execute_insert(&mut self, insert: &Insert) -> Result<Vec<Row>, RuscaError> {
+        if let Some(on_conflict) = &insert.on_conflict {
+            return self.execute_upsert(insert, on_conflict);
+        }
         let records = build_insert_records(insert)?;
         let ids = self.insert_many(&insert.table, records)?;
         if insert.returning.is_none() {
@@ -45,6 +50,175 @@ impl Database {
             }
         }
         Ok(rows)
+    }
+
+    /// Ejecuta un `UPSERT` (`INSERT ... ON CONFLICT`, SPEC-0107).
+    ///
+    /// Args:
+    ///     insert: Sentencia `INSERT` con `on_conflict` presente.
+    ///     on_conflict: Cláusula `ON CONFLICT` ya parseada.
+    ///
+    /// Returns:
+    ///     Las filas afectadas/RETURNING según la sentencia.
+    ///
+    /// Errors:
+    ///     [`RuscaError::TableNotFound`] si la tabla no existe;
+    ///     [`RuscaError::ColumnNotFound`] si falta una columna del target/SET;
+    ///     [`RuscaError::TypeMismatch`] si un literal no pertenece a su columna
+    ///     o si hay más de una fila coincidente (ambigüedad).
+    fn execute_upsert(
+        &mut self,
+        insert: &Insert,
+        on_conflict: &OnConflict,
+    ) -> Result<Vec<Row>, RuscaError> {
+        let mut catalog = Catalog::load(self)?;
+        let table = catalog.get(&insert.table)?.clone();
+
+        // Validación de columnas del target.
+        for column in &on_conflict.target {
+            table.column_type(column)?;
+        }
+        // Validación de las asignaciones de DO UPDATE.
+        if let ConflictAction::DoUpdate(assignments) = &on_conflict.action {
+            for (column, value) in assignments {
+                table.column_type(column)?;
+                match value {
+                    ConflictValue::Literal(expr) => {
+                        literal_scalar(expr)?;
+                    }
+                    ConflictValue::Excluded(column) => {
+                        table.column_type(column)?;
+                    }
+                }
+            }
+        }
+
+        let records = build_insert_records(insert)?;
+        let snapshot = self.snapshot();
+
+        let (tx, is_auto_commit) = match self.active_tx {
+            Some(existing) => (existing, false),
+            None => (self.txn.begin(), true),
+        };
+
+        let run = (|| -> Result<Vec<Row>, RuscaError> {
+            let mut returned: Vec<Record> = Vec::new();
+            let mut affected = 0_i64;
+
+            for proposed in &records {
+                // Busca filas visibles coincidentes por todas las columnas target.
+                let candidates = heap_scan(self, &table)?;
+                let mut matches: Vec<(RowLocator, Record)> = Vec::new();
+                for (locator, record) in candidates {
+                    if record.meta.deleted_tx.is_some() {
+                        continue;
+                    }
+                    if !is_visible(&snapshot, &record) {
+                        continue;
+                    }
+                    let mut ok = true;
+                    for column in &on_conflict.target {
+                        let proposed_value = proposed.scalars.get(column);
+                        let existing_value = record.scalars.get(column);
+                        if proposed_value != existing_value {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if ok {
+                        matches.push((locator, record));
+                    }
+                }
+
+                match matches.len() {
+                    0 => {
+                        // Inserta la fila propuesta (usa la tx activa).
+                        let id = self.insert_record(&insert.table, proposed.clone())?;
+                        affected += 1;
+                        if insert.returning.is_some()
+                            && let Some(record) = self.get_record(&insert.table, &id)?
+                        {
+                            returned.push(record);
+                        }
+                    }
+                    1 => {
+                        let Some((locator, existing)) = matches.pop() else {
+                            continue;
+                        };
+                        if matches!(on_conflict.action, ConflictAction::DoNothing) {
+                            // DO NOTHING: no persiste ni reporta la fila en conflicto.
+                            continue;
+                        }
+                        let assignments = match &on_conflict.action {
+                            ConflictAction::DoUpdate(a) => a,
+                            ConflictAction::DoNothing => unreachable!(),
+                        };
+                        let mut scalars = existing.scalars.clone();
+                        for (column, value) in assignments {
+                            let resolved = match value {
+                                ConflictValue::Literal(expr) => literal_scalar(expr)?,
+                                ConflictValue::Excluded(col) => proposed
+                                    .scalars
+                                    .get(col)
+                                    .cloned()
+                                    .unwrap_or(ScalarValue::Null),
+                            };
+                            scalars.insert(column.clone(), resolved);
+                        }
+                        let mut updated = existing.clone();
+                        updated.scalars = validate_scalars(&table, &table.name, scalars)?;
+                        updated.meta.created_tx = tx;
+                        updated.meta.deleted_tx = None;
+                        updated.meta.lsn = self.wal.next_lsn();
+                        persist_row_update(
+                            self,
+                            &mut catalog,
+                            &table,
+                            &existing,
+                            &updated,
+                            locator,
+                        )?;
+                        if let Some(entry) = self.indexes.get_mut(&table.name) {
+                            entry.finalize();
+                        }
+                        affected += 1;
+                        if insert.returning.is_some() {
+                            returned.push(updated);
+                        }
+                    }
+                    _ => {
+                        return Err(RuscaError::TypeMismatch {
+                            message: format!(
+                                "upsert ambiguo: {} filas coinciden para el conflicto",
+                                matches.len()
+                            ),
+                        });
+                    }
+                }
+            }
+
+            catalog.save(self)?;
+            self.invalidate_semantic_cache();
+            if is_auto_commit {
+                self.txn.commit(tx)?;
+            }
+            if let Some(columns) = &insert.returning {
+                return project_records(&table, columns, &returned);
+            }
+            Ok(vec![affected_row(affected)])
+        })();
+
+        match run {
+            Ok(rows) => Ok(rows),
+            Err(error) => {
+                if is_auto_commit {
+                    let _ = self.rollback();
+                } else {
+                    let _ = self.txn.rollback(tx);
+                }
+                Err(error)
+            }
+        }
     }
 
     /// Ejecuta un `UPDATE` de las filas visibles que cumplen el `WHERE`.

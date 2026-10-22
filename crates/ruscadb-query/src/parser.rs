@@ -1,9 +1,9 @@
 //! Parser recursive-descent de RQL sobre los tokens del lexer.
 
 use crate::ast::{
-    AggFunc, Aggregate, ColumnRef, CompareOp, Delete, Explain, Expr, HavingCondition, Insert,
-    JoinClause, JoinKind, KnnClause, OrderBy, Projection, Select, Statement, TraverseClause,
-    Update,
+    AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Delete, Explain, Expr,
+    HavingCondition, Insert, JoinClause, JoinKind, KnnClause, OnConflict, OrderBy, Projection,
+    Select, Statement, TraverseClause, Update,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use crate::limits::check_depth;
@@ -222,13 +222,93 @@ impl Parser {
         self.expect_keyword(Keyword::Values)?;
         let rows = self.parse_value_rows()?;
         validate_insert_rows(&columns, &rows).map_err(|message| self.error(message))?;
+        let on_conflict = self.parse_on_conflict()?;
         let returning = self.parse_returning()?;
         Ok(Insert {
             table,
             columns,
             rows,
             returning,
+            on_conflict,
         })
+    }
+
+    /// Parsea la cláusula opcional `ON CONFLICT (cols) DO NOTHING | DO UPDATE
+    /// SET col = literal | excluded.col` (SPEC-0107).
+    ///
+    /// Returns:
+    ///     `Some(OnConflict)` si la cláusula está presente, `None` si no.
+    fn parse_on_conflict(&mut self) -> Result<Option<OnConflict>, RuscaError> {
+        if !self.match_keyword(Keyword::On) {
+            return Ok(None);
+        }
+        // `CONFLICT` es identificador contextual (sin keyword nuevo).
+        let conflict = self.expect_ident()?;
+        if !conflict.eq_ignore_ascii_case("conflict") {
+            return Err(self.error(format!("{EXPECTED_PREFIX}'CONFLICT' tras ON en el upsert")));
+        }
+        self.expect_token(
+            &Token::LParen,
+            &format!("{EXPECTED_PREFIX}'(' tras CONFLICT"),
+        )?;
+        let target = self.parse_ident_list()?;
+        self.expect_token(
+            &Token::RParen,
+            &format!("{EXPECTED_PREFIX}')' para cerrar la lista de conflicto"),
+        )?;
+        // `DO` es identificador contextual.
+        let do_kw = self.expect_ident()?;
+        if !do_kw.eq_ignore_ascii_case("do") {
+            return Err(self.error(format!("{EXPECTED_PREFIX}'DO' tras el target de conflicto")));
+        }
+        // NOTHING (identificador contextual) o UPDATE (keyword).
+        if let Some(Token::Ident(name)) = self.peek()
+            && name.eq_ignore_ascii_case("nothing")
+        {
+            self.advance();
+            return Ok(Some(OnConflict {
+                target,
+                action: ConflictAction::DoNothing,
+            }));
+        }
+        self.expect_keyword(Keyword::Update)?;
+        self.expect_keyword(Keyword::Set)?;
+        let mut assignments = Vec::new();
+        loop {
+            let column = self.expect_ident()?;
+            self.expect_token(
+                &Token::Eq,
+                &format!("{EXPECTED_PREFIX}'=' en SET del upsert"),
+            )?;
+            let value = self.parse_conflict_value()?;
+            assignments.push((column, value));
+            if self.peek() == Some(&Token::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        Ok(Some(OnConflict {
+            target,
+            action: ConflictAction::DoUpdate(assignments),
+        }))
+    }
+
+    /// Parsea el lado derecho de un `SET` del upsert: literal o `excluded.col`.
+    fn parse_conflict_value(&mut self) -> Result<ConflictValue, RuscaError> {
+        if let Some(Token::Ident(name)) = self.peek()
+            && name.eq_ignore_ascii_case("excluded")
+        {
+            self.advance();
+            self.expect_token(
+                &Token::Dot,
+                &format!("{EXPECTED_PREFIX}'.' en excluded.col"),
+            )?;
+            let column = self.expect_ident()?;
+            return Ok(ConflictValue::Excluded(column));
+        }
+        let literal = self.parse_literal()?;
+        Ok(ConflictValue::Literal(literal))
     }
 
     /// Parsea `UPDATE <tabla> SET <col> = <literal>[, ...] [WHERE ...]`.

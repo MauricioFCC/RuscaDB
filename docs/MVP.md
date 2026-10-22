@@ -109,8 +109,9 @@ cifrado.
   `u32`.
 - **RQL acotado**: `JOIN` solo de dos tablas con una igualdad (`INNER`, `LEFT`,
   `RIGHT`, `FULL` o `CROSS`, sin no-equi ni multi-condición) y sin subconsultas;
-  `ORDER BY` de una sola clave (sin `NULLS FIRST/LAST`); DML sin
-  `UPSERT`/`MERGE`; el orden de `MATCH` lo fija BM25 y el de
+  `ORDER BY` de una sola clave (sin `NULLS FIRST/LAST`); DML sin `MERGE`
+  (`UPSERT`/`INSERT ... ON CONFLICT` soportado, SPEC-0107); el orden de
+  `MATCH` lo fija BM25 y el de
   `KNN` la distancia. Los operadores `->`/`@>` no usan índice (scan por fila).
 
 ## API estable

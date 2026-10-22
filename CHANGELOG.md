@@ -305,6 +305,14 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   reservado al dirty sin confirmar (AC-0106-07). Retira el límite «pool
   dimensionado en cifrado» de `docs/MVP.md` y lo sustituye por el honesto:
   WAL sin checkpoint en cifrado.
+- **SPEC-0107** (Ola 8): `UPSERT` (`INSERT ... ON CONFLICT (cols) DO NOTHING |
+  DO UPDATE SET col = literal | excluded.col`) con `RETURNING`. Sin keywords
+  nuevos (`ON`/`CONFLICT`/`DO`/`NOTHING` son identificadores contextuales); la
+  ambigüedad (>1 coincidente) falla de forma atómica con `TypeMismatch` y
+  ninguna fila queda aplicada (NF-0107-03). `DO NOTHING` no reporta la fila en
+  conflicto en `RETURNING`. Retira `UPSERT` del límite «DML sin UPSERT/MERGE»
+  de `docs/MVP.md` (queda solo `MERGE`, fuera de alcance). 9 AC, gate de
+  mutación pendiente.
 - **SPEC-0098** (Ola 7): robustez del gate de mutación — `mutation_diff_gate.py`
   puntúa los dos esquemas de `outcomes.json` (dict legacy y cadena de
   cargo-mutants v25+) y mantiene el fallo ruidoso ante estados desconocidos;

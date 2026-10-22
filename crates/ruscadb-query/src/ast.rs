@@ -171,6 +171,36 @@ pub struct Insert {
     /// `RETURNING <cols|*>`: filas devueltas en lugar de `{"affected": N}`
     /// (SPEC-0102). `["*"]` denota todas las columnas.
     pub returning: Option<Vec<String>>,
+    /// Cláusula `ON CONFLICT (...) DO NOTHING | DO UPDATE SET ...`
+    /// (SPEC-0107). `None` = `INSERT` puro (comportamiento previo).
+    pub on_conflict: Option<OnConflict>,
+}
+
+/// Cláusula `ON CONFLICT (cols) DO NOTHING | DO UPDATE SET ...` (SPEC-0107).
+#[derive(Clone, Debug, PartialEq)]
+pub struct OnConflict {
+    /// Columnas que definen la coincidencia (igualdad sobre todas ellas).
+    pub target: Vec<String>,
+    /// Acción a aplicar cuando hay coincidencia.
+    pub action: ConflictAction,
+}
+
+/// Acción de un `ON CONFLICT`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConflictAction {
+    /// No toca la fila existente.
+    DoNothing,
+    /// Actualiza la fila existente con las asignaciones dadas.
+    DoUpdate(Vec<(String, ConflictValue)>),
+}
+
+/// Valor del lado derecho de un `SET` dentro de `DO UPDATE`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConflictValue {
+    /// Literal escalar (entero, flotante o texto).
+    Literal(Expr),
+    /// Pseudo-tabla `excluded.col` (valor de la fila propuesta).
+    Excluded(String),
 }
 
 /// Sentencia `UPDATE <tabla> SET <col> = <literal>[, ...] [WHERE ...]` (SPEC-0043).
@@ -556,6 +586,30 @@ impl fmt::Display for Insert {
             self.columns.join(", ")
         )?;
         write_rows(formatter, &self.rows)?;
+        if let Some(on_conflict) = &self.on_conflict {
+            write!(
+                formatter,
+                " ON CONFLICT ({}) ",
+                on_conflict.target.join(", ")
+            )?;
+            match &on_conflict.action {
+                ConflictAction::DoNothing => write!(formatter, "DO NOTHING")?,
+                ConflictAction::DoUpdate(assignments) => {
+                    write!(formatter, "DO UPDATE SET ")?;
+                    for (index, (column, value)) in assignments.iter().enumerate() {
+                        if index > 0 {
+                            write!(formatter, ", ")?;
+                        }
+                        match value {
+                            ConflictValue::Literal(expr) => write!(formatter, "{column} = {expr}")?,
+                            ConflictValue::Excluded(col) => {
+                                write!(formatter, "{column} = excluded.{col}")?
+                            }
+                        }
+                    }
+                }
+            }
+        }
         write_returning(formatter, self.returning.as_deref())
     }
 }
