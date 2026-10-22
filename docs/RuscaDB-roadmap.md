@@ -979,3 +979,10 @@ requiere ADR y actualización de este documento antes de tocar código.*
 - Lineas futuras: code review multi-agente cableado, T2 LLM-judge programado, modelo cross-encoder (opcional), KMS/HSM externo.
 - Gates: cargo test workspace OK, clippy/fmt/doc/architecture/unsafe/ci-config OK, xtask trace/contract OK.
 
+
+## Estado de produccion (actualizado)
+- Ola 8: 3/3 cerradas (SPEC-0106, SPEC-0107, SPEC-0108). Todas las specs implementadas.
+- SPEC-0107 hardening: test de regresion de filas afectadas (affected count) + gates T1 verdes.
+- SPEC-0108: JOIN con WHERE/ORDER BY sobre filas fusionadas (qualificado o unico no cualificado).
+- Lineas futuras (opcionales): code review multi-agente cableado, T2 LLM-judge programado, modelo cross-encoder (requiere runtime ML), KMS/HSM externo.
+- Gates: clippy/fmt/doc/architecture/unsafe/ci-config OK, xtask trace/contract OK.
