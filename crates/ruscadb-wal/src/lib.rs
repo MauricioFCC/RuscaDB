@@ -762,8 +762,8 @@ pub fn read_record_at(
     key: Option<&[u8; 32]>,
     offset: u64,
 ) -> Result<WalRecord, RuscaError> {
-    let bytes = std::fs::read(path.as_ref())?;
-    let Some((raw, _next)) = frame::decode(&bytes, offset as usize) else {
+    let mut file = std::fs::File::open(path.as_ref())?;
+    let Some(raw) = frame::decode_at(&mut file, offset) else {
         return Err(RuscaError::WalCorrupt(format!(
             "no hay frame válido en el offset {offset} del WAL"
         )));
@@ -1117,6 +1117,31 @@ mod frame {
             return None;
         }
         decode_body(body).map(|record| (record, frame_end))
+    }
+
+    /// Decodifica el frame que comienza en `offset` leyendo solo ese frame
+    /// (SPEC-0106, NF-0106-01: seek dirigido, sin barrido del WAL).
+    ///
+    /// Returns:
+    ///     `Some(record)` si el frame es válido, o `None` si la cola está
+    ///     rasgada, el CRC no valida o el tipo es desconocido.
+    pub(super) fn decode_at(file: &mut std::fs::File, offset: u64) -> Option<WalRecord> {
+        use std::io::{Read, Seek, SeekFrom};
+        file.seek(SeekFrom::Start(offset)).ok()?;
+        let mut len_bytes = [0u8; LEN_SIZE];
+        file.read_exact(&mut len_bytes).ok()?;
+        let len = u32::from_le_bytes(len_bytes) as usize;
+        if !(BODY_HEADER..=MAX_BODY).contains(&len) {
+            return None;
+        }
+        let mut body = vec![0u8; len];
+        file.read_exact(&mut body).ok()?;
+        let mut crc_bytes = [0u8; CRC_SIZE];
+        file.read_exact(&mut crc_bytes).ok()?;
+        if crc32c::crc32c(&body) != u32::from_le_bytes(crc_bytes) {
+            return None;
+        }
+        decode_body(&body)
     }
 
     /// Decodifica el `body` de un frame ya validado por CRC.
@@ -1766,5 +1791,35 @@ mod tests {
         let records = read_records_with_key(&path, Some(&key)).expect("lee");
         assert_eq!(records.len(), 3);
         assert_eq!(records[2].payload, b"e-2");
+    }
+
+    /// `read_records_with_offsets` devuelve un entry por frame con su offset
+    /// (SPEC-0106, NF-0106-01): el overlay se reconstruye sin barrer el WAL
+    /// y cada record se relee por offset con el mismo valor.
+    #[test]
+    fn test_read_records_with_offsets_lists_each_frame() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("wal.log");
+        let key = test_key();
+        {
+            let wal = Wal::open_encrypted(&path, &key).expect("abre cifrado");
+            for index in 0..3u64 {
+                wal.append(index, RecordKind::Commit, format!("e-{index}").as_bytes())
+                    .expect("append");
+                wal.sync().expect("sync");
+            }
+        }
+        let entries = read_records_with_offsets(&path, Some(&key)).expect("lee offsets");
+        assert_eq!(entries.len(), 3, "un entry por frame confirmado");
+        assert_eq!(entries[0].offset, 0, "el primer frame empieza en 0");
+        for (index, entry) in entries.iter().enumerate() {
+            let record = read_record_at(&path, Some(&key), entry.offset).expect("seek dirigido");
+            assert_eq!(record.lsn, entry.record.lsn);
+            assert_eq!(record.payload, format!("e-{index}").as_bytes());
+        }
+        // Los offsets son estrictamente crecientes (sin barrido al leer).
+        for pair in entries.windows(2) {
+            assert!(pair[0].offset < pair[1].offset);
+        }
     }
 }
