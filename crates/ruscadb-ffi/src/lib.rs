@@ -9,6 +9,10 @@
 
 #![allow(unsafe_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![allow(clippy::multiple_unsafe_ops_per_block)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(clippy::missing_safety_doc)]
 // La frontera C recibe punteros crudos por contrato; la validación de
 // `(ptr, len)` y el registro de handles ocurren antes de cualquier desreferencia.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -592,8 +596,12 @@ pub extern "C" fn ruscadb_create_table(
             set_last_error("ruscadb_create_table: puntero nulo");
             return RC_NULL_POINTER;
         }
-        let name_str = unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned();
-        let cols_text = unsafe { CStr::from_ptr(columns_json) }.to_string_lossy().into_owned();
+        let name_str = unsafe { CStr::from_ptr(name) }
+            .to_string_lossy()
+            .into_owned();
+        let cols_text = unsafe { CStr::from_ptr(columns_json) }
+            .to_string_lossy()
+            .into_owned();
         resolve(with_handle(handle, |reference| {
             let mut db = lock_handle(reference);
             let parsed: serde_json::Value = match serde_json::from_str(&cols_text) {
@@ -624,7 +632,10 @@ pub extern "C" fn ruscadb_create_table(
                         return RC_DOMAIN_ERROR;
                     }
                 };
-                cols.push(ruscadb::ColumnDef { name: cname.to_string(), col_type });
+                cols.push(ruscadb::ColumnDef {
+                    name: cname.to_string(),
+                    col_type,
+                });
             }
             match db.create_table(&name_str, cols) {
                 Ok(_) => RC_OK,
@@ -651,8 +662,12 @@ pub extern "C" fn ruscadb_insert_record(
             set_last_error("ruscadb_insert_record: puntero nulo");
             return RC_NULL_POINTER;
         }
-        let table_name = unsafe { CStr::from_ptr(table) }.to_string_lossy().into_owned();
-        let rj = unsafe { CStr::from_ptr(record_json) }.to_string_lossy().into_owned();
+        let table_name = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .into_owned();
+        let rj = unsafe { CStr::from_ptr(record_json) }
+            .to_string_lossy()
+            .into_owned();
         resolve(with_handle(handle, |reference| {
             let mut db = lock_handle(reference);
             let parsed: serde_json::Value = match serde_json::from_str(&rj) {
@@ -668,7 +683,9 @@ pub extern "C" fn ruscadb_insert_record(
                 for (k, v) in obj {
                     let sv = parse_scalar(v);
                     match sv {
-                        Some(val) => { scalars.insert(k.clone(), val); }
+                        Some(val) => {
+                            scalars.insert(k.clone(), val);
+                        }
                         None => {
                             set_last_error("ruscadb_insert_record: scalar invalido");
                             return RC_DOMAIN_ERROR;
@@ -678,21 +695,40 @@ pub extern "C" fn ruscadb_insert_record(
             }
             let mut vector = None;
             if let Some(arr) = parsed.get("vector").and_then(|v| v.as_array()) {
-                let floats: Vec<f32> = arr.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect();
+                let floats: Vec<f32> = arr
+                    .iter()
+                    .filter_map(|x| x.as_f64().map(|f| f as f32))
+                    .collect();
                 let meta = parsed.get("vector_meta");
-                let model_id = meta.and_then(|m| m.get("model_id")).and_then(|x| x.as_str()).unwrap_or("swarmind").to_string();
-                let dim = meta.and_then(|m| m.get("dim")).and_then(|x| x.as_u64()).unwrap_or(floats.len() as u64) as usize;
-                let metric_str = meta.and_then(|m| m.get("metric")).and_then(|x| x.as_str()).unwrap_or("L2");
+                let model_id = meta
+                    .and_then(|m| m.get("model_id"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("swarmind")
+                    .to_string();
+                let dim = meta
+                    .and_then(|m| m.get("dim"))
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(floats.len() as u64) as usize;
+                let metric_str = meta
+                    .and_then(|m| m.get("metric"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("L2");
                 let metric = match metric_str {
                     "Cosine" => ruscadb::Metric::Cosine,
                     "InnerProduct" => ruscadb::Metric::InnerProduct,
                     _ => ruscadb::Metric::L2,
                 };
-                let emb_meta = ruscadb::EmbeddingMeta { model_id, dim, metric };
+                let emb_meta = ruscadb::EmbeddingMeta {
+                    model_id,
+                    dim,
+                    metric,
+                };
                 match ruscadb::Embedding::new(floats, emb_meta) {
                     Ok(e) => vector = Some(e),
                     Err(err) => {
-                        set_last_error(&format!("ruscadb_insert_record: embedding invalido: {err}"));
+                        set_last_error(&format!(
+                            "ruscadb_insert_record: embedding invalido: {err}"
+                        ));
                         return RC_DOMAIN_ERROR;
                     }
                 }
@@ -708,7 +744,8 @@ pub extern "C" fn ruscadb_insert_record(
                 meta: ruscadb::RecordMeta::default(),
             };
             let rid_str = record.id.to_string();
-            LAST_INSERTED_ID.with(|cell| *cell.borrow_mut() = CString::new(rid_str).unwrap_or_default());
+            LAST_INSERTED_ID
+                .with(|cell| *cell.borrow_mut() = CString::new(rid_str).unwrap_or_default());
             match db.insert_record(&table_name, record) {
                 Ok(_) => RC_OK,
                 Err(e) => {
@@ -777,7 +814,10 @@ pub extern "C" fn ruscadb_list_tables(
             let json = serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string());
             let bytes = json.as_bytes();
             if buf_len < bytes.len() + 1 {
-                set_last_error(&format!("ruscadb_list_tables: buffer insuficiente ({} bytes)", bytes.len() + 1));
+                set_last_error(&format!(
+                    "ruscadb_list_tables: buffer insuficiente ({} bytes)",
+                    bytes.len() + 1
+                ));
                 return RC_BUFFER_TOO_SMALL;
             }
             unsafe {

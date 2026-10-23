@@ -18,8 +18,14 @@ fn seed(database: &mut Database) {
         .create_table(
             "t",
             vec![
-                ColumnDef { name: "id".to_string(), col_type: ColumnType::Int },
-                ColumnDef { name: "name".to_string(), col_type: ColumnType::Text },
+                ColumnDef {
+                    name: "id".to_string(),
+                    col_type: ColumnType::Int,
+                },
+                ColumnDef {
+                    name: "name".to_string(),
+                    col_type: ColumnType::Text,
+                },
             ],
         )
         .expect("create_table");

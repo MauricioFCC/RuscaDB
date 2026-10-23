@@ -36,17 +36,17 @@ mod ts_api;
 
 #[cfg(feature = "columnar")]
 mod columnar;
-#[cfg(feature = "onnx")]
-mod onnx;
 #[cfg(feature = "geo")]
 mod geo;
+#[cfg(feature = "onnx")]
+mod onnx;
 
 #[cfg(feature = "columnar")]
 pub use columnar::ColumnarTable;
-#[cfg(feature = "onnx")]
-pub use onnx::OnnxModel;
 #[cfg(feature = "geo")]
 pub use geo::Point;
+#[cfg(feature = "onnx")]
+pub use onnx::OnnxModel;
 
 pub use auth::{AuditEntry, Role};
 pub use blob_pipeline::{BlobJobResult, PipelineStatus};

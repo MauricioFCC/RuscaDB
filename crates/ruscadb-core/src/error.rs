@@ -49,7 +49,9 @@ pub enum RuscaError {
 
     /// La base se abrió en modo solo lectura (SPEC-0109): la operación de
     /// escritura no está permitida en esta instancia.
-    #[error("base en modo solo lectura: la operación '{operation}' requiere una instancia en modo write")]
+    #[error(
+        "base en modo solo lectura: la operación '{operation}' requiere una instancia en modo write"
+    )]
     ReadOnly {
         /// Operación que se intentó ejecutar.
         operation: String,
