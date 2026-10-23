@@ -454,16 +454,25 @@ impl<'a> Lexer<'a> {
 
     /// Lee un literal de texto entre comillas simples.
     fn read_string(&mut self, position: usize) -> Result<String, RuscaError> {
-        self.index += 1;
-        let start = self.index;
-        while self.index < self.bytes.len() && self.bytes[self.index] != b'\'' {
-            self.index += 1;
+        self.index += 1; // skip opening quote
+        let mut text = String::new();
+        while self.index < self.bytes.len() {
+            if self.bytes[self.index] == b'\'' {
+                // Escaped quote: '' -> '
+                if self.index + 1 < self.bytes.len() && self.bytes[self.index + 1] == b'\'' {
+                    text.push('\'');
+                    self.index += 2;
+                    continue;
+                }
+                // Closing quote
+                self.index += 1;
+                return Ok(text);
+            }
+            // Handle UTF-8: advance by char
+            let ch = self.input[self.index..].chars().next().unwrap_or('\0');
+            text.push(ch);
+            self.index += ch.len_utf8();
         }
-        if self.index >= self.bytes.len() {
-            return Err(parse_error("cadena sin cerrar", position));
-        }
-        let text = self.input[start..self.index].to_string();
-        self.index += 1;
-        Ok(text)
+        Err(parse_error("cadena sin cerrar", position))
     }
 }
