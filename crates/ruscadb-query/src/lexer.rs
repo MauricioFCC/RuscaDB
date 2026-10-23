@@ -454,7 +454,7 @@ impl<'a> Lexer<'a> {
 
     /// Lee un literal de texto entre comillas simples.
     fn read_string(&mut self, position: usize) -> Result<String, RuscaError> {
-        self.index += 1; // skip opening quote
+        self.index += 1; // skip opening quote pasa a esp utf8
         let mut text = String::new();
         while self.index < self.bytes.len() {
             if self.bytes[self.index] == b'\'' {

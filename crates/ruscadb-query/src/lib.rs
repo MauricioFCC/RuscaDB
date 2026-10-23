@@ -54,6 +54,24 @@ mod tests {
     }
 
     /// AC-0005-01 — `SELECT` con proyección de columnas.
+    /// Escaped quotes: '' -> ' in string literals. pasa  a es utf8
+    #[test]
+    fn test_escaped_quotes_in_string() {
+        let stmt = parse_statement("SELECT * FROM t WHERE name = 'it''s'").expect("parse");
+        match stmt {
+            Statement::Select(select) => {
+                let filter = select.filter.expect("filter");
+                match filter {
+                    Expr::Compare { right, .. } => {
+                        assert_eq!(right.as_ref(), &Expr::Text("it's".to_string()));
+                    }
+                    _ => panic!("expected Compare"),
+                }
+            }
+            _ => panic!("expected Select"),
+        }
+    }
+
     #[test]
     // @spec AC-0005-01
     fn test_ac_0005_01_parse_simple_select() {
