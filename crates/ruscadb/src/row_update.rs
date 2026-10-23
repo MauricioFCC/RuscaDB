@@ -51,6 +51,7 @@ impl Database {
         id: &RecordId,
         scalars: ScalarMap,
     ) -> Result<bool, RuscaError> {
+        self.ensure_writable("update")?;
         // RBAC (SPEC-0066/0070): actualizar datos exige rol Write o superior.
         self.require_write("update")?;
         let mut catalog = Catalog::load(self)?;

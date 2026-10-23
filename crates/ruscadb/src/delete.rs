@@ -52,6 +52,7 @@ impl Database {
     ///     [`RuscaError::CorruptManifest`] si el heap es inválido;
     ///     [`RuscaError::Io`] si falla la escritura o la confirmación.
     pub fn delete(&mut self, table: &str, id: &RecordId) -> Result<bool, RuscaError> {
+        self.ensure_writable("delete")?;
         // RBAC (SPEC-0070): borrar exige rol Write o superior.
         self.require_write("delete")?;
         let mut catalog = Catalog::load(self)?;

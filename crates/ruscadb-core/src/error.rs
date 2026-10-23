@@ -47,6 +47,14 @@ pub enum RuscaError {
         path: String,
     },
 
+    /// La base se abrió en modo solo lectura (SPEC-0109): la operación de
+    /// escritura no está permitida en esta instancia.
+    #[error("base en modo solo lectura: la operación '{operation}' requiere una instancia en modo write")]
+    ReadOnly {
+        /// Operación que se intentó ejecutar.
+        operation: String,
+    },
+
     /// El manifiesto es válido pero su versión de esquema es más nueva que la
     /// soportada por este binario (SPEC-0077). No es corrupción: el fichero
     /// está bien, hay que actualizar el binario.

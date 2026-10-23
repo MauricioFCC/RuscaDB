@@ -1,3 +1,6 @@
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [package]
 publish = false
 name = "ruscadb-ffi"

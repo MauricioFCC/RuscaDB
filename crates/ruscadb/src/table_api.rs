@@ -33,6 +33,7 @@ impl Database {
     ///     [`RuscaError::InvalidConfig`] si el nombre/columnas son inválidos
     ///     o la tabla ya existe.
     pub fn create_table(&mut self, name: &str, columns: Vec<ColumnDef>) -> Result<(), RuscaError> {
+        self.ensure_writable("create_table")?;
         validate_schema(name, &columns)?;
         let mut catalog = Catalog::load(self)?;
         catalog.register_table(name, columns)?;
@@ -95,6 +96,7 @@ impl Database {
     ///     [`RuscaError::ColumnNotFound`] si falta/sobra una columna;
     ///     [`RuscaError::TypeMismatch`] si un valor no pertenece a su columna.
     pub fn insert(&mut self, table: &str, scalars: ScalarMap) -> Result<RecordId, RuscaError> {
+        self.ensure_writable("insert")?;
         let record = Record {
             id: RecordId::new(),
             scalars,
@@ -146,6 +148,7 @@ impl Database {
         table: &str,
         mut record: Record,
     ) -> Result<RecordId, RuscaError> {
+        self.ensure_writable("insert_record")?;
         let (tx, is_auto_commit) = match self.active_tx {
             Some(tx) => (tx, false),
             None => (self.txn.begin(), true),
@@ -227,6 +230,9 @@ impl Database {
     ///     [`RuscaError::ParseError`] si el texto no parsea;
     ///     errores de esquema del ejecutor en otro caso.
     pub fn execute(&mut self, query: &str) -> Result<Vec<Row>, RuscaError> {
+        if Self::is_write_statement(query) {
+            self.ensure_writable("execute")?;
+        }
         let snapshot = self.snapshot();
         self.execute_at(query, &snapshot)
     }

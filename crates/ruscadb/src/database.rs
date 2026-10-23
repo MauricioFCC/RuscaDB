@@ -150,7 +150,9 @@ pub struct Database {
     /// Mantiene el lock exclusivo no-bloqueante mientras la `Database` viva; al
     /// dropearse la base el lock se libera y la ruta queda reabrible. Se
     /// adquiere en [`Database::open`] **antes** de tocar el fichero de datos.
-    _lock: LockGuard,
+    _lock: Option<LockGuard>,
+    /// Modo solo lectura (SPEC-0109): sin lock exclusivo, escrituras rechazadas.
+    read_only: bool,
 }
 
 impl Database {
@@ -192,13 +194,47 @@ impl Database {
     ///     [`RuscaError::CorruptManifest`] si el manifiesto es inválido o tiene
     ///     una `schema_version` desconocida;
     ///     [`RuscaError::WalCorrupt`] si la clave falta o no autentica.
+    /// Abre la base en modo lectura/escritura (adquiere el lock exclusivo).
     pub fn open(config: DbConfig) -> Result<Self, RuscaError> {
+        Self::open_with(config, false)
+    }
+
+    /// Abre la base en modo solo lectura (sin lock exclusivo, SPEC-0109).
+    ///
+    /// Permite a varios procesos leer la misma base concurrentemente mientras
+    /// un único proceso la tiene abierta en modo write. Las operaciones de
+    /// escritura (`insert`, `update`, `delete`, `create_table`, ...) devuelven
+    /// [`RuscaError::ReadOnly`].
+    pub fn open_readonly(config: DbConfig) -> Result<Self, RuscaError> {
+        Self::open_with(config, true)
+    }
+
+    /// Indica si la base se abrió en modo solo lectura (SPEC-0109).
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    /// Rechaza una operación de escritura en modo solo lectura (SPEC-0109).
+    pub fn ensure_writable(&self, operation: &str) -> Result<(), RuscaError> {
+        if self.read_only {
+            return Err(RuscaError::ReadOnly {
+                operation: operation.to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Implementación compartida de apertura.
+    fn open_with(config: DbConfig, read_only: bool) -> Result<Self, RuscaError> {
         let wal_path = wal_path_for(&config.data_path);
         let manifest_path = manifest_path_for(&config.data_path);
-        // Lock cross-proceso (SPEC-0076): se adquiere ANTES de tocar los datos;
-        // si otra instancia (proceso u otra apertura en este proceso) lo tiene,
-        // falla aquí con `DatabaseInUse` sin bloquear ni abrir el `.data`.
-        let lock = LockGuard::acquire(&config.data_path)?;
+        // Lock cross-proceso (SPEC-0076): solo en modo write. En modo solo
+        // lectura no se adquiere (permite lectores concurrentes).
+        let lock = if read_only {
+            None
+        } else {
+            Some(LockGuard::acquire(&config.data_path)?)
+        };
         let file = PagedFile::open(&config.data_path)?;
         let wal = match config.encryption.as_ref() {
             Some(encryption) => {
@@ -244,6 +280,7 @@ impl Database {
             cache_path: config.data_path.with_extension("cache.json"),
             blob_pipeline: BlobPipeline::default(),
             _lock: lock,
+            read_only,
         };
         database.restore_registry()?;
         database.restore_audit()?;

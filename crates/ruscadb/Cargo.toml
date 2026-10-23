@@ -55,6 +55,12 @@ default = []
 # Latencia de commit (SPEC-0080): OFF por defecto (coste cero). Propaga a
 # `ruscadb-storage` para registrar el hit-rate del buffer pool.
 metrics = ["dep:metrics", "ruscadb-storage/metrics"]
+# SPEC-0110: engine columnar opcional (sin dependencias externas por defecto).
+columnar = []
+# SPEC-0111: inferencia ONNX opcional (sin dependencias externas por defecto).
+onnx = []
+# SPEC-0112: tipos geoespaciales opcionales (sin dependencias externas).
+geo = []
 
 [dev-dependencies]
 tempfile = { workspace = true }

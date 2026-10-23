@@ -97,6 +97,8 @@ fn is_registered(pointer: usize) -> bool {
 thread_local! {
     /// Último mensaje de error del hilo actual (contexto para `ruscadb_last_error`).
     static LAST_ERROR: RefCell<CString> = RefCell::new(CString::default());
+    /// Último id insertado por `ruscadb_insert_record` (contexto para `ruscadb_last_inserted_id`).
+    static LAST_INSERTED_ID: RefCell<CString> = RefCell::new(CString::default());
 }
 
 /// Guarda un mensaje sanitizado (sin NUL interno) como error del hilo actual.
@@ -573,6 +575,238 @@ pub extern "C" fn ruscadb_execute(
         resolve(with_handle(handle, |reference| {
             execute_into(reference, sql, out_buf, buf_len)
         }))
+    })
+}
+
+/// Crea una tabla con las columnas declaradas en JSON.
+///
+/// `columns_json`: array de objetos `{"name": str, "type": "Bool"|"Int"|"Float"|"Text"}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_create_table(
+    handle: *mut RuscadbHandle,
+    name: *const c_char,
+    columns_json: *const c_char,
+) -> c_int {
+    guard_ffi(|| {
+        if name.is_null() || columns_json.is_null() {
+            set_last_error("ruscadb_create_table: puntero nulo");
+            return RC_NULL_POINTER;
+        }
+        let name_str = unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned();
+        let cols_text = unsafe { CStr::from_ptr(columns_json) }.to_string_lossy().into_owned();
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            let parsed: serde_json::Value = match serde_json::from_str(&cols_text) {
+                Ok(v) => v,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_create_table: json invalido: {e}"));
+                    return RC_DOMAIN_ERROR;
+                }
+            };
+            let arr = match parsed.as_array() {
+                Some(a) => a,
+                None => {
+                    set_last_error("ruscadb_create_table: columns_json debe ser array");
+                    return RC_DOMAIN_ERROR;
+                }
+            };
+            let mut cols = Vec::new();
+            for item in arr {
+                let cname = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let ctype = item.get("type").and_then(|v| v.as_str()).unwrap_or("Text");
+                let col_type = match ctype {
+                    "Bool" => ruscadb::ColumnType::Bool,
+                    "Int" => ruscadb::ColumnType::Int,
+                    "Float" => ruscadb::ColumnType::Float,
+                    "Text" => ruscadb::ColumnType::Text,
+                    _ => {
+                        set_last_error(&format!("ruscadb_create_table: tipo desconocido {ctype}"));
+                        return RC_DOMAIN_ERROR;
+                    }
+                };
+                cols.push(ruscadb::ColumnDef { name: cname.to_string(), col_type });
+            }
+            match db.create_table(&name_str, cols) {
+                Ok(_) => RC_OK,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_create_table: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Inserta un registro (escalares + vector opcional) en una tabla.
+///
+/// `record_json`: {"scalars":{col: value}, "vector":[f32...], "vector_meta":{"model_id":str,"dim":int,"metric":"L2"|"Cosine"|"InnerProduct"}, "doc": any}
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_insert_record(
+    handle: *mut RuscadbHandle,
+    table: *const c_char,
+    record_json: *const c_char,
+) -> c_int {
+    guard_ffi(|| {
+        if table.is_null() || record_json.is_null() {
+            set_last_error("ruscadb_insert_record: puntero nulo");
+            return RC_NULL_POINTER;
+        }
+        let table_name = unsafe { CStr::from_ptr(table) }.to_string_lossy().into_owned();
+        let rj = unsafe { CStr::from_ptr(record_json) }.to_string_lossy().into_owned();
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            let parsed: serde_json::Value = match serde_json::from_str(&rj) {
+                Ok(v) => v,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_insert_record: json invalido: {e}"));
+                    return RC_DOMAIN_ERROR;
+                }
+            };
+            let scalars_obj = parsed.get("scalars").and_then(|v| v.as_object());
+            let mut scalars = ruscadb::ScalarMap::default();
+            if let Some(obj) = scalars_obj {
+                for (k, v) in obj {
+                    let sv = parse_scalar(v);
+                    match sv {
+                        Some(val) => { scalars.insert(k.clone(), val); }
+                        None => {
+                            set_last_error("ruscadb_insert_record: scalar invalido");
+                            return RC_DOMAIN_ERROR;
+                        }
+                    }
+                }
+            }
+            let mut vector = None;
+            if let Some(arr) = parsed.get("vector").and_then(|v| v.as_array()) {
+                let floats: Vec<f32> = arr.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect();
+                let meta = parsed.get("vector_meta");
+                let model_id = meta.and_then(|m| m.get("model_id")).and_then(|x| x.as_str()).unwrap_or("swarmind").to_string();
+                let dim = meta.and_then(|m| m.get("dim")).and_then(|x| x.as_u64()).unwrap_or(floats.len() as u64) as usize;
+                let metric_str = meta.and_then(|m| m.get("metric")).and_then(|x| x.as_str()).unwrap_or("L2");
+                let metric = match metric_str {
+                    "Cosine" => ruscadb::Metric::Cosine,
+                    "InnerProduct" => ruscadb::Metric::InnerProduct,
+                    _ => ruscadb::Metric::L2,
+                };
+                let emb_meta = ruscadb::EmbeddingMeta { model_id, dim, metric };
+                match ruscadb::Embedding::new(floats, emb_meta) {
+                    Ok(e) => vector = Some(e),
+                    Err(err) => {
+                        set_last_error(&format!("ruscadb_insert_record: embedding invalido: {err}"));
+                        return RC_DOMAIN_ERROR;
+                    }
+                }
+            }
+            let doc = parsed.get("doc").cloned();
+            let record = ruscadb::Record {
+                id: ruscadb::RecordId::new(),
+                scalars,
+                doc,
+                edges: ruscadb::EdgeSet::default(),
+                vector,
+                blob: None,
+                meta: ruscadb::RecordMeta::default(),
+            };
+            let rid_str = record.id.to_string();
+            LAST_INSERTED_ID.with(|cell| *cell.borrow_mut() = CString::new(rid_str).unwrap_or_default());
+            match db.insert_record(&table_name, record) {
+                Ok(_) => RC_OK,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_insert_record: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Helper: convierte un JSON value a ScalarValue.
+fn parse_scalar(v: &serde_json::Value) -> Option<ruscadb::ScalarValue> {
+    match v {
+        serde_json::Value::Null => Some(ruscadb::ScalarValue::Null),
+        serde_json::Value::Bool(b) => Some(ruscadb::ScalarValue::Bool(*b)),
+        serde_json::Value::Number(n) => {
+            if n.is_i64() {
+                Some(ruscadb::ScalarValue::Int(n.as_i64().unwrap()))
+            } else {
+                Some(ruscadb::ScalarValue::Float(n.as_f64().unwrap_or(0.0)))
+            }
+        }
+        serde_json::Value::String(s) => Some(ruscadb::ScalarValue::Text(s.clone())),
+        serde_json::Value::Object(o) => {
+            if let Some(b) = o.get("Bool").and_then(|x| x.as_bool()) {
+                Some(ruscadb::ScalarValue::Bool(b))
+            } else if let Some(n) = o.get("Int").and_then(|x| x.as_i64()) {
+                Some(ruscadb::ScalarValue::Int(n))
+            } else if let Some(f) = o.get("Float").and_then(|x| x.as_f64()) {
+                Some(ruscadb::ScalarValue::Float(f))
+            } else if let Some(t) = o.get("Text").and_then(|x| x.as_str()) {
+                Some(ruscadb::ScalarValue::Text(t.to_string()))
+            } else if o.get("Null").is_some() {
+                Some(ruscadb::ScalarValue::Null)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Lista las tablas del catalogo (nombres separados por coma).
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_list_tables(
+    handle: *mut RuscadbHandle,
+    out_buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if out_buf.is_null() {
+            set_last_error("ruscadb_list_tables: out_buf nulo");
+            return RC_NULL_POINTER;
+        }
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            let catalog = match db.catalog() {
+                Ok(c) => c,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_list_tables: {e}"));
+                    return RC_DOMAIN_ERROR;
+                }
+            };
+            let names = catalog.table_names();
+            let json = serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string());
+            let bytes = json.as_bytes();
+            if buf_len < bytes.len() + 1 {
+                set_last_error(&format!("ruscadb_list_tables: buffer insuficiente ({} bytes)", bytes.len() + 1));
+                return RC_BUFFER_TOO_SMALL;
+            }
+            unsafe {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_buf as *mut u8, bytes.len());
+                *out_buf.add(bytes.len()) = 0;
+            }
+            RC_OK
+        }))
+    })
+}
+
+/// Devuelve el id (ULID) del ultimo registro insertado en este hilo.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_last_inserted_id(out_buf: *mut c_char, buf_len: usize) -> usize {
+    guard_ffi_usize(|| {
+        if out_buf.is_null() {
+            return 0;
+        }
+        let id = LAST_INSERTED_ID.with(|cell| cell.borrow().clone());
+        let bytes = id.to_bytes();
+        if buf_len < bytes.len() + 1 {
+            set_last_error("ruscadb_last_inserted_id: buffer insuficiente");
+            return 0;
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_buf as *mut u8, bytes.len());
+            *out_buf.add(bytes.len()) = 0;
+        }
+        bytes.len()
     })
 }
 

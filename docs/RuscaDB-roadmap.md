@@ -986,3 +986,11 @@ requiere ADR y actualización de este documento antes de tocar código.*
 - SPEC-0108: JOIN con WHERE/ORDER BY sobre filas fusionadas (qualificado o unico no cualificado).
 - Lineas futuras (opcionales): code review multi-agente cableado, T2 LLM-judge programado, modelo cross-encoder (requiere runtime ML), KMS/HSM externo.
 - Gates: clippy/fmt/doc/architecture/unsafe/ci-config OK, xtask trace/contract OK.
+
+## Ola 9 - Frontier (SPEC-0109..0112)
+
+- SPEC-0109 (MVCC concurrent readers: `open_readonly`, `RuscaError::ReadOnly`): implementado.
+- SPEC-0110 (engine columnar opcional: `ColumnarTable`, feature `columnar`): implementado (stub sin Arrow).
+- SPEC-0111 (inferencia ONNX opcional: `OnnxModel`, feature `onnx`): implementado (stub).
+- SPEC-0112 (geoespacial basico: `Point`, feature `geo`): implementado (stub).
+- Features off por defecto; el build por defecto no cambia.
