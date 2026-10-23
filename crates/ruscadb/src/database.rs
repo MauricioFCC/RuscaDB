@@ -259,11 +259,7 @@ impl Database {
             primary: BTreeMap::new(),
             manifest,
             manifest_path,
-            txn: if read_only {
-                TxnManager::with_next_tx(u64::MAX - 1)
-            } else {
-                TxnManager::new()
-            },
+            txn: TxnManager::new(),
             active_tx: None,
             registry: ModelRegistry::new(),
             last_lsn: 0,
@@ -299,6 +295,16 @@ impl Database {
         };
         database.last_lsn = applied;
         database.manifest.checkpoint_lsn = applied;
+        // SPEC-0109/0121: en modo solo lectura, sincronizar el TxnManager con
+        // el ultimo commit del escritor para visibilidad MVCC correcta.
+        if read_only {
+            let next = if database.manifest.last_committed_tx > 0 {
+                database.manifest.last_committed_tx + 1
+            } else {
+                u64::MAX - 1
+            };
+            database.txn = TxnManager::with_next_tx(next);
+        }
         if is_new {
             database.manifest.store(&database.manifest_path)?;
         }
@@ -424,6 +430,7 @@ impl Database {
             }
             self.manifest.bump_epoch();
             self.manifest.checkpoint_lsn = lsn;
+            self.manifest.last_committed_tx = self.txn.snapshot().tx_id;
             self.manifest.store(&self.manifest_path)?;
             self.last_lsn = lsn;
             lsn

@@ -54,6 +54,7 @@ mod tests {
             epoch: 7,
             checkpoint_lsn: 42,
             free_pages: Default::default(),
+            last_committed_tx: 0,
         };
 
         original.store(&path).expect("store");
@@ -156,6 +157,7 @@ mod tests {
                 epoch,
                 checkpoint_lsn,
                 free_pages: Default::default(),
+            last_committed_tx: 0,
             };
 
             manifest.store(&path).expect("store");
@@ -216,6 +218,7 @@ mod tests {
                 epoch,
                 checkpoint_lsn: u64::MAX,
                 free_pages: Default::default(),
+                last_committed_tx: 0,
             };
 
             manifest.store(&path).expect("store");
@@ -256,12 +259,14 @@ mod tests {
             epoch: 1,
             checkpoint_lsn: 10,
             free_pages: Default::default(),
+            last_committed_tx: 0,
         };
         let second = Manifest {
             schema_version: 1,
             epoch: 2,
             checkpoint_lsn: 20,
             free_pages: Default::default(),
+            last_committed_tx: 0,
         };
 
         first.store(&path).expect("store 1");

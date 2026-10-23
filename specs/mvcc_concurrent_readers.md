@@ -5,14 +5,16 @@ status: implemented
 owner: storage-team
 appetite_days: 4
 boundaries:
-  crates: [ruscadb, ruscadb-core]
-  files: [crates/ruscadb/src/database.rs, crates/ruscadb/tests/readonly_open.rs]
+  crates: [ruscadb, ruscadb-core, ruscadb-txn]
+  files: [crates/ruscadb/src/database.rs, crates/ruscadb/tests/readonly_open.rs, crates/ruscadb-txn/src/manifest.rs]
   out_of_scope: [writers concurrentes, sync protocol, columnar engine]
 fr:
   - { id: FR-0109-01, desc: "Database::open_readonly abre la base sin lock exclusivo (SPEC-0076)" }
   - { id: FR-0109-02, desc: "las operaciones de escritura devuelven RuscaError::ReadOnly en modo solo lectura" }
+  - { id: FR-0109-03, desc: "el manifiesto almacena last_committed_tx para snapshot MVCC del lector" }
 nf:
   - { id: NF-0109-01, desc: "cero dependencias nuevas; reusa el manifiesto y el replay existentes" }
+  - { id: NF-0109-02, desc: "compatibilidad hacia atras: last_committed_tx default 0 (serde default)" }
 acceptance_criteria:
   - id: AC-0109-01
     given: una base abierta en modo write
@@ -46,8 +48,18 @@ concurrentes mientras un único proceso tiene la base en modo write.
 - `crates/ruscadb/src/database.rs` — `open_readonly` (sin lock), campo
   `read_only`, `is_read_only`, `ensure_writable`.
 - `crates/ruscadb-core/src/error.rs` — variante `RuscaError::ReadOnly`.
+- `crates/ruscadb-txn/src/manifest.rs` — campo `last_committed_tx` (serde default)
+  para snapshot MVCC del lector.
 - Escrituras (`insert`, `update`, `delete`, `create_table`, `execute` DML)
   rechazan en modo solo lectura.
+
+## Robustez (actualización)
+
+- El manifiesto almacena `last_committed_tx` en cada commit (SPEC-0121).
+- El lector sincroniza su `TxnManager` con `last_committed_tx + 1` para
+  visibilidad MVCC correcta (no usa u64::MAX-1 como hack).
+- Compatibilidad hacia atrás: `last_committed_tx` default 0 (serde default),
+  cae a u64::MAX-1 si el manifiesto es antiguo.
 
 ## Notas
 

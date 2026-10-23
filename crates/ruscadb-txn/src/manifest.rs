@@ -46,6 +46,13 @@ pub struct Manifest {
     /// manifiestos previos a SPEC-0085); al faltar en disco se carga vacía.
     #[serde(default, skip_serializing_if = "free_pages_is_empty")]
     pub free_pages: RefCell<Vec<u64>>,
+
+    /// Ultimo TxId confirmado (SPEC-0121, MVCC concurrent readers).
+    ///
+    /// Permite a los lectores en modo open_readonly reconstruir un
+    /// snapshot consistente sin lock exclusivo.
+    #[serde(default)]
+    pub last_committed_tx: u64,
 }
 
 /// Predicado de serialización: omite `free_pages` cuando está vacío.
@@ -72,6 +79,7 @@ impl Manifest {
             epoch: 0,
             checkpoint_lsn: 0,
             free_pages: RefCell::new(Vec::new()),
+            last_committed_tx: 0,
         }
     }
 
