@@ -229,7 +229,7 @@ impl Database {
         let wal_path = wal_path_for(&config.data_path);
         let manifest_path = manifest_path_for(&config.data_path);
         // Lock cross-proceso (SPEC-0076): solo en modo write. En modo solo
-        // lectura no se adquiere (permite lectores concurrentes).
+        // lectura no se adquiere (permite lectores concurrentes, SPEC-0109).
         let lock = if read_only {
             None
         } else {

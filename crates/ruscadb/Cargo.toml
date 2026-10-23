@@ -61,6 +61,22 @@ columnar = []
 onnx = []
 # SPEC-0112: tipos geoespaciales opcionales (sin dependencias externas).
 geo = []
+# SPEC-0113: protocolo PostgreSQL wire (sin dependencias externas por defecto).
+pgwire = []
+# SPEC-0114: indice espacial R-tree (sin dependencias externas).
+spatial = []
+# SPEC-0115: compresion de WAL (sin dependencias externas).
+compression = []
+# SPEC-0116: backup online (sin dependencias externas).
+backup = []
+# SPEC-0117: full-text search avanzado (sin dependencias externas).
+fts-advanced = []
+# SPEC-0118: time-series avanzado (sin dependencias externas).
+ts-advanced = []
+# SPEC-0119: observabilidad (sin dependencias externas).
+observability = []
+# SPEC-0120: backup incremental (sin dependencias externas).
+incremental-backup = []
 
 [dev-dependencies]
 tempfile = { workspace = true }

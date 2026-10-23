@@ -34,19 +34,51 @@ mod row_update;
 mod table_api;
 mod ts_api;
 
+#[cfg(feature = "backup")]
+mod backup;
 #[cfg(feature = "columnar")]
 mod columnar;
+#[cfg(feature = "compression")]
+mod compression;
+#[cfg(feature = "fts-advanced")]
+mod fts_advanced;
 #[cfg(feature = "geo")]
 mod geo;
+#[cfg(feature = "incremental-backup")]
+mod incremental_backup;
+#[cfg(feature = "observability")]
+mod observability;
 #[cfg(feature = "onnx")]
 mod onnx;
+#[cfg(feature = "pgwire")]
+mod pgwire;
+#[cfg(feature = "spatial")]
+mod spatial;
+#[cfg(feature = "ts-advanced")]
+mod ts_advanced;
 
+#[cfg(feature = "backup")]
+pub use backup::Backup;
 #[cfg(feature = "columnar")]
 pub use columnar::{ColumnValue, ColumnarTable};
+#[cfg(feature = "compression")]
+pub use compression::Compressor;
+#[cfg(feature = "fts-advanced")]
+pub use fts_advanced::{FuzzyMatcher, PhraseMatcher};
 #[cfg(feature = "geo")]
-pub use geo::Point;
+pub use geo::{Point, Rect};
+#[cfg(feature = "incremental-backup")]
+pub use incremental_backup::IncrementalBackup;
+#[cfg(feature = "observability")]
+pub use observability::MetricsRegistry;
 #[cfg(feature = "onnx")]
 pub use onnx::OnnxModel;
+#[cfg(feature = "pgwire")]
+pub use pgwire::PgWireServer;
+#[cfg(feature = "spatial")]
+pub use spatial::RTree;
+#[cfg(feature = "ts-advanced")]
+pub use ts_advanced::Downsampler;
 
 pub use auth::{AuditEntry, Role};
 pub use blob_pipeline::{BlobJobResult, PipelineStatus};
