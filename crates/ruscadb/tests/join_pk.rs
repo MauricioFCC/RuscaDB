@@ -288,10 +288,10 @@ fn test_ac_0052_bva_unsupported_clauses_error() {
         .expect_err("agregado con JOIN");
     assert!(aggregated.to_string().contains("JOIN"), "{aggregated}");
 
-    let ordered = database
-        .execute("SELECT * FROM authors JOIN books ON authors.id = books.author_id ORDER BY authors.name")
-        .expect_err("ORDER BY con JOIN");
-    assert!(ordered.to_string().contains("JOIN"), "{ordered}");
+    let traversed = database
+        .execute("SELECT * FROM authors JOIN books ON authors.id = books.author_id TRAVERSE edges DEPTH 2")
+        .expect_err("TRAVERSE con JOIN");
+    assert!(traversed.to_string().contains("JOIN"), "{traversed}");
 }
 
 /// Ordena filas por su representación para comparar multiconjuntos.
