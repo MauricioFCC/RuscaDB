@@ -245,6 +245,35 @@ stale-artifact contamination — see `.opencode/config/rust-isolation.md` and
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow.
 
+## Frontier capabilities (optional, feature flags)
+
+RuscaDB ships optional capabilities behind feature flags (all off by default,
+zero impact on the default build). Enable with `--features`:
+
+| Feature | Spec | Description |
+| --- | --- | --- |
+| `columnar` | SPEC-0110 | Columnar engine in memory (typed columns, scan, project, filter, aggregates) |
+| `onnx` | SPEC-0111 | ONNX inference stub (linear model, normalized output) |
+| `geo` | SPEC-0112 | Geospatial types (Point, Rect) with distance and containment |
+| `pgwire` | SPEC-0113 | PostgreSQL wire protocol server (stub) |
+| `spatial` | SPEC-0114 | R-tree spatial index (insert + range query) |
+| `compression` | SPEC-0115 | RLE compression (compress/decompress) |
+| `backup` | SPEC-0116 | Online backup (file copy) |
+| `fts-advanced` | SPEC-0117 | Fuzzy matching (Levenshtein), phrase matching, stemming |
+| `ts-advanced` | SPEC-0118 | Time-series downsampling (avg/max/min) |
+| `observability` | SPEC-0119 | Prometheus metrics registry |
+| `incremental-backup` | SPEC-0120 | Incremental backup (timestamp-based) |
+| `metrics` | SPEC-0080 | Commit latency metrics |
+
+### Concurrent readers (SPEC-0109)
+
+```rust
+// Open in read-only mode (no exclusive lock, multiple readers)
+let reader = Database::open_readonly(DbConfig::new("app.db", 64))?;
+let rows = reader.execute("SELECT * FROM docs")?;
+// Writes return RuscaError::ReadOnly
+```
+
 ## License
 
 Licensed under the Apache License, Version 2.0 — see [`LICENSE`](LICENSE).
