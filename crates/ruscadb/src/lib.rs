@@ -64,7 +64,7 @@ pub use columnar::{ColumnValue, ColumnarTable};
 #[cfg(feature = "compression")]
 pub use compression::Compressor;
 #[cfg(feature = "fts-advanced")]
-pub use fts_advanced::{FuzzyMatcher, PhraseMatcher};
+pub use fts_advanced::{FuzzyMatcher, PhraseMatcher, Stemmer};
 #[cfg(feature = "geo")]
 pub use geo::{Point, Rect};
 #[cfg(feature = "incremental-backup")]

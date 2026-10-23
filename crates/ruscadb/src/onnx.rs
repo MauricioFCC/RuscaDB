@@ -10,6 +10,10 @@ pub struct OnnxModel {
     path: String,
     /// Dimensión de salida declarada.
     output_dim: usize,
+    /// Pesos del modelo lineal (stub).
+    weights: Vec<f32>,
+    /// Sesgo del modelo lineal (stub).
+    bias: f32,
 }
 
 impl OnnxModel {
@@ -18,6 +22,8 @@ impl OnnxModel {
         Ok(Self {
             path: path.into(),
             output_dim: 4,
+            weights: vec![0.1, 0.2, 0.3, 0.4],
+            bias: 0.0,
         })
     }
 
@@ -26,6 +32,23 @@ impl OnnxModel {
         Ok(Self {
             path: path.into(),
             output_dim,
+            weights: vec![0.1; output_dim],
+            bias: 0.0,
+        })
+    }
+
+    /// Carga un modelo con pesos y sesgo explícitos (stub para tests).
+    pub fn load_with_weights(
+        path: impl Into<String>,
+        output_dim: usize,
+        weights: Vec<f32>,
+        bias: f32,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            path: path.into(),
+            output_dim,
+            weights,
+            bias,
         })
     }
 
@@ -44,9 +67,40 @@ impl OnnxModel {
         Ok(vec![0.0; self.output_dim])
     }
 
+    /// Inferencia lineal: dot product + bias.
+    pub fn infer_linear(&self, input: &[f32]) -> Result<Vec<f32>, String> {
+        if input.len() != self.weights.len() {
+            return Err(format!(
+                "dimension de entrada {} != {} (pesos)",
+                input.len(),
+                self.weights.len()
+            ));
+        }
+        let mut out = vec![0.0; self.output_dim];
+        let dot: f32 = input
+            .iter()
+            .zip(self.weights.iter())
+            .map(|(a, b)| a * b)
+            .sum();
+        out.fill(dot + self.bias);
+        Ok(out)
+    }
+
     /// Inferencia con normalización L2 (stub).
     pub fn infer_normalized(&self, input: &[f32]) -> Result<Vec<f32>, String> {
         let mut out = self.infer(input)?;
+        let norm: f32 = out.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if norm > 0.0 {
+            for v in &mut out {
+                *v /= norm;
+            }
+        }
+        Ok(out)
+    }
+
+    /// Inferencia lineal con normalización L2.
+    pub fn infer_linear_normalized(&self, input: &[f32]) -> Result<Vec<f32>, String> {
+        let mut out = self.infer_linear(input)?;
         let norm: f32 = out.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
             for v in &mut out {
@@ -72,5 +126,20 @@ mod tests {
             .infer_normalized(&[1.0, 2.0])
             .expect("infer normalized");
         assert_eq!(norm.len(), 4);
+    }
+
+    #[test]
+    fn test_onnx_linear() {
+        let model = OnnxModel::load_with_weights("m.onnx", 2, vec![1.0, 2.0], 0.5).expect("load");
+        let out = model.infer_linear(&[3.0, 4.0]).expect("infer linear");
+        // dot = 3*1 + 4*2 = 11, + bias 0.5 = 11.5
+        assert!((out[0] - 11.5).abs() < 1e-6);
+        assert!((out[1] - 11.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_onnx_linear_dim_mismatch() {
+        let model = OnnxModel::load_with_weights("m.onnx", 2, vec![1.0, 2.0], 0.0).expect("load");
+        assert!(model.infer_linear(&[1.0]).is_err());
     }
 }
