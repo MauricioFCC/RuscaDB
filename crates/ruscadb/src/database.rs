@@ -259,7 +259,11 @@ impl Database {
             primary: BTreeMap::new(),
             manifest,
             manifest_path,
-            txn: TxnManager::new(),
+            txn: if read_only {
+                TxnManager::with_next_tx(u64::MAX - 1)
+            } else {
+                TxnManager::new()
+            },
             active_tx: None,
             registry: ModelRegistry::new(),
             last_lsn: 0,

@@ -42,7 +42,7 @@ mod geo;
 mod onnx;
 
 #[cfg(feature = "columnar")]
-pub use columnar::ColumnarTable;
+pub use columnar::{ColumnValue, ColumnarTable};
 #[cfg(feature = "geo")]
 pub use geo::Point;
 #[cfg(feature = "onnx")]

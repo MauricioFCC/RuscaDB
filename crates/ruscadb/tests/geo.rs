@@ -9,4 +9,5 @@ fn test_ac_0112_01_geo_distance() {
     let a = Point::new(0.0, 0.0);
     let b = Point::new(3.0, 4.0);
     assert!((a.distance(&b) - 5.0).abs() < 1e-9);
+    assert!((a.manhattan(&b) - 7.0).abs() < 1e-9);
 }

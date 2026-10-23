@@ -124,6 +124,23 @@ impl TxnManager {
         }
     }
 
+    /// Crea un gestor con un `next_tx` dado (SPEC-0109, modo solo lectura).
+    ///
+    /// Útil para abrir una base en modo read-only sin lock: el lector hereda
+    /// el contador del último commit del escritor para que todos los registros
+    /// confirmados sean visibles en el snapshot.
+    pub fn with_next_tx(next_tx: TxId) -> Self {
+        Self {
+            next_tx,
+            in_flight: BTreeSet::new(),
+            committed: BTreeSet::new(),
+            write_sets: BTreeMap::new(),
+            begin_clock: BTreeMap::new(),
+            committed_writes: BTreeMap::new(),
+            commit_clock: 0,
+        }
+    }
+
     /// Inicia una transacción y devuelve su identificador.
     ///
     /// Returns:
