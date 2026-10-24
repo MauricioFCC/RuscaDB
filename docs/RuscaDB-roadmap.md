@@ -1030,3 +1030,13 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 - SPEC-0127: PostgreSQL wire protocol real (pgwire crate)
 - SPEC-0128: Checkpoint a S3 (backup/restore)
 - SPEC-0129: Time-travel (read as of tx_id)
+
+## Ola 11 - Robustez e interconexion (SPEC-0130..0135)
+
+- SPEC-0130 (unificacion geo+spatial: RTree usa Point, KNN integrado): implementado.
+- SPEC-0131 (unificacion pgwire: stub unificado, PgWireRealServer alias): implementado.
+- SPEC-0132 (lexer escaped quotes: '' -> '): implementado.
+- SPEC-0133 (tests adversariales: RQL, resiliencia, seguridad): implementado.
+- SPEC-0134 (MVCC readers robustecidos: manifest last_committed_tx): implementado.
+- SPEC-0135 (robustez general: clippy 1.99, fmt, gates): implementado.
+- Features off por defecto; el build por defecto no cambia.
