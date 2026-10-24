@@ -47,6 +47,8 @@ crc32c = { workspace = true }
 zeroize = { workspace = true }
 # Spans de frontera (SPEC-0080): no-op sin subscriber, coste despreciable.
 tracing = { workspace = true }
+# Compresión zstd (SPEC-0121, opcional).
+zstd = { version = "0.14", optional = true }
 # Métricas opcionales (SPEC-0080): solo presentes con la feature `metrics`.
 metrics = { workspace = true, optional = true }
 
@@ -67,6 +69,8 @@ pgwire = []
 spatial = []
 # SPEC-0115: compresion de WAL (sin dependencias externas).
 compression = []
+# SPEC-0121: compresion zstd para WAL (dep opcional `zstd`).
+zstd-compression = ["dep:zstd"]
 # SPEC-0116: backup online (sin dependencias externas).
 backup = []
 # SPEC-0117: full-text search avanzado (sin dependencias externas).

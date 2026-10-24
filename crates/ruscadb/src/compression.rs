@@ -1,9 +1,11 @@
 //! Compresion de WAL opcional (SPEC-0115): RLE sin dependencias externas.
 
 /// Compresor RLE (run-length encoding) sin dependencias.
+#[cfg(feature = "compression")]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Compressor;
 
+#[cfg(feature = "compression")]
 impl Compressor {
     /// Comprime un slice de bytes con RLE.
     pub fn compress(input: &[u8]) -> Vec<u8> {
@@ -45,6 +47,23 @@ impl Compressor {
             }
         }
         Ok(out)
+    }
+}
+
+/// Compresor zstd (SPEC-0121, feature `zstd-compression`).
+#[cfg(feature = "zstd-compression")]
+pub struct ZstdCompressor;
+
+#[cfg(feature = "zstd-compression")]
+impl ZstdCompressor {
+    /// Comprime un slice de bytes con zstd (nivel 3).
+    pub fn compress(input: &[u8]) -> Result<Vec<u8>, String> {
+        zstd::encode_all(input, 3).map_err(|e| format!("zstd compress: {e}"))
+    }
+
+    /// Descomprime un slice zstd.
+    pub fn decompress(input: &[u8]) -> Result<Vec<u8>, String> {
+        zstd::decode_all(input).map_err(|e| format!("zstd decompress: {e}"))
     }
 }
 

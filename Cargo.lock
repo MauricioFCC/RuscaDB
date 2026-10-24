@@ -3346,6 +3346,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "zeroize",
+ "zstd 0.14.2",
 ]
 
 [[package]]

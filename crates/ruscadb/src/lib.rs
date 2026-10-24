@@ -38,7 +38,7 @@ mod ts_api;
 mod backup;
 #[cfg(feature = "columnar")]
 mod columnar;
-#[cfg(feature = "compression")]
+#[cfg(any(feature = "compression", feature = "zstd-compression"))]
 mod compression;
 #[cfg(feature = "fts-advanced")]
 mod fts_advanced;
@@ -63,6 +63,8 @@ pub use backup::Backup;
 pub use columnar::{ColumnValue, ColumnarTable};
 #[cfg(feature = "compression")]
 pub use compression::Compressor;
+#[cfg(feature = "zstd-compression")]
+pub use compression::ZstdCompressor;
 #[cfg(feature = "fts-advanced")]
 pub use fts_advanced::{FuzzyMatcher, PhraseMatcher, Stemmer};
 #[cfg(feature = "geo")]
