@@ -51,6 +51,8 @@ tracing = { workspace = true }
 zstd = { version = "0.14", optional = true }
 # Arrow columnar (SPEC-0124, opcional).
 arrow = { version = "60", optional = true }
+# PostgreSQL wire protocol (SPEC-0127, opcional).
+pgwire = { version = "0.42", optional = true }
 # Métricas opcionales (SPEC-0080): solo presentes con la feature `metrics`.
 metrics = { workspace = true, optional = true }
 
@@ -79,6 +81,16 @@ ts-retention = []
 fts-scoring = []
 # SPEC-0124: engine columnar Arrow (dep opcional `arrow`).
 arrow-columnar = ["dep:arrow"]
+# SPEC-0125: IVF-PQ para vectores grandes.
+ivf-pq = []
+# SPEC-0126: OpenTelemetry OTLP exporter.
+otel = []
+# SPEC-0127: PostgreSQL wire protocol (pgwire real, dep opcional `pgwire`).
+pgwire-real = ["dep:pgwire"]
+# SPEC-0128: Checkpoint a S3 (backup/restore).
+s3-backup = []
+# SPEC-0129: Time-travel (read as of tx_id).
+time-travel = []
 # SPEC-0116: backup online (sin dependencias externas).
 backup = []
 # SPEC-0117: full-text search avanzado (sin dependencias externas).

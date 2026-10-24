@@ -50,14 +50,24 @@ mod fts_scoring;
 mod geo;
 #[cfg(feature = "incremental-backup")]
 mod incremental_backup;
+#[cfg(feature = "ivf-pq")]
+mod ivf_pq;
 #[cfg(feature = "observability")]
 mod observability;
 #[cfg(feature = "onnx")]
 mod onnx;
+#[cfg(feature = "otel")]
+mod otel;
 #[cfg(feature = "pgwire")]
 mod pgwire;
+#[cfg(feature = "pgwire-real")]
+mod pgwire_real;
+#[cfg(feature = "s3-backup")]
+mod s3_backup;
 #[cfg(feature = "spatial")]
 mod spatial;
+#[cfg(feature = "time-travel")]
+mod time_travel;
 #[cfg(feature = "ts-advanced")]
 mod ts_advanced;
 #[cfg(feature = "ts-retention")]
@@ -81,14 +91,24 @@ pub use fts_scoring::FuzzyScorer;
 pub use geo::{Point, Rect};
 #[cfg(feature = "incremental-backup")]
 pub use incremental_backup::IncrementalBackup;
+#[cfg(feature = "ivf-pq")]
+pub use ivf_pq::IvfPqIndex;
 #[cfg(feature = "observability")]
 pub use observability::MetricsRegistry;
 #[cfg(feature = "onnx")]
 pub use onnx::OnnxModel;
+#[cfg(feature = "otel")]
+pub use otel::{OtelExporter, Span};
 #[cfg(feature = "pgwire")]
 pub use pgwire::PgWireServer;
+#[cfg(feature = "pgwire-real")]
+pub use pgwire_real::PgWireRealServer;
+#[cfg(feature = "s3-backup")]
+pub use s3_backup::S3Backup;
 #[cfg(feature = "spatial")]
 pub use spatial::RTree;
+#[cfg(feature = "time-travel")]
+pub use time_travel::TimeTravel;
 #[cfg(feature = "ts-advanced")]
 pub use ts_advanced::Downsampler;
 #[cfg(feature = "ts-retention")]
