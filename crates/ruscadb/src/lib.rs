@@ -42,6 +42,8 @@ mod columnar;
 mod compression;
 #[cfg(feature = "fts-advanced")]
 mod fts_advanced;
+#[cfg(feature = "fts-scoring")]
+mod fts_scoring;
 #[cfg(feature = "geo")]
 mod geo;
 #[cfg(feature = "incremental-backup")]
@@ -56,6 +58,8 @@ mod pgwire;
 mod spatial;
 #[cfg(feature = "ts-advanced")]
 mod ts_advanced;
+#[cfg(feature = "ts-retention")]
+mod ts_retention;
 
 #[cfg(feature = "backup")]
 pub use backup::Backup;
@@ -67,6 +71,8 @@ pub use compression::Compressor;
 pub use compression::ZstdCompressor;
 #[cfg(feature = "fts-advanced")]
 pub use fts_advanced::{FuzzyMatcher, PhraseMatcher, Stemmer};
+#[cfg(feature = "fts-scoring")]
+pub use fts_scoring::FuzzyScorer;
 #[cfg(feature = "geo")]
 pub use geo::{Point, Rect};
 #[cfg(feature = "incremental-backup")]
@@ -81,6 +87,8 @@ pub use pgwire::PgWireServer;
 pub use spatial::RTree;
 #[cfg(feature = "ts-advanced")]
 pub use ts_advanced::Downsampler;
+#[cfg(feature = "ts-retention")]
+pub use ts_retention::{RetentionPolicy, TsPoint};
 
 pub use auth::{AuditEntry, Role};
 pub use blob_pipeline::{BlobJobResult, PipelineStatus};

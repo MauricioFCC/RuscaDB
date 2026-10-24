@@ -71,6 +71,10 @@ spatial = []
 compression = []
 # SPEC-0121: compresion zstd para WAL (dep opcional `zstd`).
 zstd-compression = ["dep:zstd"]
+# SPEC-0122: retention policies para time-series.
+ts-retention = []
+# SPEC-0123: fuzzy scoring en FTS.
+fts-scoring = []
 # SPEC-0116: backup online (sin dependencias externas).
 backup = []
 # SPEC-0117: full-text search avanzado (sin dependencias externas).
