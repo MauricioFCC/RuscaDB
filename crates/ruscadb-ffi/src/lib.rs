@@ -734,11 +734,23 @@ pub extern "C" fn ruscadb_insert_record(
                 }
             }
             let doc = parsed.get("doc").cloned();
+            // edges (grafo): array de {"label": str, "target": ULID}
+            let mut edges_out = Vec::new();
+            if let Some(arr) = parsed.get("edges").and_then(|v| v.as_array()) {
+                for e in arr {
+                    let label = e.get("label").and_then(|x| x.as_str()).unwrap_or("link").to_string();
+                    let target = e.get("target").and_then(|x| x.as_str()).unwrap_or("");
+                    if let Ok(rid) = ruscadb::RecordId::from_string(target) {
+                        edges_out.push(ruscadb::Edge { label, node: rid });
+                    }
+                }
+            }
+            let edges = ruscadb::EdgeSet { out: edges_out, incoming: Vec::new() };
             let record = ruscadb::Record {
                 id: ruscadb::RecordId::new(),
                 scalars,
                 doc,
-                edges: ruscadb::EdgeSet::default(),
+                edges,
                 vector,
                 blob: None,
                 meta: ruscadb::RecordMeta::default(),

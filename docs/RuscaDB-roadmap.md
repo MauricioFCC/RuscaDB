@@ -994,3 +994,25 @@ requiere ADR y actualización de este documento antes de tocar código.*
 - SPEC-0111 (inferencia ONNX opcional: `OnnxModel`, feature `onnx`): implementado (stub).
 - SPEC-0112 (geoespacial basico: `Point`, feature `geo`): implementado (stub).
 - Features off por defecto; el build por defecto no cambia.
+
+
+## Investigacion de frontera (2026-10-24)
+
+Ver `docs/RuscaDB-frontier-research.md` para el analisis completo de gaps vs.
+estado del arte (redb, SurrealDB, LanceDB, DuckDB, SQLRite, Stoolap, MoteDB,
+LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
+
+### Ola 10 - Compresion + Retention + Fuzzy scoring (P0)
+- SPEC-0121: zstd compression para WAL (optional dep `zstd`)
+- SPEC-0122: retention policies para time-series (TTL + downsampling automatico)
+- SPEC-0123: fuzzy scoring en FTS (BM25 + Levenshtein ranking)
+
+### Ola 11 - Columnar + IVF-PQ + Observabilidad real (P1)
+- SPEC-0124: Arrow columnar engine (optional dep `arrow`)
+- SPEC-0125: IVF-PQ para vectores grandes
+- SPEC-0126: OpenTelemetry OTLP exporter
+
+### Ola 12 - Wire protocol + Backup + Time-travel (P2)
+- SPEC-0127: PostgreSQL wire protocol real (pgwire crate)
+- SPEC-0128: Checkpoint a S3 (backup/restore)
+- SPEC-0129: Time-travel (read as of tx_id)
