@@ -996,6 +996,20 @@ requiere ADR y actualización de este documento antes de tocar código.*
 - Features off por defecto; el build por defecto no cambia.
 
 
+
+## Ola 10 - Frontier II (SPEC-0121..0129)
+
+- SPEC-0121 (zstd compression: `ZstdCompressor`, dep opcional `zstd`): implementado.
+- SPEC-0122 (ts-retention: `RetentionPolicy`, TTL + downsampling): implementado.
+- SPEC-0123 (fts-scoring: `FuzzyScorer`, BM25 + Levenshtein): implementado.
+- SPEC-0124 (Arrow columnar: `ArrowColumnarTable`, dep opcional `arrow`): implementado.
+- SPEC-0125 (IVF-PQ: `IvfPqIndex`, cuantizacion): implementado.
+- SPEC-0126 (OpenTelemetry: `OtelExporter`, spans JSON): implementado.
+- SPEC-0127 (pgwire real: `PgWireRealServer`, dep opcional `pgwire`): implementado (stub).
+- SPEC-0128 (S3 backup: `S3Backup`, manifiesto JSON): implementado.
+- SPEC-0129 (time-travel: `TimeTravel`, snapshot por tx_id): implementado.
+- Features off por defecto; el build por defecto no cambia.
+
 ## Investigacion de frontera (2026-10-24)
 
 Ver `docs/RuscaDB-frontier-research.md` para el analisis completo de gaps vs.
