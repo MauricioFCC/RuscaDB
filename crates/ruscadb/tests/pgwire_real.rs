@@ -1,5 +1,6 @@
 //! Tests de aceptación de la feature `pgwire-real` (SPEC-0127).
 
+#![cfg(feature = "pgwire-real")]
 #![allow(clippy::expect_used)]
 
 use ruscadb::PgWireRealServer;

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0119
 feature: observability
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 4
 boundaries:

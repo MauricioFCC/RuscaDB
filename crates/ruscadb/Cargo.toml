@@ -57,7 +57,26 @@ pgwire = { version = "0.42", optional = true }
 metrics = { workspace = true, optional = true }
 
 [features]
-default = []
+# Features plausibles (pure Rust, sin deps externas) activadas por defecto.
+# Las features con deps externas (zstd, arrow, pgwire, metrics) quedan off.
+default = [
+    "columnar",
+    "geo",
+    "compression",
+    "fts-advanced",
+    "ts-advanced",
+    "observability",
+    "backup",
+    "ts-retention",
+    "fts-scoring",
+    "incremental-backup",
+    "time-travel",
+    "spatial",
+    "ivf-pq",
+    "onnx",
+    "pgwire",
+    "otel",
+]
 # Latencia de commit (SPEC-0080): OFF por defecto (coste cero). Propaga a
 # `ruscadb-storage` para registrar el hit-rate del buffer pool.
 metrics = ["dep:metrics", "ruscadb-storage/metrics"]

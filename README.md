@@ -245,10 +245,24 @@ stale-artifact contamination — see `.opencode/config/rust-isolation.md` and
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow.
 
-## Frontier capabilities (optional, feature flags)
+## Frontier capabilities (feature flags)
 
-RuscaDB ships optional capabilities behind feature flags (all off by default,
-zero impact on the default build). Enable with `--features`:
+Las capacidades puras de Rust están **activadas por defecto** (zero deps externas).
+Las que requieren dependencias externas quedan **off por defecto**:
+
+| Feature | Dep externa | Descripción |
+|---|---|---|
+| `zstd-compression` | `zstd` | Compresión zstd real para WAL |
+| `arrow-columnar` | `arrow` | Engine columnar Arrow |
+| `pgwire-real` | `pgwire` | PostgreSQL wire protocol real |
+| `metrics` | `metrics` | Métricas de latencia de commit |
+
+Capacidades puras (activadas por defecto, sin deps externas): `columnar`, `geo`,
+`compression`, `fts-advanced`, `ts-advanced`, `observability`, `backup`,
+`ts-retention`, `fts-scoring`, `incremental-backup`, `time-travel`, `spatial`,
+`ivf-pq`, `onnx`, `pgwire`.
+
+RuscaDB ships optional capabilities behind feature flags. Enable with `--features`:
 
 | Feature | Spec | Description |
 | --- | --- | --- |

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0113
 feature: pgwire_protocol
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 5
 boundaries:

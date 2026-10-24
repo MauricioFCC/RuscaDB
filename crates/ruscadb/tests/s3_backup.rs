@@ -1,5 +1,6 @@
 //! Tests de aceptación de la feature `s3-backup` (SPEC-0128).
 
+#![cfg(feature = "s3-backup")]
 #![allow(clippy::expect_used)]
 
 use ruscadb::S3Backup;

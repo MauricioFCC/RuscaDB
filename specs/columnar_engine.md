@@ -1,7 +1,7 @@
 ---
 id: SPEC-0110
 feature: columnar_engine
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 6
 boundaries:

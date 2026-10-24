@@ -1,7 +1,7 @@
 ---
 id: SPEC-0115
 feature: wal_compression
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 4
 boundaries:

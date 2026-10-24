@@ -1,7 +1,7 @@
 ---
 id: SPEC-0112
 feature: geospatial_sync
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 6
 boundaries:

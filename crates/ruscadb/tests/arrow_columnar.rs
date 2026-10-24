@@ -1,5 +1,6 @@
 //! Tests de aceptación de la feature `arrow-columnar` (SPEC-0124).
 
+#![cfg(feature = "arrow-columnar")]
 #![allow(clippy::expect_used)]
 
 use ruscadb::{ArrowColumnType, ArrowColumnarTable};
