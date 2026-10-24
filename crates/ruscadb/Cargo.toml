@@ -49,6 +49,8 @@ zeroize = { workspace = true }
 tracing = { workspace = true }
 # Compresión zstd (SPEC-0121, opcional).
 zstd = { version = "0.14", optional = true }
+# Arrow columnar (SPEC-0124, opcional).
+arrow = { version = "60", optional = true }
 # Métricas opcionales (SPEC-0080): solo presentes con la feature `metrics`.
 metrics = { workspace = true, optional = true }
 
@@ -75,6 +77,8 @@ zstd-compression = ["dep:zstd"]
 ts-retention = []
 # SPEC-0123: fuzzy scoring en FTS.
 fts-scoring = []
+# SPEC-0124: engine columnar Arrow (dep opcional `arrow`).
+arrow-columnar = ["dep:arrow"]
 # SPEC-0116: backup online (sin dependencias externas).
 backup = []
 # SPEC-0117: full-text search avanzado (sin dependencias externas).

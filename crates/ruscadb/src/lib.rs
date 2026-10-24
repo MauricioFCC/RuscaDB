@@ -34,6 +34,8 @@ mod row_update;
 mod table_api;
 mod ts_api;
 
+#[cfg(feature = "arrow-columnar")]
+mod arrow_columnar;
 #[cfg(feature = "backup")]
 mod backup;
 #[cfg(feature = "columnar")]
@@ -61,6 +63,8 @@ mod ts_advanced;
 #[cfg(feature = "ts-retention")]
 mod ts_retention;
 
+#[cfg(feature = "arrow-columnar")]
+pub use arrow_columnar::{ArrowColumnType, ArrowColumnarTable};
 #[cfg(feature = "backup")]
 pub use backup::Backup;
 #[cfg(feature = "columnar")]
