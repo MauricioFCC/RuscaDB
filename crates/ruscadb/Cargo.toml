@@ -70,7 +70,8 @@ geo = []
 # SPEC-0113: protocolo PostgreSQL wire (sin dependencias externas por defecto).
 pgwire = []
 # SPEC-0114: indice espacial R-tree (sin dependencias externas).
-spatial = []
+# Implica `geo` (tipos Point/Rect).
+spatial = ["geo"]
 # SPEC-0115: compresion de WAL (sin dependencias externas).
 compression = []
 # SPEC-0121: compresion zstd para WAL (dep opcional `zstd`).
@@ -86,7 +87,7 @@ ivf-pq = []
 # SPEC-0126: OpenTelemetry OTLP exporter.
 otel = []
 # SPEC-0127: PostgreSQL wire protocol (pgwire real, dep opcional `pgwire`).
-pgwire-real = ["dep:pgwire"]
+pgwire-real = ["pgwire", "dep:pgwire"]
 # SPEC-0128: Checkpoint a S3 (backup/restore).
 s3-backup = []
 # SPEC-0129: Time-travel (read as of tx_id).

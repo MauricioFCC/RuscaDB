@@ -60,8 +60,6 @@ mod onnx;
 mod otel;
 #[cfg(feature = "pgwire")]
 mod pgwire;
-#[cfg(feature = "pgwire-real")]
-mod pgwire_real;
 #[cfg(feature = "s3-backup")]
 mod s3_backup;
 #[cfg(feature = "spatial")]
@@ -87,6 +85,8 @@ pub use compression::ZstdCompressor;
 pub use fts_advanced::{FuzzyMatcher, PhraseMatcher, Stemmer};
 #[cfg(feature = "fts-scoring")]
 pub use fts_scoring::FuzzyScorer;
+#[cfg(feature = "spatial")]
+pub use geo::RTree;
 #[cfg(feature = "geo")]
 pub use geo::{Point, Rect};
 #[cfg(feature = "incremental-backup")]
@@ -102,11 +102,9 @@ pub use otel::{OtelExporter, Span};
 #[cfg(feature = "pgwire")]
 pub use pgwire::PgWireServer;
 #[cfg(feature = "pgwire-real")]
-pub use pgwire_real::PgWireRealServer;
+pub use pgwire::PgWireServer as PgWireRealServer;
 #[cfg(feature = "s3-backup")]
 pub use s3_backup::S3Backup;
-#[cfg(feature = "spatial")]
-pub use spatial::RTree;
 #[cfg(feature = "time-travel")]
 pub use time_travel::TimeTravel;
 #[cfg(feature = "ts-advanced")]

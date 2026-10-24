@@ -1,4 +1,4 @@
-//! Tipos geoespaciales opcionales (SPEC-0112): geometría 2D euclidiana.
+//! Tipos geoespaciales + indice espacial (SPEC-0112 + SPEC-0114): unificado.
 
 /// Punto en el plano.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -38,7 +38,6 @@ impl Point {
 
 /// Rectángulo axis-aligned.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
 pub struct Rect {
     /// Esquina inferior izquierda.
     pub min: Point,
@@ -46,7 +45,6 @@ pub struct Rect {
     pub max: Point,
 }
 
-#[allow(dead_code)]
 impl Rect {
     /// Crea un rectángulo a partir de dos esquinas.
     pub fn new(min: Point, max: Point) -> Self {
@@ -75,6 +73,66 @@ impl Rect {
     }
 }
 
+/// Árbol R simple (stub lineal) integrado con Point.
+#[derive(Debug, Clone, Default)]
+pub struct RTree {
+    /// Puntos insertados.
+    points: Vec<Point>,
+}
+
+impl RTree {
+    /// Crea un R-tree vacío.
+    pub fn new() -> Self {
+        Self { points: Vec::new() }
+    }
+
+    /// Inserta un punto.
+    pub fn insert(&mut self, point: Point) {
+        self.points.push(point);
+    }
+
+    /// Inserta un punto por coordenadas.
+    pub fn insert_xy(&mut self, x: f64, y: f64) {
+        self.points.push(Point::new(x, y));
+    }
+
+    /// Consulta por bounding box.
+    pub fn range_query(&self, rect: &Rect) -> Vec<Point> {
+        self.points
+            .iter()
+            .filter(|p| rect.contains(p))
+            .copied()
+            .collect()
+    }
+
+    /// Consulta por bounding box (coordenadas).
+    pub fn range_query_xy(&self, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Vec<Point> {
+        let rect = Rect::new(Point::new(min_x, min_y), Point::new(max_x, max_y));
+        self.range_query(&rect)
+    }
+
+    /// KNN: los k puntos más cercanos a un punto dado.
+    pub fn knn(&self, center: &Point, k: usize) -> Vec<Point> {
+        let mut sorted: Vec<(f64, Point)> = self
+            .points
+            .iter()
+            .map(|p| (p.distance(center), *p))
+            .collect();
+        sorted.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.into_iter().take(k).map(|(_, p)| p).collect()
+    }
+
+    /// Número de puntos.
+    pub fn len(&self) -> usize {
+        self.points.len()
+    }
+
+    /// Indica si está vacío.
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,5 +158,26 @@ mod tests {
         assert!(r.intersects(&r2));
         let r3 = Rect::new(Point::new(20.0, 20.0), Point::new(30.0, 30.0));
         assert!(!r.intersects(&r3));
+    }
+
+    #[test]
+    fn test_rtree_knn() {
+        let mut tree = RTree::new();
+        tree.insert(Point::new(0.0, 0.0));
+        tree.insert(Point::new(3.0, 4.0));
+        tree.insert(Point::new(10.0, 10.0));
+        let nearest = tree.knn(&Point::new(0.0, 0.0), 2);
+        assert_eq!(nearest.len(), 2);
+        assert_eq!(nearest[0], Point::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn test_rtree_range_query() {
+        let mut tree = RTree::new();
+        tree.insert_xy(1.0, 2.0);
+        tree.insert_xy(10.0, 20.0);
+        let rect = Rect::new(Point::new(0.0, 0.0), Point::new(5.0, 5.0));
+        let result = tree.range_query(&rect);
+        assert_eq!(result, vec![Point::new(1.0, 2.0)]);
     }
 }
