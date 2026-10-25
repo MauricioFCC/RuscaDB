@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
 //! Retention policies para time-series (SPEC-0122).
 
 /// Punto de serie temporal (timestamp + valor).

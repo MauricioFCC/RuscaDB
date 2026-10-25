@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
 //! OpenTelemetry OTLP exporter (SPEC-0126): serialización JSON de spans.
 
 use std::collections::BTreeMap;

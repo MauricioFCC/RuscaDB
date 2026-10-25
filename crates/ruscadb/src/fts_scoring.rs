@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
 //! Fuzzy scoring para FTS (SPEC-0123): BM25 + Levenshtein.
 
 /// Scorer fuzzy que combina BM25 con distancia de edición.

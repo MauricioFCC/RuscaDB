@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
 //! IVF-PQ para vectores grandes (SPEC-0125): cuantización por subespacios.
 
 /// Índice IVF-PQ (stub: cuantización por subespacios).

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
 //! Observabilidad opcional (SPEC-0119): métricas en memoria.
 
 use std::collections::BTreeMap;

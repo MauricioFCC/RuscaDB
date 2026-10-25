@@ -36,8 +36,12 @@ mod ts_api;
 
 #[cfg(feature = "arrow-columnar")]
 mod arrow_columnar;
+#[cfg(feature = "async-io")]
+mod async_io;
 #[cfg(feature = "backup")]
 mod backup;
+#[cfg(feature = "backup-verify")]
+mod backup_verify;
 #[cfg(feature = "branching")]
 mod branching;
 #[cfg(feature = "columnar")]
@@ -50,6 +54,8 @@ mod concurrent_txn;
 mod cow_btree;
 #[cfg(feature = "fts-advanced")]
 mod fts_advanced;
+#[cfg(feature = "fts-proximity")]
+mod fts_proximity;
 #[cfg(feature = "fts-scoring")]
 mod fts_scoring;
 #[cfg(feature = "geo")]
@@ -58,24 +64,44 @@ mod geo;
 mod geo_proj;
 #[cfg(feature = "incremental-backup")]
 mod incremental_backup;
+#[cfg(feature = "ivf-clustering")]
+mod ivf_clustering;
 #[cfg(feature = "ivf-pq")]
 mod ivf_pq;
+#[cfg(feature = "join-reorder")]
+mod join_reorder;
 #[cfg(feature = "kms")]
 mod kms;
 #[cfg(feature = "lance-format")]
 mod lance_format;
+#[cfg(feature = "materialized-views")]
+mod materialized_view;
 #[cfg(feature = "observability")]
 mod observability;
 #[cfg(feature = "onnx")]
 mod onnx;
 #[cfg(feature = "otel")]
 mod otel;
+#[cfg(feature = "otel-real")]
+mod otel_real;
 #[cfg(feature = "pgwire")]
 mod pgwire;
 #[cfg(feature = "cost-planner")]
 mod planner_cost;
+#[cfg(feature = "prepared")]
+mod prepared;
+#[cfg(feature = "query-cache")]
+mod query_cache;
+#[cfg(feature = "rcu")]
+mod rcu;
+#[cfg(feature = "rtree-split")]
+mod rtree_split;
 #[cfg(feature = "s3-backup")]
 mod s3_backup;
+#[cfg(feature = "schema-evolution")]
+mod schema_evolution;
+#[cfg(feature = "simd")]
+mod simd;
 #[cfg(feature = "spatial")]
 mod spatial;
 #[cfg(feature = "sql-std")]
@@ -86,6 +112,8 @@ mod stemming;
 mod sync;
 #[cfg(feature = "time-travel")]
 mod time_travel;
+#[cfg(feature = "time-travel-real")]
+mod time_travel_real;
 #[cfg(feature = "ts-advanced")]
 mod ts_advanced;
 #[cfg(feature = "ts-aggregates")]
@@ -94,11 +122,17 @@ mod ts_aggregates;
 mod ts_retention;
 #[cfg(feature = "vle")]
 mod vle;
+#[cfg(feature = "zstd-real")]
+mod zstd_real;
 
 #[cfg(feature = "arrow-columnar")]
 pub use arrow_columnar::{ArrowColumnType, ArrowColumnarTable};
+#[cfg(feature = "async-io")]
+pub use async_io::AsyncReader;
 #[cfg(feature = "backup")]
 pub use backup::Backup;
+#[cfg(feature = "backup-verify")]
+pub use backup_verify::BackupVerifier;
 #[cfg(feature = "branching")]
 pub use branching::Branch;
 #[cfg(feature = "columnar")]
@@ -113,6 +147,8 @@ pub use concurrent_txn::{ConcurrentTxn, ConcurrentTxnManager};
 pub use cow_btree::{CowBTree, CowBTreeNode};
 #[cfg(feature = "fts-advanced")]
 pub use fts_advanced::{FuzzyMatcher, PhraseMatcher, Stemmer};
+#[cfg(feature = "fts-proximity")]
+pub use fts_proximity::ProximityMatcher;
 #[cfg(feature = "fts-scoring")]
 pub use fts_scoring::FuzzyScorer;
 #[cfg(feature = "spatial")]
@@ -123,26 +159,46 @@ pub use geo::{Point, Rect};
 pub use geo_proj::GeoPoint;
 #[cfg(feature = "incremental-backup")]
 pub use incremental_backup::IncrementalBackup;
+#[cfg(feature = "ivf-clustering")]
+pub use ivf_clustering::IvfClusterer;
 #[cfg(feature = "ivf-pq")]
 pub use ivf_pq::IvfPqIndex;
+#[cfg(feature = "join-reorder")]
+pub use join_reorder::JoinReorderer;
 #[cfg(feature = "kms")]
 pub use kms::KmsProvider;
 #[cfg(feature = "lance-format")]
 pub use lance_format::LanceTable;
+#[cfg(feature = "materialized-views")]
+pub use materialized_view::MaterializedView;
 #[cfg(feature = "observability")]
 pub use observability::MetricsRegistry;
 #[cfg(feature = "onnx")]
 pub use onnx::OnnxModel;
 #[cfg(feature = "otel")]
 pub use otel::{OtelExporter, Span};
+#[cfg(feature = "otel-real")]
+pub use otel_real::OtelRealExporter;
 #[cfg(feature = "pgwire")]
 pub use pgwire::PgWireServer;
 #[cfg(feature = "pgwire-real")]
 pub use pgwire::PgWireServer as PgWireRealServer;
 #[cfg(feature = "cost-planner")]
 pub use planner_cost::CostEstimator;
+#[cfg(feature = "prepared")]
+pub use prepared::PreparedStatement;
+#[cfg(feature = "query-cache")]
+pub use query_cache::QueryCache;
+#[cfg(feature = "rcu")]
+pub use rcu::RcuDomain;
+#[cfg(feature = "rtree-split")]
+pub use rtree_split::RTreeSplit;
 #[cfg(feature = "s3-backup")]
 pub use s3_backup::S3Backup;
+#[cfg(feature = "schema-evolution")]
+pub use schema_evolution::SchemaEvolution;
+#[cfg(feature = "simd")]
+pub use simd::SimdOps;
 #[cfg(feature = "sql-std")]
 pub use sql_std::WindowFunc;
 #[cfg(feature = "stemming")]
@@ -151,6 +207,8 @@ pub use stemming::SnowballStemmer;
 pub use sync::SyncProtocol;
 #[cfg(feature = "time-travel")]
 pub use time_travel::TimeTravel;
+#[cfg(feature = "time-travel-real")]
+pub use time_travel_real::TimeTravelReal;
 #[cfg(feature = "ts-advanced")]
 pub use ts_advanced::Downsampler;
 #[cfg(feature = "ts-aggregates")]
@@ -159,6 +217,8 @@ pub use ts_aggregates::ContinuousAggregate;
 pub use ts_retention::{RetentionPolicy, TsPoint};
 #[cfg(feature = "vle")]
 pub use vle::VleDatabase;
+#[cfg(feature = "zstd-real")]
+pub use zstd_real::ZstdReal;
 
 pub use auth::{AuditEntry, Role};
 pub use blob_pipeline::{BlobJobResult, PipelineStatus};

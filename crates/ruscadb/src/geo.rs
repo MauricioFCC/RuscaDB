@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Tipos geoespaciales + indice espacial (SPEC-0112 + SPEC-0114): unificado.
 
 /// Punto en el plano.

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
 //! Backup incremental (SPEC-0120): copia solo ficheros modificados.
 
 use std::fs;

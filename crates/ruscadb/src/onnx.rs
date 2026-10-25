@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Inferencia ONNX opcional (SPEC-0111): stub sin dependencias externas.
 //!
 //! La integración real con `ort` queda como trabajo futuro cuando se requiera

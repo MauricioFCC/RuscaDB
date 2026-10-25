@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+#![allow(dead_code)]
 //! Protocolo PostgreSQL wire opcional (SPEC-0113): stub sin dependencias externas.
 
 /// Servidor pgwire (stub).

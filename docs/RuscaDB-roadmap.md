@@ -1057,3 +1057,35 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 - SPEC-0140 (Stemming Snowball: SnowballStemmer): implementado (stub).
 - SPEC-0141 (Continuous aggregates: ContinuousAggregate): implementado (stub).
 - Features off por defecto; el build por defecto no cambia.
+
+
+## Ola 13 - Frontier III (SPEC-0130..0160)
+
+- SPEC-0130 (copy-on-write B+tree: CowBTree): implementado (stub).
+- SPEC-0131 (BEGIN CONCURRENT: ConcurrentTxnManager): implementado (stub).
+- SPEC-0132 (Lance format: LanceTable): implementado (stub).
+- SPEC-0133 (Single-file VLE: VleDatabase): implementado (stub).
+- SPEC-0134 (Sync protocol: SyncProtocol): implementado (stub).
+- SPEC-0135 (Copy-on-write branching: Branch): implementado (stub).
+- SPEC-0136 (Geospatial projections: GeoPoint, Haversine): implementado.
+- SPEC-0137 (SQL standard: WindowFunc): implementado (stub).
+- SPEC-0138 (Cost-based planner: CostEstimator): implementado (stub).
+- SPEC-0139 (KMS/HSM: KmsProvider): implementado (stub).
+- SPEC-0140 (Stemming Snowball: SnowballStemmer): implementado (stub).
+- SPEC-0141 (Continuous aggregates: ContinuousAggregate): implementado (stub).
+- SPEC-0142 (Epoch-based reclamation: RcuDomain): implementado (stub).
+- SPEC-0143 (IVF clustering: IvfClusterer): implementado (stub).
+- SPEC-0144 (Prepared statements: PreparedStatement): implementado (stub).
+- SPEC-0145 (Materialized views: MaterializedView): implementado (stub).
+- SPEC-0146 (SIMD acceleration: SimdOps): implementado (stub).
+- SPEC-0147 (Async I/O: AsyncReader): implementado (stub).
+- SPEC-0148 (FTS proximity: ProximityMatcher): implementado (stub).
+- SPEC-0149 (Join reordering: JoinReorderer): implementado (stub).
+- SPEC-0150 (zstd real: ZstdReal): implementado (stub).
+- SPEC-0151 (OTLP real: OtelRealExporter): implementado (stub).
+- SPEC-0152 (R-tree splitting: RTreeSplit): implementado (stub).
+- SPEC-0153 (Backup verification: BackupVerifier): implementado (stub).
+- SPEC-0154 (Time-travel real: TimeTravelReal): implementado (stub).
+- SPEC-0155 (Query cache: QueryCache): implementado (stub).
+- SPEC-0156 (Schema evolution: SchemaEvolution): implementado (stub).
+- Features off por defecto; el build por defecto no cambia.

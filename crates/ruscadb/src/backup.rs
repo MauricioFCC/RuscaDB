@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Backup online opcional (SPEC-0116): copia de ficheros de la base.
 
 use std::fs;

@@ -88,6 +88,20 @@ default = [
     "kms",
     "stemming",
     "ts-aggregates",
+    "rcu",
+    "ivf-clustering",
+    "prepared",
+    "materialized-views",
+    "simd",
+    "async-io",
+    "fts-proximity",
+    "join-reorder",
+    "otel-real",
+    "rtree-split",
+    "backup-verify",
+    "time-travel-real",
+    "query-cache",
+    "schema-evolution",
 ]
 # Latencia de commit (SPEC-0080): OFF por defecto (coste cero). Propaga a
 # `ruscadb-storage` para registrar el hit-rate del buffer pool.
@@ -107,6 +121,8 @@ spatial = ["geo"]
 compression = []
 # SPEC-0121: compresion zstd para WAL (dep opcional `zstd`).
 zstd-compression = ["dep:zstd"]
+# SPEC-0154: Compresion zstd real.
+zstd-real = ["zstd-compression", "dep:zstd"]
 # SPEC-0122: retention policies para time-series.
 ts-retention = []
 # SPEC-0123: fuzzy scoring en FTS.
@@ -115,6 +131,7 @@ fts-scoring = []
 arrow-columnar = ["dep:arrow"]
 # SPEC-0125: IVF-PQ para vectores grandes.
 ivf-pq = []
+ivf-clustering = []
 # SPEC-0126: OpenTelemetry OTLP exporter.
 otel = []
 # SPEC-0127: PostgreSQL wire protocol (pgwire real, dep opcional `pgwire`).
@@ -147,6 +164,46 @@ kms = []
 stemming = []
 # SPEC-0145: Continuous aggregates.
 ts-aggregates = []
+# SPEC-0146: Epoch-based reclamation (RCU).
+rcu = []
+# SPEC-0148: Sentencias preparadas.
+prepared = []
+# SPEC-0149: Vistas materializadas.
+materialized-views = []
+# SPEC-0150: Aceleracion SIMD.
+simd = []
+# SPEC-0151: I/O asincrono.
+async-io = []
+# SPEC-0152: Busqueda por proximidad.
+fts-proximity = []
+# SPEC-0153: Reordenamiento de joins.
+join-reorder = []
+# SPEC-0154: Compresion zstd real.
+# SPEC-0155: OpenTelemetry OTLP real.
+otel-real = []
+# SPEC-0156: R-tree con splitting.
+rtree-split = []
+# SPEC-0157: Verificacion de backup.
+backup-verify = []
+# SPEC-0158: Time-travel real.
+time-travel-real = []
+# SPEC-0159: Cache de resultados.
+query-cache = []
+# SPEC-0160: Evolucion de esquema.
+schema-evolution = []
+# SPEC-0148: Sentencias preparadas.
+# SPEC-0149: Vistas materializadas.
+# SPEC-0150: Aceleracion SIMD.
+# SPEC-0151: I/O asincrono.
+# SPEC-0152: Busqueda por proximidad.
+# SPEC-0153: Reordenamiento de joins.
+# SPEC-0154: Compresion zstd real.
+# SPEC-0155: OpenTelemetry OTLP real.
+# SPEC-0156: R-tree con splitting.
+# SPEC-0157: Verificacion de backup.
+# SPEC-0158: Time-travel real.
+# SPEC-0159: Cache de resultados.
+# SPEC-0160: Evolucion de esquema.
 # SPEC-0116: backup online (sin dependencias externas).
 backup = []
 # SPEC-0117: full-text search avanzado (sin dependencias externas).

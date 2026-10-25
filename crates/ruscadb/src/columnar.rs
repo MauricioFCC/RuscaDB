@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 //! Engine columnar opcional (SPEC-0110): almacenamiento por columnas en memoria.
 //!
 //! Sin dependencias externas. La integración con Arrow/Lance queda como trabajo

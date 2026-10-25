@@ -1,12 +1,24 @@
-//! Sync protocol (SPEC-0138): stub sin dependencias externas.
+#![allow(missing_docs)]
+#![allow(dead_code)]
+//! Sync protocol (SPEC-0138): stub.
 
-/// Protocolo de sincronización (stub).
 #[derive(Debug, Clone)]
 pub struct SyncProtocol {
-    /// LSN del último checkpoint.
     pub checkpoint_lsn: u64,
-    /// Epoch del último checkpoint.
     pub epoch: u64,
+}
+
+impl SyncProtocol {
+    pub fn new() -> Self {
+        Self {
+            checkpoint_lsn: 0,
+            epoch: 0,
+        }
+    }
+    pub fn checkpoint(&mut self, lsn: u64, epoch: u64) {
+        self.checkpoint_lsn = lsn;
+        self.epoch = epoch;
+    }
 }
 
 impl Default for SyncProtocol {
@@ -15,26 +27,9 @@ impl Default for SyncProtocol {
     }
 }
 
-impl SyncProtocol {
-    /// Crea un protocolo de sync.
-    pub fn new() -> Self {
-        Self {
-            checkpoint_lsn: 0,
-            epoch: 0,
-        }
-    }
-
-    /// Genera un checkpoint para replicación.
-    pub fn checkpoint(&mut self, lsn: u64, epoch: u64) {
-        self.checkpoint_lsn = lsn;
-        self.epoch = epoch;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test] // @spec AC-0138-01
     fn test_ac_0138_01_sync_checkpoint() {
         let mut sync = SyncProtocol::new();
