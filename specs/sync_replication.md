@@ -1,7 +1,7 @@
 ---
 id: SPEC-0138
 feature: sync_replication
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 8
 boundaries:

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0131
 feature: begin_concurrent
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 6
 boundaries:

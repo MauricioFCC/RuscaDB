@@ -1,7 +1,7 @@
 ---
 id: SPEC-0141
 feature: sql_standard
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 8
 boundaries:

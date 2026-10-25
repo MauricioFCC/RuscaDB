@@ -1,7 +1,7 @@
 ---
 id: SPEC-0144
 feature: fts_stemming_snowball
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 4
 boundaries:

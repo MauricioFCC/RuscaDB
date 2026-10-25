@@ -1,7 +1,7 @@
 ---
 id: SPEC-0139
 feature: cow_branching
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 6
 boundaries:

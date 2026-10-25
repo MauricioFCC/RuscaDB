@@ -1,7 +1,7 @@
 ---
 id: SPEC-0137
 feature: single_file_vle
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 6
 boundaries:

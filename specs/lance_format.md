@@ -1,7 +1,7 @@
 ---
 id: SPEC-0136
 feature: lance_format
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 8
 boundaries:

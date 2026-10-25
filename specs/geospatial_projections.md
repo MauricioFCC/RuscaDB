@@ -1,7 +1,7 @@
 ---
 id: SPEC-0140
 feature: geospatial_projections
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 5
 boundaries:
