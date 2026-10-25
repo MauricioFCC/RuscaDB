@@ -1040,3 +1040,20 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 - SPEC-0134 (MVCC readers robustecidos: manifest last_committed_tx): implementado.
 - SPEC-0135 (robustez general: clippy 1.99, fmt, gates): implementado.
 - Features off por defecto; el build por defecto no cambia.
+
+
+## Ola 12 - Frontier III (SPEC-0130..0145)
+
+- SPEC-0130 (copy-on-write B+tree: CowBTree, snapshot isolation): implementado (stub).
+- SPEC-0131 (BEGIN CONCURRENT: multi-writer, ConcurrentTxnManager): implementado (stub).
+- SPEC-0132 (Lance format: LanceTable, multimodal columnar): implementado (stub).
+- SPEC-0133 (Single-file VLE: VleDatabase): implementado (stub).
+- SPEC-0134 (Sync protocol: SyncProtocol, checkpoint): implementado (stub).
+- SPEC-0135 (Copy-on-write branching: Branch, fork): implementado (stub).
+- SPEC-0136 (Geospatial projections: GeoPoint, Haversine): implementado.
+- SPEC-0137 (SQL standard: WindowFunc, row_number): implementado (stub).
+- SPEC-0138 (Cost-based planner: CostEstimator): implementado (stub).
+- SPEC-0139 (KMS/HSM externo: KmsProvider, wrap/unwrap): implementado (stub).
+- SPEC-0140 (Stemming Snowball: SnowballStemmer): implementado (stub).
+- SPEC-0141 (Continuous aggregates: ContinuousAggregate): implementado (stub).
+- Features off por defecto; el build por defecto no cambia.
