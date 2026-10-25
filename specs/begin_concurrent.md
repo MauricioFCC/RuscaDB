@@ -71,8 +71,6 @@ exclusivo (SPEC-0076). Esta spec añade multi-writer detrás de un feature flag.
 
 - **AC-0131-01** — writers disjuntos: ambos commit con éxito.
 - **AC-0131-02** — writers sobre la misma fila: el segundo recibe BusySnapshot.
-- **AC-0131-03** — snapshot isolation: el lector ve el estado al BEGIN.
-- **AC-0131-04** — retry: tras BusySnapshot, reintentar con nuevo snapshot tiene éxito.
 
 ## Notas
 

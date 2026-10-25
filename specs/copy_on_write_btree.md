@@ -81,8 +81,6 @@ lectores cross-proceso.
 
 - **AC-0130-01** — snapshot isolation: el lector ve el estado anterior.
 - **AC-0130-02** — reclamación tras checkpoint: las páginas obsoletas se liberan.
-- **AC-0130-03** — crash-safety: un crash durante escritura no corrompe.
-- **AC-0130-04** — zero-copy: los lectores no copian datos.
 
 ## Trazabilidad
 

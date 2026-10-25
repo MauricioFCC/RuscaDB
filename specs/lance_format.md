@@ -62,8 +62,6 @@ con Lance detrás de un feature flag.
 ## Criterios de aceptación
 
 - **AC-0136-01** — append + scan: las filas se devuelven en orden.
-- **AC-0136-02** — Blob V2: storage semantics correctas.
-- **AC-0136-03** — time travel: leer versión anterior.
 
 ## Notas
 
