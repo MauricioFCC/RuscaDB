@@ -76,6 +76,18 @@ default = [
     "onnx",
     "pgwire",
     "otel",
+    "cow-btree",
+    "begin-concurrent",
+    "lance-format",
+    "vle",
+    "sync",
+    "branching",
+    "geo-proj",
+    "sql-std",
+    "cost-planner",
+    "kms",
+    "stemming",
+    "ts-aggregates",
 ]
 # Latencia de commit (SPEC-0080): OFF por defecto (coste cero). Propaga a
 # `ruscadb-storage` para registrar el hit-rate del buffer pool.
@@ -111,6 +123,30 @@ pgwire-real = ["pgwire", "dep:pgwire"]
 s3-backup = []
 # SPEC-0129: Time-travel (read as of tx_id).
 time-travel = []
+# SPEC-0130: Copy-on-write B+tree.
+cow-btree = []
+# SPEC-0131: BEGIN CONCURRENT (multi-writer).
+begin-concurrent = []
+# SPEC-0136: Lance format (multimodal columnar).
+lance-format = []
+# SPEC-0137: Single-file VLE.
+vle = []
+# SPEC-0138: Sync protocol / replication.
+sync = []
+# SPEC-0139: Copy-on-write branching.
+branching = []
+# SPEC-0140: Geospatial projections (WGS84).
+geo-proj = []
+# SPEC-0141: SQL standard (window functions, CTEs, MERGE).
+sql-std = []
+# SPEC-0142: Cost-based planner.
+cost-planner = []
+# SPEC-0143: KMS/HSM externo.
+kms = []
+# SPEC-0144: Stemming Snowball (multi-idioma).
+stemming = []
+# SPEC-0145: Continuous aggregates.
+ts-aggregates = []
 # SPEC-0116: backup online (sin dependencias externas).
 backup = []
 # SPEC-0117: full-text search avanzado (sin dependencias externas).
