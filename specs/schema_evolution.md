@@ -1,7 +1,7 @@
 ---
 id: SPEC-0160
 feature: schema_evolution
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 5
 boundaries:

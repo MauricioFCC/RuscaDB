@@ -1,7 +1,7 @@
 ---
 id: SPEC-0175
 feature: alp_compression
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 5
 boundaries:
@@ -20,10 +20,12 @@ acceptance_criteria:
     given: un array de f64 con 2 decimales
     when: se comprime con ALP
     then: el ratio de compresion es >= 3x
+    test: test_ac_0175_01_ratio
   - id: AC-0175-02
     given: datos comprimidos
     when: se descomprimen
     then: se recuperan los valores exactos (lossless)
+    test: test_ac_0175_02_lossless
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo xtask trace

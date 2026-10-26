@@ -1,7 +1,7 @@
 ---
 id: SPEC-0153
 feature: join_reordering
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 5
 boundaries:

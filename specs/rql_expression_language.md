@@ -1,7 +1,7 @@
 ---
 id: SPEC-0161
 feature: rql_expression_language
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 6
 boundaries:
@@ -21,22 +21,27 @@ acceptance_criteria:
     given: una consulta con OR/AND/NOT combinados
     when: se ejecuta
     then: el resultado respeta la precedencia (NOT > AND > OR)
+    test: test_ac_0161_01_precedence
   - id: AC-0161-02
     given: una consulta con IN (lista de literales)
     when: se ejecuta
     then: se devuelven las filas cuyo valor pertenece a la lista
+    test: test_ac_0161_02_in_list
   - id: AC-0161-03
     given: una consulta con BETWEEN a AND b
     when: se ejecuta
     then: se devuelven las filas en rango inclusivo
+    test: test_ac_0161_03_between
   - id: AC-0161-04
     given: una consulta con CASE WHEN
     when: se ejecuta
     then: se evalua la primera rama verdadera
+    test: test_ac_0161_04_case
   - id: AC-0161-05
     given: una consulta con COALESCE y NULLIF
     when: se ejecuta
     then: se devuelve el primer no-nulo / NULL si iguales
+    test: test_ac_0161_05_coalesce
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-query --all-features

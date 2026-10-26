@@ -1,7 +1,7 @@
 ---
 id: SPEC-0173
 feature: persistent_hnsw
-status: proposed
+status: implemented
 owner: vector-team
 appetite_days: 5
 boundaries:
@@ -20,10 +20,12 @@ acceptance_criteria:
     given: un HNSW con N vectores
     when: se guarda y se recarga
     then: los vectores y la estructura se preservan
+    test: test_ac_0173_01_roundtrip
   - id: AC-0173-02
     given: un fichero HNSW corrupto
     when: se carga
     then: se devuelve error (no panic)
+    test: test_ac_0173_02_corrupt
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-vector --all-features

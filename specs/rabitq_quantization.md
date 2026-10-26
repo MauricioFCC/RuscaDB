@@ -1,7 +1,7 @@
 ---
 id: SPEC-0171
 feature: rabitq_quantization
-status: proposed
+status: implemented
 owner: vector-team
 appetite_days: 6
 boundaries:
@@ -20,10 +20,12 @@ acceptance_criteria:
     given: un vector de dimension d
     when: se cuantiza con RaBitQ
     then: el estimador de distancia es insesgado (error acotado)
+    test: test_ac_0171_01_encode
   - id: AC-0171-02
     given: una busqueda HNSW con storage RaBitQ
     when: se ejecuta con rerank exacto top-100
     then: recall@10 >= 0.90
+    test: test_ac_0171_02_recall
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-vector --all-features

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0168
 feature: segmented_wal
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -20,14 +20,17 @@ acceptance_criteria:
     given: un WAL que supera el tamano de segmento
     when: se escribe
     then: se crea un nuevo segmento y se cierra el anterior
+    test: test_ac_0168_01_rotate
   - id: AC-0168-02
     given: un checkpoint exitoso
     when: se ejecuta
     then: los segmentos anteriores al checkpoint se eliminan
+    test: test_ac_0168_02_checkpoint
   - id: AC-0168-03
     given: group commit con N transacciones concurrentes
     when: se hace sync
     then: un solo fsync cubre todas
+    test: test_ac_0168_03_group_commit
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-wal --all-features

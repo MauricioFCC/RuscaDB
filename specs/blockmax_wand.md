@@ -1,7 +1,7 @@
 ---
 id: SPEC-0177
 feature: blockmax_wand
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 6
 boundaries:
@@ -20,10 +20,12 @@ acceptance_criteria:
     given: un indice FTS con N documentos
     when: se ejecuta top-10 BM25
     then: se devuelven los 10 mejores sin scan completo
+    test: test_ac_0177_01_topk
   - id: AC-0177-02
     given: un termino raro (baja df)
     when: se ejecuta
     then: el pruning es efectivo (pocos bloques evaluados)
+    test: test_ac_0177_02_prune
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-fts --all-features

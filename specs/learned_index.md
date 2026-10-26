@@ -1,7 +1,7 @@
 ---
 id: SPEC-0174
 feature: learned_index
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 7
 boundaries:
@@ -21,10 +21,12 @@ acceptance_criteria:
     given: un dataset ordenado de N claves
     when: se construye el PGM-index
     then: la prediccion de posicion tiene error acotado (epsilon)
+    test: test_ac_0174_01_build
   - id: AC-0174-02
     given: una clave no presente
     when: se busca
     then: se devuelve None (con busqueda local en el segmento)
+    test: test_ac_0174_02_lookup
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-btree --all-features

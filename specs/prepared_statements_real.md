@@ -1,7 +1,7 @@
 ---
 id: SPEC-0166
 feature: prepared_statements_real
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 6
 boundaries:
@@ -20,14 +20,17 @@ acceptance_criteria:
     given: prepare(\"SELECT * FROM t WHERE id = $1\")
     when: execute con param 42
     then: se devuelve la fila con id=42
+    test: test_ac_0166_01_bind
   - id: AC-0166-02
     given: el mismo prepared statement ejecutado dos veces con params distintos
     when: se ejecuta
     then: los resultados difieren segun el param
+    test: test_ac_0166_02_reuse
   - id: AC-0166-03
     given: un param con comillas/SQL malicioso
     when: se ejecuta
     then: se trata como valor literal (sin inyeccion)
+    test: test_ac_0166_03_injection
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-query --all-features

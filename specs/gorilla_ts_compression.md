@@ -1,7 +1,7 @@
 ---
 id: SPEC-0178
 feature: gorilla_ts_compression
-status: proposed
+status: implemented
 owner: ts-team
 appetite_days: 5
 boundaries:
@@ -20,10 +20,12 @@ acceptance_criteria:
     given: una serie temporal con timestamps regulares
     when: se comprime con Gorilla
     then: el ratio de compresion es >= 10x
+    test: test_ac_0178_01_ratio
   - id: AC-0178-02
     given: datos comprimidos
     when: se descomprimen
     then: se recuperan los valores exactos
+    test: test_ac_0178_02_lossless
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-ts --all-features

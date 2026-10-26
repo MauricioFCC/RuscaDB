@@ -88,6 +88,26 @@ default = [
     "kms",
     "stemming",
     "ts-aggregates",
+    "rql-expr",
+    "rql-subqueries",
+    "rql-cte",
+    "rql-set-ops",
+    "rql-window-funcs",
+    "prepared-real",
+    "page-checksums",
+    "segmented-wal",
+    "mvcc-gc-real",
+    "ssi",
+    "rabitq",
+    "acorn",
+    "persistent-hnsw",
+    "learned-index",
+    "alp",
+    "fastlanes",
+    "blockmax-wand",
+    "gorilla-ts",
+    "crdt-sync",
+    "post-quantum",
     "rcu",
     "ivf-clustering",
     "prepared",
@@ -164,6 +184,46 @@ kms = []
 stemming = []
 # SPEC-0145: Continuous aggregates.
 ts-aggregates = []
+# SPEC-0161: RQL expression language.
+rql-expr = []
+# SPEC-0162: RQL subqueries.
+rql-subqueries = []
+# SPEC-0163: RQL CTE.
+rql-cte = []
+# SPEC-0164: RQL set operations.
+rql-set-ops = []
+# SPEC-0165: RQL window functions.
+rql-window-funcs = []
+# SPEC-0166: Prepared statements real.
+prepared-real = []
+# SPEC-0167: Page checksums.
+page-checksums = []
+# SPEC-0168: Segmented WAL.
+segmented-wal = []
+# SPEC-0169: MVCC GC real.
+mvcc-gc-real = []
+# SPEC-0170: SSI.
+ssi = []
+# SPEC-0171: RaBitQ quantization.
+rabitq = []
+# SPEC-0172: ACORN filtered search.
+acorn = []
+# SPEC-0173: Persistent HNSW.
+persistent-hnsw = []
+# SPEC-0174: Learned index.
+learned-index = []
+# SPEC-0175: ALP compression.
+alp = []
+# SPEC-0176: FastLanes bit-packing.
+fastlanes = []
+# SPEC-0177: BlockMax WAND.
+blockmax-wand = []
+# SPEC-0178: Gorilla TS compression.
+gorilla-ts = []
+# SPEC-0179: CRDT sync real.
+crdt-sync = []
+# SPEC-0180: Post-quantum crypto.
+post-quantum = []
 # SPEC-0146: Epoch-based reclamation (RCU).
 rcu = []
 # SPEC-0148: Sentencias preparadas.

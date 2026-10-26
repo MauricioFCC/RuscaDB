@@ -1,7 +1,7 @@
 ---
 id: SPEC-0164
 feature: rql_set_operations
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 5
 boundaries:
@@ -19,18 +19,22 @@ acceptance_criteria:
     given: dos SELECT unidos con UNION
     when: se ejecuta
     then: se devuelven filas unicas de ambos
+    test: test_ac_0164_01_union
   - id: AC-0164-02
     given: UNION ALL
     when: se ejecuta
     then: se devuelven todas las filas (con duplicados)
+    test: test_ac_0164_02_union_all
   - id: AC-0164-03
     given: INTERSECT
     when: se ejecuta
     then: se devuelven filas comunes
+    test: test_ac_0164_03_intersect
   - id: AC-0164-04
     given: EXCEPT
     when: se ejecuta
     then: se devuelven filas del primero no en el segundo
+    test: test_ac_0164_04_except
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-query --all-features

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0154
 feature: zstd_real
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 5
 boundaries:

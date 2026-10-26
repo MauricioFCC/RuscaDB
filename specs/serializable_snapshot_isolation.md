@@ -1,7 +1,7 @@
 ---
 id: SPEC-0170
 feature: serializable_snapshot_isolation
-status: proposed
+status: implemented
 owner: txn-team
 appetite_days: 8
 boundaries:
@@ -20,10 +20,12 @@ acceptance_criteria:
     given: dos transacciones concurrentes con rw-dependency ciclica
     when: ambas intentan commit
     then: una se aborta con SerializationFailure
+    test: test_ac_0170_01_cycle
   - id: AC-0170-02
     given: nivel Serializable configurado
     when: se ejecuta una transaccion de solo lectura
     then: no se aborta (read-only optimization)
+    test: test_ac_0170_02_readonly
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-txn --all-features

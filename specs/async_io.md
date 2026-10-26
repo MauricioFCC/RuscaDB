@@ -1,7 +1,7 @@
 ---
 id: SPEC-0151
 feature: async_io
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 6
 boundaries:

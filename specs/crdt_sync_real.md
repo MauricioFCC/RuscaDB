@@ -1,7 +1,7 @@
 ---
 id: SPEC-0179
 feature: crdt_sync_real
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 7
 boundaries:
@@ -20,10 +20,12 @@ acceptance_criteria:
     given: dos replicas con cambios concurrentes
     when: se mergean
     then: el resultado es determinista y convergente
+    test: test_ac_0179_01_merge
   - id: AC-0179-02
     given: un delta sync
     when: se aplica a una replica
     then: el estado converge al global
+    test: test_ac_0179_02_delta
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo xtask trace

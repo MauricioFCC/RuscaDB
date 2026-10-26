@@ -1,7 +1,7 @@
 ---
 id: SPEC-0149
 feature: materialized_views
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 6
 boundaries:

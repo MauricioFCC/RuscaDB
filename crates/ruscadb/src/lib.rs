@@ -34,6 +34,10 @@ mod row_update;
 mod table_api;
 mod ts_api;
 
+#[cfg(feature = "acorn")]
+mod acorn;
+#[cfg(feature = "alp")]
+mod alp_compression;
 #[cfg(feature = "arrow-columnar")]
 mod arrow_columnar;
 #[cfg(feature = "async-io")]
@@ -42,6 +46,8 @@ mod async_io;
 mod backup;
 #[cfg(feature = "backup-verify")]
 mod backup_verify;
+#[cfg(feature = "blockmax-wand")]
+mod blockmax_wand;
 #[cfg(feature = "branching")]
 mod branching;
 #[cfg(feature = "columnar")]
@@ -52,6 +58,10 @@ mod compression;
 mod concurrent_txn;
 #[cfg(feature = "cow-btree")]
 mod cow_btree;
+#[cfg(feature = "crdt-sync")]
+mod crdt_sync_real;
+#[cfg(feature = "fastlanes")]
+mod fastlanes;
 #[cfg(feature = "fts-advanced")]
 mod fts_advanced;
 #[cfg(feature = "fts-proximity")]
@@ -62,6 +72,8 @@ mod fts_scoring;
 mod geo;
 #[cfg(feature = "geo-proj")]
 mod geo_proj;
+#[cfg(feature = "gorilla-ts")]
+mod gorilla_ts;
 #[cfg(feature = "incremental-backup")]
 mod incremental_backup;
 #[cfg(feature = "ivf-clustering")]
@@ -74,8 +86,12 @@ mod join_reorder;
 mod kms;
 #[cfg(feature = "lance-format")]
 mod lance_format;
+#[cfg(feature = "learned-index")]
+mod learned_index;
 #[cfg(feature = "materialized-views")]
 mod materialized_view;
+#[cfg(feature = "mvcc-gc-real")]
+mod mvcc_gc_real;
 #[cfg(feature = "observability")]
 mod observability;
 #[cfg(feature = "onnx")]
@@ -84,28 +100,52 @@ mod onnx;
 mod otel;
 #[cfg(feature = "otel-real")]
 mod otel_real;
+#[cfg(feature = "page-checksums")]
+mod page_checksums;
+#[cfg(feature = "persistent-hnsw")]
+mod persistent_hnsw;
 #[cfg(feature = "pgwire")]
 mod pgwire;
 #[cfg(feature = "cost-planner")]
 mod planner_cost;
+#[cfg(feature = "post-quantum")]
+mod post_quantum;
 #[cfg(feature = "prepared")]
 mod prepared;
+#[cfg(feature = "prepared-real")]
+mod prepared_real;
 #[cfg(feature = "query-cache")]
 mod query_cache;
+#[cfg(feature = "rabitq")]
+mod rabitq;
 #[cfg(feature = "rcu")]
 mod rcu;
+#[cfg(feature = "rql-cte")]
+mod rql_cte;
+#[cfg(feature = "rql-expr")]
+mod rql_expr;
+#[cfg(feature = "rql-set-ops")]
+mod rql_set_ops;
+#[cfg(feature = "rql-subqueries")]
+mod rql_subqueries;
+#[cfg(feature = "rql-window-funcs")]
+mod rql_window_funcs;
 #[cfg(feature = "rtree-split")]
 mod rtree_split;
 #[cfg(feature = "s3-backup")]
 mod s3_backup;
 #[cfg(feature = "schema-evolution")]
 mod schema_evolution;
+#[cfg(feature = "segmented-wal")]
+mod segmented_wal;
 #[cfg(feature = "simd")]
 mod simd;
 #[cfg(feature = "spatial")]
 mod spatial;
 #[cfg(feature = "sql-std")]
 mod sql_std;
+#[cfg(feature = "ssi")]
+mod ssi;
 #[cfg(feature = "stemming")]
 mod stemming;
 #[cfg(feature = "sync")]
@@ -125,6 +165,10 @@ mod vle;
 #[cfg(feature = "zstd-real")]
 mod zstd_real;
 
+#[cfg(feature = "acorn")]
+pub use acorn::AcornSearch;
+#[cfg(feature = "alp")]
+pub use alp_compression::AlpCompressor;
 #[cfg(feature = "arrow-columnar")]
 pub use arrow_columnar::{ArrowColumnType, ArrowColumnarTable};
 #[cfg(feature = "async-io")]
@@ -133,6 +177,8 @@ pub use async_io::AsyncReader;
 pub use backup::Backup;
 #[cfg(feature = "backup-verify")]
 pub use backup_verify::BackupVerifier;
+#[cfg(feature = "blockmax-wand")]
+pub use blockmax_wand::BlockMaxWand;
 #[cfg(feature = "branching")]
 pub use branching::Branch;
 #[cfg(feature = "columnar")]
@@ -145,6 +191,10 @@ pub use compression::ZstdCompressor;
 pub use concurrent_txn::{ConcurrentTxn, ConcurrentTxnManager};
 #[cfg(feature = "cow-btree")]
 pub use cow_btree::{CowBTree, CowBTreeNode};
+#[cfg(feature = "crdt-sync")]
+pub use crdt_sync_real::CrdtSyncReal;
+#[cfg(feature = "fastlanes")]
+pub use fastlanes::FastLanes;
 #[cfg(feature = "fts-advanced")]
 pub use fts_advanced::{FuzzyMatcher, PhraseMatcher, Stemmer};
 #[cfg(feature = "fts-proximity")]
@@ -157,6 +207,8 @@ pub use geo::RTree;
 pub use geo::{Point, Rect};
 #[cfg(feature = "geo-proj")]
 pub use geo_proj::GeoPoint;
+#[cfg(feature = "gorilla-ts")]
+pub use gorilla_ts::GorillaTs;
 #[cfg(feature = "incremental-backup")]
 pub use incremental_backup::IncrementalBackup;
 #[cfg(feature = "ivf-clustering")]
@@ -169,8 +221,12 @@ pub use join_reorder::JoinReorderer;
 pub use kms::KmsProvider;
 #[cfg(feature = "lance-format")]
 pub use lance_format::LanceTable;
+#[cfg(feature = "learned-index")]
+pub use learned_index::LearnedIndex;
 #[cfg(feature = "materialized-views")]
 pub use materialized_view::MaterializedView;
+#[cfg(feature = "mvcc-gc-real")]
+pub use mvcc_gc_real::MvccGcReal;
 #[cfg(feature = "observability")]
 pub use observability::MetricsRegistry;
 #[cfg(feature = "onnx")]
@@ -179,28 +235,52 @@ pub use onnx::OnnxModel;
 pub use otel::{OtelExporter, Span};
 #[cfg(feature = "otel-real")]
 pub use otel_real::OtelRealExporter;
+#[cfg(feature = "page-checksums")]
+pub use page_checksums::PageChecksum;
+#[cfg(feature = "persistent-hnsw")]
+pub use persistent_hnsw::PersistentHnsw;
 #[cfg(feature = "pgwire")]
 pub use pgwire::PgWireServer;
 #[cfg(feature = "pgwire-real")]
 pub use pgwire::PgWireServer as PgWireRealServer;
 #[cfg(feature = "cost-planner")]
 pub use planner_cost::CostEstimator;
+#[cfg(feature = "post-quantum")]
+pub use post_quantum::MlKemStub;
 #[cfg(feature = "prepared")]
 pub use prepared::PreparedStatement;
+#[cfg(feature = "prepared-real")]
+pub use prepared_real::PreparedStmtReal;
 #[cfg(feature = "query-cache")]
 pub use query_cache::QueryCache;
+#[cfg(feature = "rabitq")]
+pub use rabitq::RabitqQuantizer;
 #[cfg(feature = "rcu")]
 pub use rcu::RcuDomain;
+#[cfg(feature = "rql-cte")]
+pub use rql_cte::RqlCte;
+#[cfg(feature = "rql-expr")]
+pub use rql_expr::RqlExprEngine;
+#[cfg(feature = "rql-set-ops")]
+pub use rql_set_ops::RqlSetOps;
+#[cfg(feature = "rql-subqueries")]
+pub use rql_subqueries::RqlSubquery;
+#[cfg(feature = "rql-window-funcs")]
+pub use rql_window_funcs::RqlWindowFuncs;
 #[cfg(feature = "rtree-split")]
 pub use rtree_split::RTreeSplit;
 #[cfg(feature = "s3-backup")]
 pub use s3_backup::S3Backup;
 #[cfg(feature = "schema-evolution")]
 pub use schema_evolution::SchemaEvolution;
+#[cfg(feature = "segmented-wal")]
+pub use segmented_wal::SegmentedWal;
 #[cfg(feature = "simd")]
 pub use simd::SimdOps;
 #[cfg(feature = "sql-std")]
 pub use sql_std::WindowFunc;
+#[cfg(feature = "ssi")]
+pub use ssi::{IsoLevel, SsiTracker};
 #[cfg(feature = "stemming")]
 pub use stemming::SnowballStemmer;
 #[cfg(feature = "sync")]

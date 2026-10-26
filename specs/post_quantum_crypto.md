@@ -1,7 +1,7 @@
 ---
 id: SPEC-0180
 feature: post_quantum_crypto
-status: proposed
+status: implemented
 owner: security-team
 appetite_days: 6
 boundaries:
@@ -19,10 +19,12 @@ acceptance_criteria:
     given: dos partes
     when: ejecutan ML-KEM encapsulate/decapsulate
     then: comparten el mismo secreto compartido
+    test: test_ac_0180_01_shared_secret
   - id: AC-0180-02
     given: un ciphertext alterado
     when: se decapsula
     then: se devuelve error (no secreto incorrecto silencioso)
+    test: test_ac_0180_02_tamper
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-crypto --all-features

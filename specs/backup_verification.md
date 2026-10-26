@@ -1,7 +1,7 @@
 ---
 id: SPEC-0157
 feature: backup_verification
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 4
 boundaries:

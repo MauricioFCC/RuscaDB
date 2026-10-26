@@ -1,7 +1,7 @@
 ---
 id: SPEC-0172
 feature: acorn_filtered_search
-status: proposed
+status: implemented
 owner: vector-team
 appetite_days: 6
 boundaries:
@@ -19,10 +19,12 @@ acceptance_criteria:
     given: una busqueda vectorial con filtro selectivo (1%)
     when: se ejecuta con ACORN
     then: recall@10 >= 0.95
+    test: test_ac_0172_01_recall
   - id: AC-0172-02
     given: un filtro no selectivo (50%)
     when: se ejecuta
     then: se usa la ruta pre-filter (iFVS) por costo
+    test: test_ac_0172_02_prefilter
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-fvs --all-features

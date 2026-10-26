@@ -1,7 +1,7 @@
 ---
 id: SPEC-0167
 feature: page_checksums
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 5
 boundaries:
@@ -20,14 +20,17 @@ acceptance_criteria:
     given: una pagina con checksum valido
     when: se lee
     then: se devuelve sin error
+    test: test_ac_0167_01_valid
   - id: AC-0167-02
     given: una pagina con checksum corrupto
     when: se lee
     then: se devuelve RuscaError::CorruptPage
+    test: test_ac_0167_02_corrupt
   - id: AC-0167-03
     given: una escritura parcial (torn write)
     when: se detecta
     then: se repara desde WAL o se reporta error
+    test: test_ac_0167_03_torn
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-storage --all-features

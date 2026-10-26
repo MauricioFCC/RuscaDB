@@ -1,7 +1,7 @@
 ---
 id: SPEC-0159
 feature: query_result_cache
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 4
 boundaries:

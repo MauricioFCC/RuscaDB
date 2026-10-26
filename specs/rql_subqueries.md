@@ -1,7 +1,7 @@
 ---
 id: SPEC-0162
 feature: rql_subqueries
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 7
 boundaries:
@@ -20,18 +20,22 @@ acceptance_criteria:
     given: SELECT con subconsulta escalar
     when: se ejecuta
     then: se devuelve el valor calculado por la subconsulta
+    test: test_ac_0162_01_scalar
   - id: AC-0162-02
     given: WHERE col IN (subquery)
     when: se ejecuta
     then: se filtran filas cuyo valor esta en el resultado
+    test: test_ac_0162_02_in
   - id: AC-0162-03
     given: WHERE EXISTS (subquery)
     when: se ejecuta
     then: se devuelven las filas donde la subconsulta es no-vacia
+    test: test_ac_0162_03_exists
   - id: AC-0162-04
     given: FROM (subquery) AS alias
     when: se ejecuta
     then: se consulta la tabla derivada
+    test: test_ac_0162_04_derived
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-query --all-features

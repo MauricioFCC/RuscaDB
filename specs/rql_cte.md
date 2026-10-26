@@ -1,7 +1,7 @@
 ---
 id: SPEC-0163
 feature: rql_cte
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 7
 boundaries:
@@ -19,10 +19,12 @@ acceptance_criteria:
     given: una consulta con WITH ... AS (subquery)
     when: se ejecuta
     then: el CTE se materializa y se consulta
+    test: test_ac_0163_01_cte
   - id: AC-0163-02
     given: una consulta con WITH RECURSIVE
     when: se ejecuta sobre una jerarquia
     then: se devuelven todos los nodos alcanzables
+    test: test_ac_0163_02_recursive
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-query --all-features

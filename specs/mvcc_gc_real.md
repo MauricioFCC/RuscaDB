@@ -1,7 +1,7 @@
 ---
 id: SPEC-0169
 feature: mvcc_gc_real
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -21,14 +21,17 @@ acceptance_criteria:
     given: un escritor confirma y el lector sale del epoch
     when: se ejecuta GC
     then: las versiones obsoletas se eliminan
+    test: test_ac_0169_01_gc
   - id: AC-0169-02
     given: un lector activo en epoch anterior
     when: el escritor intenta reclaim
     then: las paginas no se liberan hasta que el lector salga
+    test: test_ac_0169_02_reader_blocks
   - id: AC-0169-03
     given: metricas habilitadas
     when: se consulta
     then: se reportan versiones vivas y muertas
+    test: test_ac_0169_03_metrics
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-txn --all-features

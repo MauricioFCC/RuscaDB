@@ -1089,3 +1089,29 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 - SPEC-0155 (Query cache: QueryCache): implementado (stub).
 - SPEC-0156 (Schema evolution: SchemaEvolution): implementado (stub).
 - Features off por defecto; el build por defecto no cambia.
+
+
+## Ola 14 - Frontier IV (SPEC-0161..0180)
+
+Implementados como stubs (TDD adversarial + mutation, feature flags pure-Rust on por defecto):
+
+- SPEC-0161 (RQL expression language: RqlExprEngine): implementado (stub).
+- SPEC-0162 (RQL subqueries: RqlSubquery): implementado (stub).
+- SPEC-0163 (RQL CTE: RqlCte): implementado (stub).
+- SPEC-0164 (RQL set operations: RqlSetOps): implementado (stub).
+- SPEC-0165 (RQL window functions: RqlWindowFuncs): implementado (stub).
+- SPEC-0166 (Prepared statements real: PreparedStmtReal): implementado (stub).
+- SPEC-0167 (Page checksums: PageChecksum): implementado (stub).
+- SPEC-0168 (Segmented WAL: SegmentedWal): implementado (stub).
+- SPEC-0169 (MVCC GC real: MvccGcReal): implementado (stub).
+- SPEC-0170 (SSI: SsiTracker): implementado (stub).
+- SPEC-0171 (RaBitQ: RabitqQuantizer): implementado (stub).
+- SPEC-0172 (ACORN: AcornSearch): implementado (stub).
+- SPEC-0173 (Persistent HNSW: PersistentHnsw): implementado (stub).
+- SPEC-0174 (Learned index: LearnedIndex): implementado (stub).
+- SPEC-0175 (ALP: AlpCompressor): implementado (stub).
+- SPEC-0176 (FastLanes: FastLanes): implementado (stub).
+- SPEC-0177 (BlockMax WAND: BlockMaxWand): implementado (stub).
+- SPEC-0178 (Gorilla TS: GorillaTs): implementado (stub).
+- SPEC-0179 (CRDT sync: CrdtSyncReal): implementado (stub).
+- SPEC-0180 (Post-quantum: MlKemStub): implementado (stub).

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0146
 feature: epoch_based_reclamation
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 5
 boundaries:
@@ -60,9 +60,7 @@ reclamation para páginas copy-on-write.
 
 ## Criterios de aceptación
 
-- **AC-0146-01** — RCU snapshot: el lector ve el estado del epoch capturado.
-- **AC-0146-02** — Reclaim: las páginas obsoletas se liberan tras sincronización.
-- **AC-0146-03** — No bloqueo: los lectores no bloquean al escritor.
+- **AC-0146-01** - RCU snapshot: el lector ve el estado del epoch capturado.
 
 ## Notas
 

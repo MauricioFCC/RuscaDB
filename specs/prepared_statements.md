@@ -1,7 +1,7 @@
 ---
 id: SPEC-0148
 feature: prepared_statements
-status: proposed
+status: implemented
 owner: query-team
 appetite_days: 4
 boundaries:

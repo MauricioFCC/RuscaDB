@@ -1,7 +1,7 @@
 ---
 id: SPEC-0176
 feature: fastlanes_bitpacking
-status: proposed
+status: implemented
 owner: storage-team
 appetite_days: 5
 boundaries:
@@ -19,10 +19,12 @@ acceptance_criteria:
     given: un array de u32 con valores < 2^k
     when: se bit-packea
     then: el tamano se reduce a k bits por valor
+    test: test_ac_0176_01_pack
   - id: AC-0176-02
     given: datos bit-packed
     when: se unpackean
     then: se recuperan los valores originales
+    test: test_ac_0176_02_unpack
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo xtask trace
