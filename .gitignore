@@ -99,3 +99,7 @@ Desktop.ini
 # Politica ADR_POLICY en .opencode/config/project_config.yaml: no se comitean
 # al remoto, pero se preservan en el respaldo del Drive (extra_include).
 docs/adr/
+
+# Mutation testing artifacts (cargo-mutants)
+mut*.out/
+
