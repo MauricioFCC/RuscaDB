@@ -381,6 +381,25 @@ impl Database {
         }
         Ok(lines)
     }
+
+    /// Ejecuta una consulta en un snapshot historico (time travel, SPEC-0129).
+    /// Args:
+    ///     query: Consulta RQL.
+    ///     snapshot_tx_id: TxId (LSN) del snapshot; 0 = snapshot actual.
+    /// Returns:
+    ///     Filas visibles en ese snapshot.
+    pub fn execute_at_lsn(
+        &mut self,
+        query: &str,
+        snapshot_tx_id: u64,
+    ) -> Result<Vec<crate::Row>, RuscaError> {
+        let snapshot = if snapshot_tx_id == 0 {
+            self.snapshot()
+        } else {
+            ruscadb_txn::Snapshot::at(snapshot_tx_id)
+        };
+        self.execute_at(query, &snapshot)
+    }
 }
 
 /// Renderiza una línea de plan (`FullScan(t)`, `IndexScan(t.col)`, ...).

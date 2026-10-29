@@ -60,6 +60,8 @@ pub struct RuscadbHandle {
     /// Marca que acredita que el puntero apunta a un handle construido por
     /// [`ruscadb_open`] (defensa ante punteros corruptos).
     magic: u64,
+    /// Ruta del archivo de datos (usada por backup y diagnostico).
+    data_path: PathBuf,
     /// Motor RuscaDB protegido para acceso concurrente desde hilos C.
     database: Mutex<Database>,
 }
@@ -103,6 +105,8 @@ thread_local! {
     static LAST_ERROR: RefCell<CString> = RefCell::new(CString::default());
     /// Último id insertado por `ruscadb_insert_record` (contexto para `ruscadb_last_inserted_id`).
     static LAST_INSERTED_ID: RefCell<CString> = RefCell::new(CString::default());
+    /// Filas afectadas por el ultimo update/delete.
+    static LAST_AFFECTED: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
 }
 
 /// Guarda un mensaje sanitizado (sin NUL interno) como error del hilo actual.
@@ -205,6 +209,7 @@ pub extern "C" fn ruscadb_open(
             Ok(database) => {
                 let handle = Box::new(RuscadbHandle {
                     magic: HANDLE_MAGIC,
+                    data_path: PathBuf::from(path_text.to_string_lossy().into_owned()),
                     database: Mutex::new(database),
                 });
                 let raw = Box::into_raw(handle);
@@ -869,6 +874,563 @@ pub extern "C" fn ruscadb_last_inserted_id(out_buf: *mut c_char, buf_len: usize)
     })
 }
 
+/// Ejecuta una consulta en un snapshot historico (time travel, SPEC-0129).
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_execute_at(
+    handle: *mut RuscadbHandle,
+    sql: *const c_char,
+    snapshot_tx_id: u64,
+    out_buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if sql.is_null() {
+            set_last_error("ruscadb_execute_at: sql nulo");
+            return RC_NULL_POINTER;
+        }
+        let query = unsafe { CStr::from_ptr(sql) }
+            .to_string_lossy()
+            .into_owned();
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            match db.execute_at_lsn(&query, snapshot_tx_id) {
+                Ok(rows) => {
+                    let json = serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string());
+                    write_string_out(&json, out_buf, buf_len)
+                }
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_execute_at: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Abre (o crea) una base cifrada con passphrase (Argon2id).
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_open_encrypted(
+    data_path: *const c_char,
+    pool_capacity: u32,
+    passphrase: *const c_char,
+    out_handle: *mut *mut RuscadbHandle,
+) -> c_int {
+    guard_ffi(|| {
+        if data_path.is_null() || passphrase.is_null() || out_handle.is_null() {
+            set_last_error("ruscadb_open_encrypted: puntero nulo");
+            return RC_NULL_POINTER;
+        }
+        let path_text = unsafe { CStr::from_ptr(data_path) };
+        let data_path_buf = PathBuf::from(path_text.to_string_lossy().into_owned());
+        let pass_text = unsafe { CStr::from_ptr(passphrase) }
+            .to_string_lossy()
+            .into_owned();
+        let salt = b"swarmind-ruscadb-salt";
+        let encryption = match ruscadb::EncryptionConfig::from_passphrase(&pass_text, salt) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                set_last_error(&format!("ruscadb_open_encrypted: {e}"));
+                return RC_DOMAIN_ERROR;
+            }
+        };
+        let mut config = DbConfig::new(data_path_buf.clone(), pool_capacity as usize);
+        config.encryption = Some(encryption);
+        match Database::open(config) {
+            Ok(database) => {
+                let handle = Box::new(RuscadbHandle {
+                    magic: HANDLE_MAGIC,
+                    data_path: data_path_buf.clone(),
+                    database: Mutex::new(database),
+                });
+                let raw = Box::into_raw(handle);
+                register(raw as usize);
+                unsafe { core::ptr::write(out_handle, raw) };
+                RC_OK
+            }
+            Err(error) => {
+                set_last_error(&format!("ruscadb_open_encrypted: {error}"));
+                RC_DOMAIN_ERROR
+            }
+        }
+    })
+}
+
+fn write_string_out(text: &str, out_buf: *mut c_char, buf_len: usize) -> c_int {
+    if out_buf.is_null() {
+        set_last_error("out_buf nulo");
+        return RC_NULL_POINTER;
+    }
+    let bytes = text.as_bytes();
+    if buf_len < bytes.len() + 1 {
+        set_last_error(&format!(
+            "buffer insuficiente: se requieren {} bytes",
+            bytes.len() + 1
+        ));
+        return RC_BUFFER_TOO_SMALL;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_buf as *mut u8, bytes.len());
+        *out_buf.add(bytes.len()) = 0;
+    }
+    RC_OK
+}
+
+/// Crea un indice secundario sobre table.column (SPEC-0104).
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_create_index(
+    handle: *mut RuscadbHandle,
+    table: *const c_char,
+    column: *const c_char,
+) -> c_int {
+    guard_ffi(|| {
+        if table.is_null() || column.is_null() {
+            set_last_error("ruscadb_create_index: puntero nulo");
+            return RC_NULL_POINTER;
+        }
+        let table_name = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .into_owned();
+        let column_name = unsafe { CStr::from_ptr(column) }
+            .to_string_lossy()
+            .into_owned();
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            match db.create_index(&table_name, &column_name) {
+                Ok(()) => RC_OK,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_create_index: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Actualiza columnas de una fila por RecordId (ULID).
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_update_record(
+    handle: *mut RuscadbHandle,
+    table: *const c_char,
+    rid: *const c_char,
+    scalars_json: *const c_char,
+) -> c_int {
+    guard_ffi(|| {
+        if table.is_null() || rid.is_null() || scalars_json.is_null() {
+            set_last_error("ruscadb_update_record: puntero nulo");
+            return RC_NULL_POINTER;
+        }
+        let table_name = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .into_owned();
+        let rid_text = unsafe { CStr::from_ptr(rid) }
+            .to_string_lossy()
+            .into_owned();
+        let scalars_text = unsafe { CStr::from_ptr(scalars_json) }
+            .to_string_lossy()
+            .into_owned();
+        resolve(with_handle(handle, |reference| {
+            let record_id = match ruscadb::RecordId::from_string(&rid_text) {
+                Ok(id) => id,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_update_record: id invalido: {e}"));
+                    return RC_DOMAIN_ERROR;
+                }
+            };
+            let parsed: serde_json::Value = match serde_json::from_str(&scalars_text) {
+                Ok(v) => v,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_update_record: json invalido: {e}"));
+                    return RC_DOMAIN_ERROR;
+                }
+            };
+            let Some(obj) = parsed.as_object() else {
+                set_last_error("ruscadb_update_record: scalars_json debe ser objeto");
+                return RC_DOMAIN_ERROR;
+            };
+            let mut scalars = ruscadb::ScalarMap::default();
+            for (key, value) in obj {
+                match parse_scalar(value) {
+                    Some(scalar) => {
+                        scalars.insert(key.clone(), scalar);
+                    }
+                    None => {
+                        set_last_error("ruscadb_update_record: escalar invalido");
+                        return RC_DOMAIN_ERROR;
+                    }
+                }
+            }
+            let mut db = lock_handle(reference);
+            match db.update(&table_name, &record_id, scalars) {
+                Ok(changed) => {
+                    LAST_AFFECTED.with(|cell| cell.set(if changed { 1 } else { 0 }));
+                    RC_OK
+                }
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_update_record: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Borra logicamente una fila por RecordId.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_delete_record(
+    handle: *mut RuscadbHandle,
+    table: *const c_char,
+    rid: *const c_char,
+) -> c_int {
+    guard_ffi(|| {
+        if table.is_null() || rid.is_null() {
+            set_last_error("ruscadb_delete_record: puntero nulo");
+            return RC_NULL_POINTER;
+        }
+        let table_name = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .into_owned();
+        let rid_text = unsafe { CStr::from_ptr(rid) }
+            .to_string_lossy()
+            .into_owned();
+        resolve(with_handle(handle, |reference| {
+            let record_id = match ruscadb::RecordId::from_string(&rid_text) {
+                Ok(id) => id,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_delete_record: id invalido: {e}"));
+                    return RC_DOMAIN_ERROR;
+                }
+            };
+            let mut db = lock_handle(reference);
+            match db.delete(&table_name, &record_id) {
+                Ok(changed) => {
+                    LAST_AFFECTED.with(|cell| cell.set(if changed { 1 } else { 0 }));
+                    RC_OK
+                }
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_delete_record: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Devuelve el numero de filas afectadas por el ultimo update/delete.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_last_affected() -> i64 {
+    LAST_AFFECTED.with(std::cell::Cell::get)
+}
+
+/// Serializa un registro completo a JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_get_record(
+    handle: *mut RuscadbHandle,
+    table: *const c_char,
+    rid: *const c_char,
+    out_buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if table.is_null() || rid.is_null() {
+            set_last_error("ruscadb_get_record: puntero nulo");
+            return RC_NULL_POINTER;
+        }
+        let table_name = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .into_owned();
+        let rid_text = unsafe { CStr::from_ptr(rid) }
+            .to_string_lossy()
+            .into_owned();
+        resolve(with_handle(handle, |reference| {
+            let record_id = match ruscadb::RecordId::from_string(&rid_text) {
+                Ok(id) => id,
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_get_record: id invalido: {e}"));
+                    return RC_DOMAIN_ERROR;
+                }
+            };
+            let mut db = lock_handle(reference);
+            match db.get_record(&table_name, &record_id) {
+                Ok(Some(record)) => {
+                    let json = serde_json::to_string(&record).unwrap_or_default();
+                    write_string_out(&json, out_buf, buf_len)
+                }
+                Ok(None) => write_string_out("", out_buf, buf_len),
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_get_record: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Almacena un blob content-addressed y devuelve su hash.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_put_blob(
+    handle: *mut RuscadbHandle,
+    data: *const u8,
+    data_len: usize,
+    out_buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if data.is_null() || data_len == 0 {
+            set_last_error("ruscadb_put_blob: datos vacios o nulos");
+            return RC_NULL_POINTER;
+        }
+        let bytes = unsafe { core::slice::from_raw_parts(data, data_len) };
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            match db.put_blob(bytes) {
+                Ok(hash) => write_string_out(&hash.0, out_buf, buf_len),
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_put_blob: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Devuelve la longitud en bytes del blob.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_blob_len(handle: *mut RuscadbHandle, hash: *const c_char) -> usize {
+    guard_ffi_usize(|| {
+        if hash.is_null() {
+            set_last_error("ruscadb_blob_len: puntero nulo");
+            return 0;
+        }
+        let hash_text = unsafe { CStr::from_ptr(hash) }
+            .to_string_lossy()
+            .into_owned();
+        with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            db.get_blob(&ruscadb::BlobHash(hash_text.clone()))
+                .map(|bytes| bytes.len())
+                .unwrap_or_else(|e| {
+                    set_last_error(&format!("ruscadb_blob_len: {e}"));
+                    0
+                })
+        })
+        .unwrap_or(0)
+    })
+}
+
+/// Copia el contenido binario del blob a out_buf.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_get_blob(
+    handle: *mut RuscadbHandle,
+    hash: *const c_char,
+    out_buf: *mut u8,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if hash.is_null() || out_buf.is_null() {
+            set_last_error("ruscadb_get_blob: puntero nulo");
+            return RC_NULL_POINTER;
+        }
+        let hash_text = unsafe { CStr::from_ptr(hash) }
+            .to_string_lossy()
+            .into_owned();
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            match db.get_blob(&ruscadb::BlobHash(hash_text)) {
+                Ok(bytes) => {
+                    if buf_len < bytes.len() {
+                        set_last_error(&format!(
+                            "ruscadb_get_blob: buffer insuficiente ({} bytes)",
+                            bytes.len()
+                        ));
+                        return RC_BUFFER_TOO_SMALL;
+                    }
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_buf, bytes.len());
+                    }
+                    RC_OK
+                }
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_get_blob: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Purga blobs sin referencias; deja el conteo en last_affected.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_gc_blobs(handle: *mut RuscadbHandle) -> c_int {
+    guard_ffi(|| {
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            match db.gc_blobs() {
+                Ok(count) => {
+                    LAST_AFFECTED.with(|cell| cell.set(count as i64));
+                    RC_OK
+                }
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_gc_blobs: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Devuelve el LSN del ultimo commit.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_last_lsn(handle: *mut RuscadbHandle) -> u64 {
+    catch_unwind(AssertUnwindSafe(|| {
+        with_handle(handle, |reference| {
+            let db = lock_handle(reference);
+            db.last_lsn()
+        })
+        .unwrap_or(0)
+    }))
+    .unwrap_or(0)
+}
+
+/// Ejecuta integrity_check y devuelve JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_integrity_check(
+    handle: *mut RuscadbHandle,
+    out_buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            match db.integrity_check() {
+                Ok(report) => {
+                    let json = serde_json::json!({
+                        "wal_ok": report.wal_ok,
+                        "heap_ok": report.heap_ok,
+                        "vector_ok": report.vector_ok,
+                        "details": report.details,
+                    })
+                    .to_string();
+                    write_string_out(&json, out_buf, buf_len)
+                }
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_integrity_check: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Backup online de la base.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_backup(handle: *mut RuscadbHandle, dest: *const c_char) -> c_int {
+    guard_ffi(|| {
+        if dest.is_null() {
+            set_last_error("ruscadb_backup: dest nulo");
+            return RC_NULL_POINTER;
+        }
+        let dest_text = unsafe { CStr::from_ptr(dest) }
+            .to_string_lossy()
+            .into_owned();
+        resolve(with_handle(handle, |reference| {
+            let source = reference
+                .data_path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            let backup = ruscadb::Backup::new(source);
+            match backup.snapshot(std::path::Path::new(&dest_text)) {
+                Ok(count) => {
+                    LAST_AFFECTED.with(|cell| cell.set(count as i64));
+                    RC_OK
+                }
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_backup: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Devuelve el plan de ejecucion de una consulta.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_explain(
+    handle: *mut RuscadbHandle,
+    sql: *const c_char,
+    out_buf: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if sql.is_null() {
+            set_last_error("ruscadb_explain: sql nulo");
+            return RC_NULL_POINTER;
+        }
+        let query = unsafe { CStr::from_ptr(sql) }
+            .to_string_lossy()
+            .into_owned();
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            match db.explain(&query) {
+                Ok(lines) => {
+                    let json = serde_json::to_string(&lines).unwrap_or_else(|_| "[]".to_string());
+                    write_string_out(&json, out_buf, buf_len)
+                }
+                Err(e) => {
+                    set_last_error(&format!("ruscadb_explain: {e}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Abre una base con opciones extendidas: blob store opcional y solo lectura.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_open_opts(
+    data_path: *const c_char,
+    pool_capacity: u32,
+    blob_path: *const c_char,
+    readonly: c_int,
+    out_handle: *mut *mut RuscadbHandle,
+) -> c_int {
+    guard_ffi(|| {
+        if data_path.is_null() || out_handle.is_null() {
+            set_last_error("ruscadb_open_opts: puntero nulo (data_path/out_handle)");
+            return RC_NULL_POINTER;
+        }
+        let path_text = unsafe { CStr::from_ptr(data_path) };
+        let data_path_buf = PathBuf::from(path_text.to_string_lossy().into_owned());
+        let mut config = DbConfig::new(data_path_buf.clone(), pool_capacity as usize);
+        if !blob_path.is_null() {
+            let blob_text = unsafe { CStr::from_ptr(blob_path) };
+            config.blob_path = Some(PathBuf::from(blob_text.to_string_lossy().into_owned()));
+        }
+        let opened = if readonly != 0 {
+            Database::open_readonly(config)
+        } else {
+            Database::open(config)
+        };
+        match opened {
+            Ok(database) => {
+                let handle = Box::new(RuscadbHandle {
+                    magic: HANDLE_MAGIC,
+                    data_path: data_path_buf.clone(),
+                    database: Mutex::new(database),
+                });
+                let raw = Box::into_raw(handle);
+                register(raw as usize);
+                unsafe { core::ptr::write(out_handle, raw) };
+                RC_OK
+            }
+            Err(error) => {
+                set_last_error(&format!("ruscadb_open_opts: {error}"));
+                RC_DOMAIN_ERROR
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1264,6 +1826,7 @@ mod tests {
         let database = Database::open(DbConfig::new(&path, 4)).expect("open");
         let mut fake = Box::new(RuscadbHandle {
             magic: 0,
+            data_path: path.clone(),
             database: Mutex::new(database),
         });
         let raw: *mut RuscadbHandle = &mut *fake;

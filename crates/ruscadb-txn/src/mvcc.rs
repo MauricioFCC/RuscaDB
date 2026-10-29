@@ -55,6 +55,14 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// Crea un snapshot en una transaccion especifica (time travel).
+    pub fn at(tx_id: TxId) -> Self {
+        Self {
+            tx_id,
+            in_flight: BTreeSet::new(),
+        }
+    }
+
     /// Regla de visibilidad *snapshot isolation*.
     ///
     /// Una versión `v` es visible si:
