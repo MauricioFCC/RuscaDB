@@ -2,6 +2,7 @@
 id: SPEC-0161
 feature: rql_expression_language
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 6
 boundaries:

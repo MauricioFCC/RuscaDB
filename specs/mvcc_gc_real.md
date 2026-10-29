@@ -2,6 +2,7 @@
 id: SPEC-0169
 feature: mvcc_gc_real
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 6
 boundaries:

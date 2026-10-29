@@ -2,6 +2,7 @@
 id: SPEC-0178
 feature: gorilla_ts_compression
 status: implemented
+maturity: real
 owner: ts-team
 appetite_days: 5
 boundaries:

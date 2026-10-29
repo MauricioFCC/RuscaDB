@@ -2,6 +2,7 @@
 id: SPEC-0171
 feature: rabitq_quantization
 status: implemented
+maturity: real
 owner: vector-team
 appetite_days: 6
 boundaries:

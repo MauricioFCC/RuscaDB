@@ -2,6 +2,7 @@
 id: SPEC-0176
 feature: fastlanes_bitpacking
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

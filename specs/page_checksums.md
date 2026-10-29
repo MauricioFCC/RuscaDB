@@ -2,6 +2,7 @@
 id: SPEC-0167
 feature: page_checksums
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

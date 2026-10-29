@@ -2,6 +2,7 @@
 id: SPEC-0168
 feature: segmented_wal
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 6
 boundaries:

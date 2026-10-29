@@ -2,6 +2,7 @@
 id: SPEC-0175
 feature: alp_compression
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

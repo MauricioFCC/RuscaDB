@@ -2,6 +2,7 @@
 id: SPEC-0165
 feature: rql_window_functions
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 8
 boundaries:

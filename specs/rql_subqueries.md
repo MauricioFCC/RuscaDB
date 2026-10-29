@@ -2,6 +2,7 @@
 id: SPEC-0162
 feature: rql_subqueries
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 7
 boundaries:

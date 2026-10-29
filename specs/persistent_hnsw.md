@@ -2,6 +2,7 @@
 id: SPEC-0173
 feature: persistent_hnsw
 status: implemented
+maturity: stub
 owner: vector-team
 appetite_days: 5
 boundaries:

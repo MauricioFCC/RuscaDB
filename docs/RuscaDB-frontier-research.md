@@ -138,7 +138,26 @@
 - SPEC-0128: Checkpoint a S3 (backup/restore)
 - SPEC-0129: Time-travel (read as of tx_id)
 
-## 5. Referencias
+## 5. Referencias (canon 2026)
+
+- arXiv:2405.12497 — RaBitQ (Gao, Long), SIGMOD 2024.
+- arXiv:2403.04871 — ACORN (Patel et al.), SIGMOD 2024.
+- arXiv:1712.01208 — Learned Indexes (Kraska et al.), SIGMOD 2018.
+- RFC 3720 — CRC-32C (iSCSI), vector de verificacion `0xE3069283`.
+- Shapiro et al., Conflict-free Replicated Data Types, SSS 2011.
+- Cahill, Rohm, Fekete, Serializable Isolation for Snapshot Databases, SIGMOD 2009.
+- Afroozeh et al., ALP, SIGMOD 2024; Afroozeh & Boncz, FastLanes, PVLDB 2023; Pelkonen et al., Gorilla, VLDB 2015.
+
+## 6. Ola 14 — implementaciones reales (2026-10-28)
+
+Ocho modulos pasaron de stub a implementacion funcional con evidencia:
+PageChecksum (CRC-32C), SsiTracker (grafo rw + DFS), RabitqQuantizer
+(1-bit/dim + estimador corregido), LearnedIndex (PGM-greedy), AlpCompressor
+(ALP + excepciones), FastLanes (bit-packing), GorillaTs (XOR), CrdtSyncReal
+(LWW + reloj vectorial). Detalle y madurez en `docs/RuscaDB-gap-register.md`.
+
+Once stubs restantes y un placeholder (ML-KEM, feature off por defecto) se
+marcan con `maturity: stub`/`placeholder` en sus specs.
 
 - redb design doc: https://github.com/cberner/redb/blob/master/docs/design.md
 - Lance format: https://lance.org/

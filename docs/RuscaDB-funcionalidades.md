@@ -2,7 +2,7 @@
 
 > **Fuente de verdad**: repositorio `RuscaDB` (HEAD `16a01c0`+).  
 > **Licencia**: Apache-2.0. **MSRV**: Rust 1.89. **Edición**: 2024.  
-> **Estado**: 0.1.0, en desarrollo activo. 477 AC trazados, gates T1 verdes.
+> **Estado**: 0.1.0, en desarrollo activo. 568 AC trazados, gates T1 verdes. Madurez por modulo: ver `docs/RuscaDB-gap-register.md`.
 
 RuscaDB es una **base de datos embebida, multi-modelo y multimodal** escrita en
 Rust. Corre **en proceso** (sin servidor, sin red, sin daemon) y almacena datos

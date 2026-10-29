@@ -2,6 +2,7 @@
 id: SPEC-0163
 feature: rql_cte
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 7
 boundaries:

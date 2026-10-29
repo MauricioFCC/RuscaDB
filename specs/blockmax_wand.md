@@ -2,6 +2,7 @@
 id: SPEC-0177
 feature: blockmax_wand
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 6
 boundaries:

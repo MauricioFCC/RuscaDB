@@ -1,7 +1,8 @@
 ---
 id: SPEC-0180
 feature: post_quantum_crypto
-status: implemented
+status: proposed
+maturity: placeholder
 owner: security-team
 appetite_days: 6
 boundaries:

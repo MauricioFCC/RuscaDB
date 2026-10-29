@@ -2,6 +2,7 @@
 id: SPEC-0179
 feature: crdt_sync_real
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 7
 boundaries:

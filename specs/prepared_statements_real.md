@@ -2,6 +2,7 @@
 id: SPEC-0166
 feature: prepared_statements_real
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 6
 boundaries:

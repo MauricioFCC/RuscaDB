@@ -2,6 +2,7 @@
 id: SPEC-0164
 feature: rql_set_operations
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 5
 boundaries:

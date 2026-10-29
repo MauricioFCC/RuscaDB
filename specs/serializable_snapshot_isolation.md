@@ -2,6 +2,7 @@
 id: SPEC-0170
 feature: serializable_snapshot_isolation
 status: implemented
+maturity: real
 owner: txn-team
 appetite_days: 8
 boundaries:

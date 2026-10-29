@@ -2,6 +2,7 @@
 id: SPEC-0174
 feature: learned_index
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 7
 boundaries:

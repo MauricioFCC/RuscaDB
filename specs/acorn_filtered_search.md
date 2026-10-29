@@ -2,6 +2,7 @@
 id: SPEC-0172
 feature: acorn_filtered_search
 status: implemented
+maturity: stub
 owner: vector-team
 appetite_days: 6
 boundaries:
