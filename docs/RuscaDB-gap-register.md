@@ -134,12 +134,37 @@ incorrecta, serializacion determinista). El gate T2/T3
 (`cargo mutants --in-diff` / `--workspace`) sigue siendo el juez final: el
 rebuild por mutante (~85 s) excede el presupuesto de una sesion interactiva.
 
-## 7. Siguiente paso recomendado
+## 7. Gaps residuales (upstream o politica no trivial)
 
-Completar el cableado pendiente moviendo los modulos a su crate dueno, y
-ejecutar el gate de mutacion completo en nightly (objetivo >= 85%).
+El cableado esta completo. Lo que queda abierto no es codigo pendiente de
+escribir, sino **cambios upstream** o **politicas que requieren datos reales**:
 
-## 8. Verificacion de gates (2026-10-29)
+- **RaBitQ / IVF-PQ por C-ABI**: el cuantizador es real y esta cableado en la
+  fachada, pero el FFI solo expone 29 simbolos y ninguno de cuantizacion.
+  Desbloqueo: `ruscadb_quantize` + `ruscadb_search_bq` (oversample + rescore).
+- **Columnas de gobernanza** (`derived_from`, `session_id`,
+  `write_gate_verdict`): el esquema fijo las mantiene en metadata sin indice;
+  requieren migracion/`ALTER TABLE` expuesto en el ABI.
+- **Contratos de dependencia declarados**: hoy se detectan ciclos y pureza; una
+  allow-list por modulo (`tach` o equivalente) evitaria aristas nuevas.
+- **Eviccion por calor (STM/MTM/LPM)**: falta segmentar por calor y decidir
+  promocion/eviccion; requiere datos de uso.
+- **Umbral aprendido por prompt (vCache)**: solo hay umbral global; falta el
+  bucle de feedback.
+- **Reconciliacion programada (SSGM)**: falta job periodico que revalide
+  entradas antiguas contra memoria nueva.
+
+Detalle, fuentes y plan de desbloqueo: `docs/research/frontier-2026-10-29.md`
+(referencia cruzada al analisis del consumidor en
+`SWARMIND/docs/research/frontier-2026-10-29.md`).
+
+## 8. Siguiente paso recomendado
+
+Ejecutar el gate de mutacion completo en nightly (objetivo >= 85%) y, cuando el
+consumidor lo requiera, exponer la cuantizacion en el ABI (primer gap upstream
+de la lista).
+
+## 9. Verificacion de gates (2026-10-29)
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
