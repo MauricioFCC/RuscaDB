@@ -22,8 +22,8 @@
 | Crates del workspace | 23 |
 | Specs SDD (`specs/*.md`) | 176 (175 `implemented`, 1 `proposed`) |
 | AC trazados (`cargo xtask trace`) | 568 |
-| Tests (archivos `.rs` en tests/) | 143 |
-| LOC Rust (aprox.) | 61 000 |
+| Tests (archivos `.rs` en tests/) | 148 |
+| LOC Rust (aprox.) | 66 957 |
 | Docs en `docs/` | 14 archivos (+1 ADR local) |
 
 ## 2. Madurez por spec (Ola 14, SPEC-0161..0180)

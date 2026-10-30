@@ -10,7 +10,7 @@ boundaries:
   files: [crates/ruscadb/src/s3_backup.rs]
   out_of_scope: [AWS SDK real, autenticacion IAM, multipart upload]
 fr:
-  - { id: FR-0128-01, desc: "feature flag `s3-backup` (off por defecto) habilita backup S3" }
+  - { id: FR-0128-01, desc: "feature flag `s3-backup` (on por defecto; pure-Rust) habilita backup S3" }
   - { id: FR-0128-02, desc: "S3Backup::snapshot genera un manifiesto de backup" }
 nf:
   - { id: NF-0128-01, desc: "cero dependencias nuevas en el build por defecto" }
@@ -36,7 +36,7 @@ Esta spec añade backup a S3 detrás de un feature flag.
 
 ## Superficie
 
-- Feature `s3-backup` en `ruscadb` (off por defecto).
+- Feature `s3-backup` en `ruscadb` (on por defecto; pure-Rust).
 - `crates/ruscadb/src/s3_backup.rs` — `S3Backup` con `manifest`.
 - Integración futura: AWS SDK, multipart upload, restore.
 

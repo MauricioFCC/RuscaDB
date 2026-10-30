@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! IVF clustering real (SPEC-0147): k-means para particionar vectores.
 //!
 //! Agrupa un corpus en `num_clusters` centroides con Lloyd (init determinista)

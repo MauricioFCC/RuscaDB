@@ -10,7 +10,7 @@ boundaries:
   files: [crates/ruscadb/src/schema_evolution.rs]
   out_of_scope: [migraciones complejas, transformacion de datos]
 fr:
-  - { id: FR-0160-01, desc: "feature flag `schema-evolution` (off por defecto) habilita evolucion de esquema" }
+  - { id: FR-0160-01, desc: "feature flag `schema-evolution` (on por defecto; pure-Rust) habilita evolucion de esquema" }
   - { id: FR-0160-02, desc: "SchemaEvolution::add_column anade una columna a una tabla" }
 nf:
   - { id: NF-0160-01, desc: "cero dependencias nuevas en el build por defecto" }
@@ -36,7 +36,7 @@ de esquema básica detrás de un feature flag.
 
 ## Superficie
 
-- Feature `schema-evolution` en `ruscadb` (off por defecto).
+- Feature `schema-evolution` en `ruscadb` (on por defecto; pure-Rust).
 - `crates/ruscadb/src/schema_evolution.rs` — `SchemaEvolution` con `add_column`.
 - Integración futura: DROP COLUMN, RENAME, ALTER TYPE.
 

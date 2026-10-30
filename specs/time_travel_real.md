@@ -10,7 +10,7 @@ boundaries:
   files: [crates/ruscadb/src/time_travel_real.rs]
   out_of_scope: [versioning real, snapshot history, undo log]
 fr:
-  - { id: FR-0158-01, desc: "feature flag `time-travel-real` (off por defecto) habilita time-travel real" }
+  - { id: FR-0158-01, desc: "feature flag `time-travel-real` (on por defecto; pure-Rust) habilita time-travel real" }
   - { id: FR-0158-02, desc: "TimeTravelReal::snapshot_at captura un snapshot consistente" }
 nf:
   - { id: NF-0158-01, desc: "cero dependencias nuevas en el build por defecto" }
@@ -36,7 +36,7 @@ añade time-travel real detrás de un feature flag.
 
 ## Superficie
 
-- Feature `time-travel-real` en `ruscadb` (off por defecto).
+- Feature `time-travel-real` en `ruscadb` (on por defecto; pure-Rust).
 - `crates/ruscadb/src/time_travel_real.rs` — `TimeTravelReal` con `snapshot_at`.
 - Integración futura: versioning real, snapshot history, undo log.
 

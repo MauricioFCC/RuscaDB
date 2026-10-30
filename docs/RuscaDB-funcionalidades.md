@@ -192,7 +192,11 @@ extendido (RQL)**.
 
 ---
 
-## 3. Capacidades opcionales (feature flags, off por defecto)
+## 3. Capacidades por feature flag
+
+> Las features **pure-Rust** estan **on por defecto** (sin dependencias
+> externas). Solo las que requieren crates externos (`datafusion`,
+> `pgwire-real`, `onnx-real`) quedan **off** por defecto.
 
 | Feature | Spec | Descripción |
 |---|---|---|
@@ -310,7 +314,7 @@ cargo install --git https://github.com/MauricioFCC/RuscaDB --package ruscadb-cli
 - **T2** (LLM-judge): Spec Fidelity ≥ 0.90.
 - **Mutation score**: ≥70% merge, ≥85% nightly.
 - **Cobertura**: core ≥80% líneas, ≥70% ramas.
-- **477 AC trazados** (`cargo xtask trace`).
+- **568 AC trazados** (`cargo xtask trace`).
 - **0 ciclos de dependencia**, **0 aristas prohibidas**.
 
 ---

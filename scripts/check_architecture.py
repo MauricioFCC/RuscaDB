@@ -8,8 +8,8 @@ verifica tres propiedades no negociables de la arquitectura
 1. No existen dependencias circulares entre las crates del workspace.
 2. Cada crate respeta las aristas permitidas: el dominio ``ruscadb-core`` no
    depende de ningun adapter, y los adapters solo dependen de ``core``.
-3. Toda crate del workspace aparece en ``ALLOWED`` (obliga a actualizar el mapa
-   al anadir una crate nueva).
+3. Toda crate del workspace aparece declarada en ``architecture.toml`` (obliga
+   a actualizar el contrato al anadir una crate nueva).
 
 Salida: exit 0 si cumple; exit 1 con diagnostico legible si no.
 """
@@ -24,69 +24,23 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# Contratos declarados (tach-style `depends_on`). Si existe, es la fuente de
-# verdad; `ALLOWED` queda como fallback para repos sin el archivo.
+# Contratos declarados (tach-style `depends_on`): fuente de verdad obligatoria.
 ALLOWLIST_FILE = ROOT / "architecture.toml"
-
-# Aristas internas permitidas: crate -> crates de las que PUEDE depender.
-ALLOWED: dict[str, set[str]] = {
-    "ruscadb-core": set(),
-    "ruscadb-wal": {"ruscadb-core", "ruscadb-crypto"},
-    "ruscadb-storage": {"ruscadb-core"},
-    "ruscadb-query": {"ruscadb-core"},
-    "ruscadb-vector": {"ruscadb-core"},
-    "ruscadb-graph": {"ruscadb-core"},
-    "ruscadb-multimodal": {"ruscadb-core", "ruscadb-storage", "ruscadb-crypto"},
-    "ruscadb-ai": {"ruscadb-core"},
-    "ruscadb-fts": {"ruscadb-core"},
-    "ruscadb-txn": {"ruscadb-core"},
-    "ruscadb-btree": {"ruscadb-core"},
-    "ruscadb-fvs": {"ruscadb-core", "ruscadb-vector"},
-    "ruscadb-wasm": {
-        "ruscadb-core",
-        "ruscadb-query",
-        "ruscadb-vector",
-        "ruscadb-fts",
-        "ruscadb-fvs",
-        "ruscadb-crypto",
-    },
-    "ruscadb-ffi": {"ruscadb-core", "ruscadb"},
-    "ruscadb-py": {"ruscadb-ffi"},
-    "ruscadb-node": {"ruscadb-ffi"},
-    "ruscadb": {
-        "ruscadb-core",
-        "ruscadb-storage",
-        "ruscadb-query",
-        "ruscadb-vector",
-        "ruscadb-graph",
-        "ruscadb-multimodal",
-        "ruscadb-ai",
-        "ruscadb-fts",
-        "ruscadb-txn",
-        "ruscadb-btree",
-        "ruscadb-fvs",
-        "ruscadb-wal",
-        "ruscadb-crypto",
-        "ruscadb-ts",
-    },
-    "ruscadb-testkit": {"ruscadb-core"},
-    "ruscadb-crypto": {"ruscadb-core"},
-    "ruscadb-ts": {"ruscadb-core"},
-    "ruscadb-mcp": {"ruscadb"},
-    "ruscadb-cli": {"ruscadb", "ruscadb-mcp"},
-    "xtask": set(),
-}
 
 
 def load_declared() -> dict[str, set[str]] | None:
     """Lee ``architecture.toml`` (contratos declarados por crate).
 
     Returns:
-        Mapa ``crate -> dependencias permitidas``, o ``None`` si no existe el
-        archivo (se usa el mapa embebido ``ALLOWED``).
+        Mapa ``crate -> dependencias permitidas``.
+
+    Raises:
+        SystemExit: si falta ``architecture.toml`` o es invalido.
     """
     if not ALLOWLIST_FILE.exists():
-        return None
+        raise SystemExit(
+            "[FAIL] falta architecture.toml: declara los contratos de dependencia"
+        )
     with ALLOWLIST_FILE.open("rb") as handle:
         data = tomllib.load(handle)
     crates = data.get("crates")
@@ -160,8 +114,8 @@ def main() -> int:
     """Ejecuta las verificaciones y devuelve el exit code."""
     graph = load_graph()
     declared = load_declared()
-    allowed = declared if declared is not None else ALLOWED
-    source = "architecture.toml" if declared is not None else "ALLOWED (embebido)"
+    allowed = declared
+    source = "architecture.toml"
     errors: list[str] = []
 
     # 3. Toda crate conocida y sin contratos obsoletos.

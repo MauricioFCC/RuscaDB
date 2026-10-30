@@ -10,7 +10,7 @@ boundaries:
   files: [crates/ruscadb/src/ivf_clustering.rs]
   out_of_scope: [GPU acceleration, distributed search]
 fr:
-  - { id: FR-0147-01, desc: "feature flag `ivf-clustering` (off por defecto) habilita IVF clustering" }
+  - { id: FR-0147-01, desc: "feature flag `ivf-clustering` (on por defecto; pure-Rust) habilita IVF clustering" }
   - { id: FR-0147-02, desc: "IvfClusterer::cluster agrupa vectores en centroides" }
 nf:
   - { id: NF-0147-01, desc: "cero dependencias nuevas en el build por defecto" }
@@ -36,7 +36,7 @@ stub (SPEC-0125). Esta spec añade IVF clustering detrás de un feature flag.
 
 ## Superficie
 
-- Feature `ivf-clustering` en `ruscadb` (off por defecto).
+- Feature `ivf-clustering` en `ruscadb` (on por defecto; pure-Rust).
 - `crates/ruscadb/src/ivf_clustering.rs` — `IvfClusterer` con `cluster`.
 - Integración futura: IVF-HNSW, IVF-PQ con clustering real.
 

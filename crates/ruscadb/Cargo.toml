@@ -67,6 +67,7 @@ default = [
     "ts-advanced",
     "observability",
     "backup",
+    "s3-backup",
     "ts-retention",
     "fts-scoring",
     "incremental-backup",
@@ -159,7 +160,7 @@ ivf-clustering = []
 otel = []
 # SPEC-0127: PostgreSQL wire protocol (pgwire real, dep opcional `pgwire`).
 pgwire-real = ["pgwire", "dep:pgwire"]
-# SPEC-0128: Checkpoint a S3 (backup/restore).
+# SPEC-0128: Checkpoint a S3 (backup/restore sobre ObjectStore).
 s3-backup = []
 # SPEC-0129: Time-travel (read as of tx_id).
 time-travel = []
