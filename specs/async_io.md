@@ -2,6 +2,7 @@
 id: SPEC-0151
 feature: async_io
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -25,34 +26,34 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0151 — I/O asíncrono (tokio integration)
+# SPEC-0151 â€” I/O asÃ­ncrono (tokio integration)
 
 ## Contexto
 
-Frontier 2026 (Turso, tokio): I/O asíncrono para alta concurrencia.
-RuscaDB usa I/O síncrono (std::fs). Esta spec añade I/O asíncrono básico
-detrás de un feature flag.
+Frontier 2026 (Turso, tokio): I/O asÃ­ncrono para alta concurrencia.
+RuscaDB usa I/O sÃ­ncrono (std::fs). Esta spec aÃ±ade I/O asÃ­ncrono bÃ¡sico
+detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `async-io` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/async_io.rs` — `AsyncReader` con `read_async`.
-- Integración futura: tokio runtime, async Database API.
+- `crates/ruscadb/src/async_io.rs` â€” `AsyncReader` con `read_async`.
+- IntegraciÃ³n futura: tokio runtime, async Database API.
 
 ## Estado del arte
 
 - **Turso/libSQL**: async I/O con tokio.
-- **tokio**: runtime multi-thread para I/O asíncrono.
-- **RuscaDB actual**: I/O síncrono (std::fs).
+- **tokio**: runtime multi-thread para I/O asÃ­ncrono.
+- **RuscaDB actual**: I/O sÃ­ncrono (std::fs).
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
-1. **AsyncReader**: lee páginas de forma asíncrona.
-2. **AsyncWriter**: escribe páginas de forma asíncrona.
-3. **Runtime**: integración con tokio (futuro).
+1. **AsyncReader**: lee pÃ¡ginas de forma asÃ­ncrona.
+2. **AsyncWriter**: escribe pÃ¡ginas de forma asÃ­ncrona.
+3. **Runtime**: integraciÃ³n con tokio (futuro).
 
 ## Notas
 
-- Implementación inicial: simulación síncrona (sin tokio).
-- Integración real con tokio queda como trabajo futuro.
+- ImplementaciÃ³n inicial: simulaciÃ³n sÃ­ncrona (sin tokio).
+- IntegraciÃ³n real con tokio queda como trabajo futuro.
 ---

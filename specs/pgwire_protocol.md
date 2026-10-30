@@ -2,6 +2,7 @@
 id: SPEC-0113
 feature: pgwire_protocol
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 5
 boundaries:
@@ -25,22 +26,22 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0113 — Protocolo PostgreSQL wire (pgwire)
+# SPEC-0113 â€” Protocolo PostgreSQL wire (pgwire)
 
 ## Contexto
 
 Frontier 2026 (pglite-oxide, libsql): compatibilidad con el ecosistema PostgreSQL
-permite usar drivers estándar (psql, JDBC, SQLx, Prisma). RuscaDB tiene RQL propio.
-Esta spec añade un servidor pgwire opcional detrás de un feature flag.
+permite usar drivers estÃ¡ndar (psql, JDBC, SQLx, Prisma). RuscaDB tiene RQL propio.
+Esta spec aÃ±ade un servidor pgwire opcional detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `pgwire` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/pgwire.rs` — `PgWireServer` con `new` + `serve`.
-- Traducción RQL→SQL básico (SELECT/INSERT/UPDATE/DELETE).
+- `crates/ruscadb/src/pgwire.rs` â€” `PgWireServer` con `new` + `serve`.
+- TraducciÃ³n RQLâ†’SQL bÃ¡sico (SELECT/INSERT/UPDATE/DELETE).
 
 ## Notas
 
-- Implementación inicial: stub sin dependencia de `pgwire` crate.
-- La integración real con `pgwire` queda como trabajo futuro.
+- ImplementaciÃ³n inicial: stub sin dependencia de `pgwire` crate.
+- La integraciÃ³n real con `pgwire` queda como trabajo futuro.
 ---

@@ -2,6 +2,7 @@
 id: SPEC-0137
 feature: single_file_vle
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -25,34 +26,34 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0137 — Single-file deployment (VLE)
+# SPEC-0137 â€” Single-file deployment (VLE)
 
 ## Contexto
 
 Frontier 2026 (Picovolt): Virtualization Layer Engine (VLE) convierte un
 directorio de base (mutable, append-only) en un single-file memory-mappable
-(`.pvdb`, producción). RuscaDB usa múltiples ficheros (.data, .wal, .manifest).
+(`.pvdb`, producciÃ³n). RuscaDB usa mÃºltiples ficheros (.data, .wal, .manifest).
 
 ## Superficie
 
 - Feature `vle` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/vle.rs` — `VleDatabase` con `bake` + `open`.
-- Integración futura: memory-mapping, zero-copy reads.
+- `crates/ruscadb/src/vle.rs` â€” `VleDatabase` con `bake` + `open`.
+- IntegraciÃ³n futura: memory-mapping, zero-copy reads.
 
 ## Estado del arte
 
 - **Picovolt** (picovolt): VLE shifts between directory (dev) and single-file
   binary (prod). Memory-mappable, CAS dedup, columnar compression.
-- **RuscaDB actual**: múltiples ficheros (.data, .wal, .manifest, .lock).
+- **RuscaDB actual**: mÃºltiples ficheros (.data, .wal, .manifest, .lock).
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **bake**: convierte el directorio de base a un single-file .pvdb.
 2. **open**: abre un .pvdb en modo read-only (memory-mapped).
-3. **VLE**: virtualización de páginas (directory ↔ single-file).
+3. **VLE**: virtualizaciÃ³n de pÃ¡ginas (directory â†” single-file).
 
 ## Notas
 
-- Implementación inicial: stub sin memory-mapping.
+- ImplementaciÃ³n inicial: stub sin memory-mapping.
 - VLE real queda como trabajo futuro.
 ---

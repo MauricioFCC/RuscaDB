@@ -393,12 +393,46 @@ impl Database {
         query: &str,
         snapshot_tx_id: u64,
     ) -> Result<Vec<crate::Row>, RuscaError> {
-        let snapshot = if snapshot_tx_id == 0 {
+        let snapshot = self.snapshot_at(snapshot_tx_id);
+        self.execute_at(query, &snapshot)
+    }
+
+    /// Construye un snapshot publico para `tx_id` (0 = snapshot actual).
+    ///
+    /// Args:
+    ///     tx_id: Transaccion (0 = actual).
+    ///
+    /// Returns:
+    ///     Snapshot listo para [`Self::execute_at`].
+    pub fn snapshot_at(&self, tx_id: u64) -> Snapshot {
+        if tx_id == 0 {
             self.snapshot()
         } else {
-            ruscadb_txn::Snapshot::at(snapshot_tx_id)
-        };
-        self.execute_at(query, &snapshot)
+            Snapshot::at(tx_id)
+        }
+    }
+
+    /// Transaccion del snapshot actual (ultima asignada).
+    ///
+    /// Returns:
+    ///     `TxId` visible para `replay --as-of`.
+    pub fn current_tx(&self) -> u64 {
+        self.snapshot().tx_id
+    }
+
+    /// Alias de [`Self::execute_at_lsn`] para `replay --as-of <tx_id>`.
+    ///
+    /// Args:
+    ///     query: Consulta RQL.
+    ///     tx_id: Transaccion historica (0 = actual).
+    ///
+    /// Returns:
+    ///     Filas visibles en ese snapshot.
+    ///
+    /// Errors:
+    ///     Los mismos que [`Self::execute_at`].
+    pub fn replay_as_of(&mut self, query: &str, tx_id: u64) -> Result<Vec<crate::Row>, RuscaError> {
+        self.execute_at_lsn(query, tx_id)
     }
 }
 

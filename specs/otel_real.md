@@ -2,6 +2,7 @@
 id: SPEC-0155
 feature: otel_real
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 5
 boundaries:
@@ -25,34 +26,34 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0155 — OpenTelemetry OTLP real
+# SPEC-0155 â€” OpenTelemetry OTLP real
 
 ## Contexto
 
-Frontier 2026 (Jaeger, Prometheus): exportación OTLP de traces y métricas.
-RuscaDB tiene tracing (SPEC-0080) y métricas en memoria (SPEC-0119).
-Esta spec añade un exportador OTLP básico detrás de un feature flag.
+Frontier 2026 (Jaeger, Prometheus): exportaciÃ³n OTLP de traces y mÃ©tricas.
+RuscaDB tiene tracing (SPEC-0080) y mÃ©tricas en memoria (SPEC-0119).
+Esta spec aÃ±ade un exportador OTLP bÃ¡sico detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `otel-real` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/otel_real.rs` — `OtelRealExporter` con `export_span`.
-- Integración futura: OTLP gRPC/HTTP, Jaeger exporter.
+- `crates/ruscadb/src/otel_real.rs` â€” `OtelRealExporter` con `export_span`.
+- IntegraciÃ³n futura: OTLP gRPC/HTTP, Jaeger exporter.
 
 ## Estado del arte
 
-- **OpenTelemetry**: estándar de observabilidad (traces, metrics, logs).
+- **OpenTelemetry**: estÃ¡ndar de observabilidad (traces, metrics, logs).
 - **OTLP**: protocolo de transporte (gRPC, HTTP/protobuf, HTTP/JSON).
-- **RuscaDB actual**: tracing (SPEC-0080), métricas en memoria (SPEC-0119).
+- **RuscaDB actual**: tracing (SPEC-0080), mÃ©tricas en memoria (SPEC-0119).
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **OtelRealExporter**: exporta spans en formato OTLP JSON.
 2. **Batch export**: agrupa spans para eficiencia.
-3. **Resource attributes**: servicio, versión, host.
+3. **Resource attributes**: servicio, versiÃ³n, host.
 
 ## Notas
 
-- Implementación inicial: serialización JSON (sin gRPC real).
+- ImplementaciÃ³n inicial: serializaciÃ³n JSON (sin gRPC real).
 - OTLP gRPC/HTTP queda como trabajo futuro.
 ---

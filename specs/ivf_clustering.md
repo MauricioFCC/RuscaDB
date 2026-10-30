@@ -2,7 +2,7 @@
 id: SPEC-0147
 feature: ivf_clustering
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

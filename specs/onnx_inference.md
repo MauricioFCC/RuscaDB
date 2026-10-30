@@ -2,6 +2,7 @@
 id: SPEC-0111
 feature: onnx_inference
 status: implemented
+maturity: stub
 owner: ai-team
 appetite_days: 5
 boundaries:
@@ -25,23 +26,23 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0111 — Inferencia ONNX en la base
+# SPEC-0111 â€” Inferencia ONNX en la base
 
 ## Contexto
 
 Frontier 2026 (SurrealDB): inferencia ML integrada en la base. RuscaDB tiene
-embeddings estáticos (SPEC-0083, model2vec). Esta spec añade inferencia ONNX
-opcional detrás de un feature flag, complementando los embeddings estáticos.
+embeddings estÃ¡ticos (SPEC-0083, model2vec). Esta spec aÃ±ade inferencia ONNX
+opcional detrÃ¡s de un feature flag, complementando los embeddings estÃ¡ticos.
 
 ## Superficie
 
 - Feature `onnx` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/onnx.rs` — `OnnxModel` con `load` + `infer`.
-- Integración futura: UDF en RQL (`EMBED(text)`), hybrid search con re-ranking.
+- `crates/ruscadb/src/onnx.rs` â€” `OnnxModel` con `load` + `infer`.
+- IntegraciÃ³n futura: UDF en RQL (`EMBED(text)`), hybrid search con re-ranking.
 
 ## Notas
 
-- Implementación inicial: stub sin dependencia de `ort` (no se añade al build
-  por defecto). La integración real con `ort` queda como trabajo futuro cuando
+- ImplementaciÃ³n inicial: stub sin dependencia de `ort` (no se aÃ±ade al build
+  por defecto). La integraciÃ³n real con `ort` queda como trabajo futuro cuando
   se requiera inferencia transformer.
 ---

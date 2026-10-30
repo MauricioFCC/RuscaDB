@@ -2,6 +2,7 @@
 id: SPEC-0136
 feature: lance_format
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 8
 boundaries:
@@ -26,21 +27,21 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0136 — Integración con Lance format (multimodal columnar)
+# SPEC-0136 â€” IntegraciÃ³n con Lance format (multimodal columnar)
 
 ## Contexto
 
 Frontier 2026 (LanceDB, Lance format v2.2): formato columnar para datos multimodales
-con Blob V2 (inline/packed/dedicated/external), 50%+ compresión, lazy reads.
-RuscaDB tiene blob store CAS y columnar en memoria. Esta spec añade integración
-con Lance detrás de un feature flag.
+con Blob V2 (inline/packed/dedicated/external), 50%+ compresiÃ³n, lazy reads.
+RuscaDB tiene blob store CAS y columnar en memoria. Esta spec aÃ±ade integraciÃ³n
+con Lance detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `lance-format` en `ruscadb` (off por defecto).
 - Dependencia opcional `lance = "0.42"` (o `lance-core`).
-- `crates/ruscadb/src/lance_format.rs` — `LanceTable` con append + scan.
-- Integración futura: parquet export, vector search, full-text search.
+- `crates/ruscadb/src/lance_format.rs` â€” `LanceTable` con append + scan.
+- IntegraciÃ³n futura: parquet export, vector search, full-text search.
 
 ## Estado del arte
 
@@ -51,21 +52,21 @@ con Lance detrás de un feature flag.
 - **RuscaDB actual**: blob store CAS (SHA-256, dedup + refcount), columnar en
   memoria (SPEC-0110), Arrow columnar (SPEC-0124). No hay formato Lance.
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **LanceTable**: wrapper sobre lance crate con append + scan.
 2. **Blob V2**: storage semantics (inline/packed/dedicated/external).
 3. **Vector search**: IVF-HNSW sobre columnas de embeddings.
-4. **Full-text search**: integración con índice invertido.
+4. **Full-text search**: integraciÃ³n con Ã­ndice invertido.
 5. **Time travel**: versioning por commit.
 
-## Criterios de aceptación
+## Criterios de aceptaciÃ³n
 
-- **AC-0136-01** — append + scan: las filas se devuelven en orden.
+- **AC-0136-01** â€” append + scan: las filas se devuelven en orden.
 
 ## Notas
 
-- Implementación inicial: stub sin dependencia de lance crate.
-- Integración real con lance queda como trabajo futuro.
+- ImplementaciÃ³n inicial: stub sin dependencia de lance crate.
+- IntegraciÃ³n real con lance queda como trabajo futuro.
 - ADR requerido: `docs/adr/ADR-0136-lance-format.md`.
 ---

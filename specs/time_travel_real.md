@@ -2,6 +2,7 @@
 id: SPEC-0158
 feature: time_travel_real
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

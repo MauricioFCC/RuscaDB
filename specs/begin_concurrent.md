@@ -2,6 +2,7 @@
 id: SPEC-0131
 feature: begin_concurrent
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -36,18 +37,18 @@ sandbox:
   - cargo test -p ruscadb --all-features --test begin_concurrent
 ---
 
-# SPEC-0131 — BEGIN CONCURRENT (multi-writer)
+# SPEC-0131 â€” BEGIN CONCURRENT (multi-writer)
 
 ## Contexto
 
 Frontier 2026 (SQLRite, rust_sqlite): `BEGIN CONCURRENT` permite multi-writer
-con detección de conflictos por fila en commit. RuscaDB es single-writer
-exclusivo (SPEC-0076). Esta spec añade multi-writer detrás de un feature flag.
+con detecciÃ³n de conflictos por fila en commit. RuscaDB es single-writer
+exclusivo (SPEC-0076). Esta spec aÃ±ade multi-writer detrÃ¡s de un feature flag.
 
 ## Superficie
 
-- `crates/ruscadb/src/concurrent_txn.rs` — `begin_concurrent`, `commit_concurrent`.
-- `crates/ruscadb-txn/src/mvcc.rs` — version index en memoria, row-level conflict detection.
+- `crates/ruscadb/src/concurrent_txn.rs` â€” `begin_concurrent`, `commit_concurrent`.
+- `crates/ruscadb-txn/src/mvcc.rs` â€” version index en memoria, row-level conflict detection.
 
 ## Estado del arte
 
@@ -57,20 +58,20 @@ exclusivo (SPEC-0076). Esta spec añade multi-writer detrás de un feature flag.
 - **RuscaDB actual**: single-writer exclusivo, MVCC snapshot isolation,
   `TxnManager` con first-committer-wins por clave.
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **Version index en memoria**: cada fila tiene `created_by` y `deleted_by`
    (tx_id). El lector captura el snapshot al BEGIN.
-2. **BEGIN CONCURRENT**: crea una transacción con snapshot aislado. No toma
+2. **BEGIN CONCURRENT**: crea una transacciÃ³n con snapshot aislado. No toma
    lock exclusivo.
 3. **Commit**: detecta conflictos write-write (first-committer-wins). Si hay
    conflicto, devuelve `BusySnapshot` (retryable).
-4. **Reconciliación**: el caller reintenta con un nuevo snapshot.
+4. **ReconciliaciÃ³n**: el caller reintenta con un nuevo snapshot.
 
-## Criterios de aceptación
+## Criterios de aceptaciÃ³n
 
-- **AC-0131-01** — writers disjuntos: ambos commit con éxito.
-- **AC-0131-02** — writers sobre la misma fila: el segundo recibe BusySnapshot.
+- **AC-0131-01** â€” writers disjuntos: ambos commit con Ã©xito.
+- **AC-0131-02** â€” writers sobre la misma fila: el segundo recibe BusySnapshot.
 
 ## Notas
 

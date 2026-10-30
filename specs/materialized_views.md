@@ -2,6 +2,7 @@
 id: SPEC-0149
 feature: materialized_views
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 6
 boundaries:
@@ -25,27 +26,27 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0149 — Vistas materializadas
+# SPEC-0149 â€” Vistas materializadas
 
 ## Contexto
 
 Frontier 2026 (PostgreSQL, TimescaleDB): vistas materializadas pre-calculan
-resultados de consultas costosas. RuscaDB no tiene vistas. Esta spec añade
-vistas materializadas básicas detrás de un feature flag.
+resultados de consultas costosas. RuscaDB no tiene vistas. Esta spec aÃ±ade
+vistas materializadas bÃ¡sicas detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `materialized-views` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/materialized_view.rs` — `MaterializedView` con `create` + `refresh`.
-- Integración futura: refresh automático, vistas sobre múltiples tablas.
+- `crates/ruscadb/src/materialized_view.rs` â€” `MaterializedView` con `create` + `refresh`.
+- IntegraciÃ³n futura: refresh automÃ¡tico, vistas sobre mÃºltiples tablas.
 
 ## Estado del arte
 
 - **PostgreSQL**: `CREATE MATERIALIZED VIEW`, `REFRESH MATERIALIZED VIEW`.
-- **TimescaleDB**: continuous aggregates (materialized views automáticas).
+- **TimescaleDB**: continuous aggregates (materialized views automÃ¡ticas).
 - **RuscaDB actual**: sin vistas.
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **create**: ejecuta la consulta y almacena el resultado como una tabla.
 2. **refresh**: re-ejecuta la consulta y reemplaza los datos.
@@ -53,6 +54,6 @@ vistas materializadas básicas detrás de un feature flag.
 
 ## Notas
 
-- Implementación inicial: materialización en memoria.
-- Persistencia y refresh automático quedan como trabajo futuro.
+- ImplementaciÃ³n inicial: materializaciÃ³n en memoria.
+- Persistencia y refresh automÃ¡tico quedan como trabajo futuro.
 ---

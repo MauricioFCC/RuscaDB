@@ -2,6 +2,7 @@
 id: SPEC-0150
 feature: simd_acceleration
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 5
 boundaries:
@@ -25,35 +26,35 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0150 — Aceleración SIMD para operaciones vectoriales
+# SPEC-0150 â€” AceleraciÃ³n SIMD para operaciones vectoriales
 
 ## Contexto
 
-Frontier 2026 (turbopuffer, avx-arrow): SIMD acceleration para búsqueda vectorial.
-RuscaDB usa loops escalares. Esta spec añade operaciones SIMD básicas detrás de
+Frontier 2026 (turbopuffer, avx-arrow): SIMD acceleration para bÃºsqueda vectorial.
+RuscaDB usa loops escalares. Esta spec aÃ±ade operaciones SIMD bÃ¡sicas detrÃ¡s de
 un feature flag.
 
 ## Superficie
 
 - Feature `simd` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/simd.rs` — `SimdOps` con `dot_product`, `cosine_similarity`.
-- Integración futura: SIMD intrinsics, auto-vectorización.
+- `crates/ruscadb/src/simd.rs` â€” `SimdOps` con `dot_product`, `cosine_similarity`.
+- IntegraciÃ³n futura: SIMD intrinsics, auto-vectorizaciÃ³n.
 
 ## Estado del arte
 
-- **turbopuffer**: SIMD para merge de iteradores (6.5ms → 110μs).
+- **turbopuffer**: SIMD para merge de iteradores (6.5ms â†’ 110Î¼s).
 - **avx-arrow**: 35x SIMD acceleration.
 - **RuscaDB actual**: loops escalares.
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **SimdOps**: operaciones vectoriales (dot product, cosine, L2 distance).
-2. **Auto-vectorización**: usar `#[inline]` y slices para que el compilador
-   vectorice automáticamente.
+2. **Auto-vectorizaciÃ³n**: usar `#[inline]` y slices para que el compilador
+   vectorice automÃ¡ticamente.
 3. **Intrinsics**: SIMD intrinsics manuales (futuro, requiere `std::arch`).
 
 ## Notas
 
-- Implementación inicial: auto-vectorización del compilador (sin intrinsics).
+- ImplementaciÃ³n inicial: auto-vectorizaciÃ³n del compilador (sin intrinsics).
 - SIMD intrinsics manuales quedan como trabajo futuro.
 ---

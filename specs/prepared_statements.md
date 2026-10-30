@@ -2,6 +2,7 @@
 id: SPEC-0148
 feature: prepared_statements
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 4
 boundaries:
@@ -25,19 +26,19 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0148 — Sentencias preparadas (pre-compiled queries)
+# SPEC-0148 â€” Sentencias preparadas (pre-compiled queries)
 
 ## Contexto
 
 Frontier 2026 (PostgreSQL, SQLite): sentencias preparadas evitan re-parsear
-la misma consulta. RuscaDB parsea en cada `execute`. Esta spec añade
-preparación de sentencias detrás de un feature flag.
+la misma consulta. RuscaDB parsea en cada `execute`. Esta spec aÃ±ade
+preparaciÃ³n de sentencias detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `prepared` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/prepared.rs` — `PreparedStatement` con `prepare` + `execute`.
-- Integración futura: placeholders (`$1`, `?`), plan caching.
+- `crates/ruscadb/src/prepared.rs` â€” `PreparedStatement` con `prepare` + `execute`.
+- IntegraciÃ³n futura: placeholders (`$1`, `?`), plan caching.
 
 ## Estado del arte
 
@@ -45,14 +46,14 @@ preparación de sentencias detrás de un feature flag.
 - **SQLite**: `sqlite3_prepare_v2` con bytecode.
 - **RuscaDB actual**: parsea en cada `execute`.
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **PreparedStatement**: parsea una vez, almacena el AST.
 2. **execute**: reutiliza el AST parseado.
-3. **Placeholders**: `$1`, `?` para parámetros (futuro).
+3. **Placeholders**: `$1`, `?` para parÃ¡metros (futuro).
 
 ## Notas
 
-- Implementación inicial: preparación de SELECT sin placeholders.
+- ImplementaciÃ³n inicial: preparaciÃ³n de SELECT sin placeholders.
 - Placeholders y plan caching quedan como trabajo futuro.
 ---

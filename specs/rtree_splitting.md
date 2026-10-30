@@ -2,6 +2,7 @@
 id: SPEC-0156
 feature: rtree_splitting
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 5
 boundaries:
@@ -25,34 +26,34 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0156 — R-tree con splitting heurístico
+# SPEC-0156 â€” R-tree con splitting heurÃ­stico
 
 ## Contexto
 
-Frontier 2026 (PostGIS, R*-tree): R-tree con splitting heurístico para
-búsqueda espacial eficiente. RuscaDB tiene R-tree lineal (SPEC-0114).
-Esta spec añade splitting detrás de un feature flag.
+Frontier 2026 (PostGIS, R*-tree): R-tree con splitting heurÃ­stico para
+bÃºsqueda espacial eficiente. RuscaDB tiene R-tree lineal (SPEC-0114).
+Esta spec aÃ±ade splitting detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `rtree-split` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/rtree_split.rs` — `RTreeSplit` con `insert` + `range_query`.
-- Integración futura: R*-tree, Hilbert R-tree, KNN espacial.
+- `crates/ruscadb/src/rtree_split.rs` â€” `RTreeSplit` con `insert` + `range_query`.
+- IntegraciÃ³n futura: R*-tree, Hilbert R-tree, KNN espacial.
 
 ## Estado del arte
 
-- **R*-tree**: splitting heurístico con reinsertion.
+- **R*-tree**: splitting heurÃ­stico con reinsertion.
 - **Hilbert R-tree**: ordenamiento por curva de Hilbert.
 - **RuscaDB actual**: R-tree lineal (SPEC-0114, sin splitting).
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **RTreeSplit**: R-tree con splitting lineal (Guttman).
 2. **Splitting**: cuando un nodo excede la capacidad, se divide.
-3. **Range query**: búsqueda por bounding box.
+3. **Range query**: bÃºsqueda por bounding box.
 
 ## Notas
 
-- Implementación inicial: splitting lineal simplificado.
+- ImplementaciÃ³n inicial: splitting lineal simplificado.
 - R*-tree y Hilbert R-tree quedan como trabajo futuro.
 ---

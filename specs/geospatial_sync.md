@@ -2,6 +2,7 @@
 id: SPEC-0112
 feature: geospatial_sync
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -25,22 +26,22 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0112 — Geoespacial + sync (stub)
+# SPEC-0112 â€” Geoespacial + sync (stub)
 
 ## Contexto
 
 Frontier 2026 (SurrealDB): geospatial + sync protocol para edge. RuscaDB no
-tiene geospatial ni sync distribuido. Esta spec añade tipos geoespaciales
-básicos detrás de un feature flag, sin dependencias externas.
+tiene geospatial ni sync distribuido. Esta spec aÃ±ade tipos geoespaciales
+bÃ¡sicos detrÃ¡s de un feature flag, sin dependencias externas.
 
 ## Superficie
 
 - Feature `geo` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/geo.rs` — `Point { x, y }` + `distance`.
-- Sync protocol: fuera de alcance (futuro, requiere diseño de red).
+- `crates/ruscadb/src/geo.rs` â€” `Point { x, y }` + `distance`.
+- Sync protocol: fuera de alcance (futuro, requiere diseÃ±o de red).
 
 ## Notas
 
-- Implementación inicial: geometría 2D euclidiana, sin proyecciones ni índices espaciales.
-- Índices espaciales (R-tree) y sync protocol quedan como trabajo futuro.
+- ImplementaciÃ³n inicial: geometrÃ­a 2D euclidiana, sin proyecciones ni Ã­ndices espaciales.
+- Ãndices espaciales (R-tree) y sync protocol quedan como trabajo futuro.
 ---

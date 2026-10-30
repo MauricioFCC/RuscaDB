@@ -613,7 +613,7 @@ fn nearest_centroid(point: &[f32], centroids: &[f32], dim: usize) -> usize {
 ///
 /// Returns:
 ///     Centroides aplanados `k * dim` (rellena con puntos reales si k > n).
-fn kmeans(points: &[&[f32]], k: usize, iterations: usize, seed: u64) -> Vec<f32> {
+pub(crate) fn kmeans(points: &[&[f32]], k: usize, iterations: usize, seed: u64) -> Vec<f32> {
     let dim = points.first().map_or(0, |point| point.len());
     let k = k.clamp(1, MAX_CENTROIDS);
     let mut centroids = vec![0f32; k * dim];

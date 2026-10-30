@@ -22,6 +22,19 @@ pub struct CrdtSyncReal {
     stamp: Option<(u64, String)>,
 }
 
+/// Estado serializable de una replica (para persistir o federar).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrdtSnapshot {
+    /// Identidad de la replica.
+    pub actor: String,
+    /// Reloj vectorial `actor -> contador`.
+    pub clock: BTreeMap<String, u64>,
+    /// Valor actual del registro.
+    pub value: Option<i64>,
+    /// Marca `(contador, actor)` de la escritura ganadora.
+    pub stamp: Option<(u64, String)>,
+}
+
 impl CrdtSyncReal {
     /// Crea una replica con actor `"local"`.
     ///
@@ -140,6 +153,106 @@ impl CrdtSyncReal {
         }
     }
 
+    /// Exporta el estado completo de la replica.
+    ///
+    /// Returns:
+    ///     Snapshot con actor, reloj, valor y marca.
+    pub fn export(&self) -> CrdtSnapshot {
+        CrdtSnapshot {
+            actor: self.actor.clone(),
+            clock: self.clock.clone(),
+            value: self.value,
+            stamp: self.stamp.clone(),
+        }
+    }
+
+    /// Reconstruye una replica desde un snapshot.
+    ///
+    /// Args:
+    ///     snapshot: Estado exportado previamente.
+    ///
+    /// Returns:
+    ///     Replica equivalente (mismo reloj, valor y marca).
+    pub fn restore(snapshot: CrdtSnapshot) -> Self {
+        Self {
+            actor: snapshot.actor,
+            clock: snapshot.clock,
+            value: snapshot.value,
+            stamp: snapshot.stamp,
+        }
+    }
+
+    /// Serializa el estado a JSON estable.
+    ///
+    /// Returns:
+    ///     Objeto JSON con `actor`, `clock`, `value` y `stamp`.
+    pub fn to_json(&self) -> String {
+        serde_json::json!({
+            "actor": self.actor,
+            "clock": self.clock,
+            "value": self.value,
+            "stamp": self.stamp,
+        })
+        .to_string()
+    }
+
+    /// Deserializa una replica desde JSON.
+    ///
+    /// Args:
+    ///     text: JSON producido por [`Self::to_json`].
+    ///
+    /// Returns:
+    ///     Replica reconstruida.
+    ///
+    /// Errors:
+    ///     `Err(String)` con el motivo si el JSON es invalido.
+    pub fn from_json(text: &str) -> Result<Self, String> {
+        let value: serde_json::Value =
+            serde_json::from_str(text).map_err(|error| format!("JSON invalido: {error}"))?;
+        let actor = value
+            .get("actor")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "falta 'actor' (string)".to_string())?
+            .to_string();
+        let clock_object = value
+            .get("clock")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| "falta 'clock' (objeto)".to_string())?;
+        let mut clock = BTreeMap::new();
+        for (key, counter) in clock_object {
+            let counter = counter
+                .as_u64()
+                .ok_or_else(|| format!("contador no numerico para '{key}'"))?;
+            clock.insert(key.clone(), counter);
+        }
+        let stored_value = match value.get("value") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(raw) => Some(
+                raw.as_i64()
+                    .ok_or_else(|| "'value' debe ser entero o null".to_string())?,
+            ),
+        };
+        let stamp = match value.get("stamp") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::Array(parts)) if parts.len() == 2 => {
+                let counter = parts[0]
+                    .as_u64()
+                    .ok_or_else(|| "'stamp[0]' debe ser entero".to_string())?;
+                let stamp_actor = parts[1]
+                    .as_str()
+                    .ok_or_else(|| "'stamp[1]' debe ser string".to_string())?;
+                Some((counter, stamp_actor.to_string()))
+            }
+            Some(_) => return Err("'stamp' debe ser [contador, actor] o null".to_string()),
+        };
+        Ok(Self {
+            actor,
+            clock,
+            value: stored_value,
+            stamp,
+        })
+    }
+
     /// Bytes de estado para un delta de sincronizacion.
     ///
     /// Returns:
@@ -207,6 +320,41 @@ mod tests {
         replica.merge(&once);
         assert_eq!(replica.value(), once.value());
         assert_eq!(replica.vector_clock(), once.vector_clock());
+    }
+
+    /// El estado completo (reloj, valor y marca) sobrevive a JSON.
+    #[test]
+    fn json_roundtrip_preserves_state() {
+        let mut replica = CrdtSyncReal::with_actor("a");
+        replica.set(42);
+        replica.tick();
+        let json = replica.to_json();
+        let restored = CrdtSyncReal::from_json(&json).expect("from_json");
+        assert_eq!(restored, replica, "estado identico tras el round-trip");
+        assert_eq!(restored.export(), replica.export());
+
+        // Restaurar y fusionar converge igual que la original.
+        let mut remote = CrdtSyncReal::with_actor("b");
+        remote.set(43);
+        let mut left = CrdtSyncReal::from_json(&json).expect("from_json");
+        left.merge(&remote);
+        let mut original = replica;
+        original.merge(&remote);
+        assert_eq!(left.value(), original.value());
+        assert_eq!(left.vector_clock(), original.vector_clock());
+    }
+
+    /// JSON invalido falla con motivo accionable (nunca panic).
+    #[test]
+    fn json_validation_is_actionable() {
+        assert!(CrdtSyncReal::from_json("").is_err());
+        assert!(CrdtSyncReal::from_json("{}").is_err());
+        assert!(CrdtSyncReal::from_json(r#"{"actor":"a","clock":{}}"#).is_ok());
+        assert!(CrdtSyncReal::from_json(r#"{"actor":"a","clock":{"a":"x"}}"#).is_err());
+        assert!(CrdtSyncReal::from_json(r#"{"actor":"a","clock":{},"stamp":[1,2]}"#).is_err());
+        // `export`/`restore` tambien reconstruyen el estado.
+        let snapshot = CrdtSyncReal::with_actor("c").export();
+        assert_eq!(CrdtSyncReal::restore(snapshot.clone()).export(), snapshot);
     }
 
     /// Semirreticulo: conmutatividad, asociatividad e idempotencia sobre tres

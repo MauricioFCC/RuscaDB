@@ -200,7 +200,7 @@ pub use concurrent_txn::{ConcurrentTxn, ConcurrentTxnManager};
 #[cfg(feature = "cow-btree")]
 pub use cow_btree::{CowBTree, CowBTreeNode};
 #[cfg(feature = "crdt-sync")]
-pub use crdt_sync_real::CrdtSyncReal;
+pub use crdt_sync_real::{CrdtSnapshot, CrdtSyncReal};
 #[cfg(feature = "fastlanes")]
 pub use fastlanes::FastLanes;
 #[cfg(feature = "fts-advanced")]
@@ -286,7 +286,7 @@ pub use rql_window_funcs::{Bound, Frame, RqlWindowFuncs};
 #[cfg(feature = "rtree-split")]
 pub use rtree_split::RTreeSplit;
 #[cfg(feature = "s3-backup")]
-pub use s3_backup::S3Backup;
+pub use s3_backup::{LocalObjectStore, ObjectStore, S3Backup};
 #[cfg(feature = "schema-evolution")]
 pub use schema_evolution::SchemaEvolution;
 #[cfg(feature = "segmented-wal")]

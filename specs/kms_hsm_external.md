@@ -2,6 +2,7 @@
 id: SPEC-0143
 feature: kms_hsm_external
 status: implemented
+maturity: stub
 owner: security-team
 appetite_days: 6
 boundaries:
@@ -25,35 +26,35 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0143 — KMS/HSM externo
+# SPEC-0143 â€” KMS/HSM externo
 
 ## Contexto
 
 Frontier 2026 (AWS KMS, HashiCorp Vault): custodia externa de claves.
-RuscaDB tiene keystore KMS-lite local (SPEC-0088). Esta spec añade una
-interfaz KMS/HSM detrás de un feature flag.
+RuscaDB tiene keystore KMS-lite local (SPEC-0088). Esta spec aÃ±ade una
+interfaz KMS/HSM detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `kms` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/kms.rs` — `KmsProvider` con `wrap`/`unwrap`.
-- Integración futura: AWS KMS, HashiCorp Vault, Azure Key Vault.
+- `crates/ruscadb/src/kms.rs` â€” `KmsProvider` con `wrap`/`unwrap`.
+- IntegraciÃ³n futura: AWS KMS, HashiCorp Vault, Azure Key Vault.
 
 ## Estado del arte
 
 - **AWS KMS**: envelope encryption, key rotation, audit.
 - **HashiCorp Vault**: transit engine, key versioning.
-- **RuscaDB actual**: keystore KMS-lite local con rotación (SPEC-0088).
+- **RuscaDB actual**: keystore KMS-lite local con rotaciÃ³n (SPEC-0088).
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **KmsProvider trait**: interfaz para wrap/unwrap de claves.
-2. **LocalProvider**: implementación local (XOR, para tests).
-3. **AwsKmsProvider**: implementación AWS (futuro, requiere SDK).
-4. **VaultProvider**: implementación Vault (futuro, requiere SDK).
+2. **LocalProvider**: implementaciÃ³n local (XOR, para tests).
+3. **AwsKmsProvider**: implementaciÃ³n AWS (futuro, requiere SDK).
+4. **VaultProvider**: implementaciÃ³n Vault (futuro, requiere SDK).
 
 ## Notas
 
-- Implementación inicial: proveedor local (XOR) sin deps externas.
-- Integración real con AWS/Vault queda como trabajo futuro.
+- ImplementaciÃ³n inicial: proveedor local (XOR) sin deps externas.
+- IntegraciÃ³n real con AWS/Vault queda como trabajo futuro.
 ---

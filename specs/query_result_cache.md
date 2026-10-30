@@ -2,6 +2,7 @@
 id: SPEC-0159
 feature: query_result_cache
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 4
 boundaries:
@@ -25,34 +26,34 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0159 — Caché de resultados de consultas
+# SPEC-0159 â€” CachÃ© de resultados de consultas
 
 ## Contexto
 
-Frontier 2026 (DuckDB, PostgreSQL): materialización de resultados de consultas
-costosas. RuscaDB tiene caché semántico (SPEC-0065/0069). Esta spec añade
-caché de resultados básico detrás de un feature flag.
+Frontier 2026 (DuckDB, PostgreSQL): materializaciÃ³n de resultados de consultas
+costosas. RuscaDB tiene cachÃ© semÃ¡ntico (SPEC-0065/0069). Esta spec aÃ±ade
+cachÃ© de resultados bÃ¡sico detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `query-cache` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/query_cache.rs` — `QueryCache` con `get`/`set`.
-- Integración futura: invalidación por mutación, TTL.
+- `crates/ruscadb/src/query_cache.rs` â€” `QueryCache` con `get`/`set`.
+- IntegraciÃ³n futura: invalidaciÃ³n por mutaciÃ³n, TTL.
 
 ## Estado del arte
 
 - **DuckDB**: result cache para consultas repetidas.
 - **PostgreSQL**: materialized views.
-- **RuscaDB actual**: caché semántico (SPEC-0065/0069).
+- **RuscaDB actual**: cachÃ© semÃ¡ntico (SPEC-0065/0069).
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **QueryCache**: almacena resultados de consultas por firma.
 2. **get/set**: recuperar/almacenar resultados.
-3. **Invalidación**: por mutación o TTL.
+3. **InvalidaciÃ³n**: por mutaciÃ³n o TTL.
 
 ## Notas
 
-- Implementación inicial: caché en memoria (sin persistencia).
+- ImplementaciÃ³n inicial: cachÃ© en memoria (sin persistencia).
 - Persistencia y TTL quedan como trabajo futuro.
 ---

@@ -2,12 +2,13 @@
 id: SPEC-0144
 feature: fts_stemming_snowball
 status: implemented
+maturity: stub
 owner: query-team
 appetite_days: 4
 boundaries:
   crates: [ruscadb, ruscadb-core, ruscadb-fts]
   files: [crates/ruscadb/src/stemming.rs]
-  out_of_scope: [modelos de lenguaje, embeddings semánticos]
+  out_of_scope: [modelos de lenguaje, embeddings semÃ¡nticos]
 fr:
   - { id: FR-0144-01, desc: "feature flag `stemming` (off por defecto) habilita stemming Snowball" }
   - { id: FR-0144-02, desc: "SnowballStemmer::stem aplica stemming para un idioma" }
@@ -25,34 +26,34 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0144 — Stemming Snowball (multi-idioma)
+# SPEC-0144 â€” Stemming Snowball (multi-idioma)
 
 ## Contexto
 
-Frontier 2026 (Elasticsearch, Lucene): stemming Snowball para múltiples idiomas.
-RuscaDB tiene stemming básico (Porter-like, SPEC-0117). Esta spec añade Snowball
-detrás de un feature flag.
+Frontier 2026 (Elasticsearch, Lucene): stemming Snowball para mÃºltiples idiomas.
+RuscaDB tiene stemming bÃ¡sico (Porter-like, SPEC-0117). Esta spec aÃ±ade Snowball
+detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `stemming` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/stemming.rs` — `SnowballStemmer` con `stem`.
-- Integración futura: stemming en RQL `MATCH`, multi-idioma.
+- `crates/ruscadb/src/stemming.rs` â€” `SnowballStemmer` con `stem`.
+- IntegraciÃ³n futura: stemming en RQL `MATCH`, multi-idioma.
 
 ## Estado del arte
 
 - **Snowball**: algoritmo de stemming para 15+ idiomas.
 - **Lucene**: SnowballStemmer con soporte multi-idioma.
-- **RuscaDB actual**: stemming básico Porter-like (SPEC-0117, inglés).
+- **RuscaDB actual**: stemming bÃ¡sico Porter-like (SPEC-0117, inglÃ©s).
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
-1. **SnowballStemmer**: implementación del algoritmo Snowball.
-2. **Idiomas**: inglés, español, francés, alemán, etc.
-3. **Integración**: stemming en el índice invertido (FTS).
+1. **SnowballStemmer**: implementaciÃ³n del algoritmo Snowball.
+2. **Idiomas**: inglÃ©s, espaÃ±ol, francÃ©s, alemÃ¡n, etc.
+3. **IntegraciÃ³n**: stemming en el Ã­ndice invertido (FTS).
 
 ## Notas
 
-- Implementación inicial: stemming inglés (Porter/Snowball).
+- ImplementaciÃ³n inicial: stemming inglÃ©s (Porter/Snowball).
 - Multi-idioma queda como trabajo futuro.
 ---

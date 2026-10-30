@@ -2,6 +2,7 @@
 id: SPEC-0139
 feature: cow_branching
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -25,19 +26,19 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0139 — Copy-on-write branching (fork/merge)
+# SPEC-0139 â€” Copy-on-write branching (fork/merge)
 
 ## Contexto
 
 Frontier 2026 (Zeta-Lite, CrepeDB): branching de bases de datos (fork/merge/rebase).
-RuscaDB tiene MVCC con tx_id. Esta spec añade branching básico detrás de un
+RuscaDB tiene MVCC con tx_id. Esta spec aÃ±ade branching bÃ¡sico detrÃ¡s de un
 feature flag.
 
 ## Superficie
 
 - Feature `branching` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/branching.rs` — `Branch` con `fork`.
-- Integración futura: merge, rebase, conflict resolution.
+- `crates/ruscadb/src/branching.rs` â€” `Branch` con `fork`.
+- IntegraciÃ³n futura: merge, rebase, conflict resolution.
 
 ## Estado del arte
 
@@ -45,7 +46,7 @@ feature flag.
 - **CrepeDB**: fork desde cualquier snapshot, version history.
 - **RuscaDB actual**: MVCC con tx_id, snapshot isolation.
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **fork**: copia la base en un punto (tx_id).
 2. **merge**: fusiona cambios de un branch al principal.
@@ -53,6 +54,6 @@ feature flag.
 
 ## Notas
 
-- Implementación inicial: fork por copia de ficheros.
+- ImplementaciÃ³n inicial: fork por copia de ficheros.
 - Merge y rebase quedan como trabajo futuro.
 ---

@@ -2,6 +2,7 @@
 id: SPEC-0145
 feature: ts_continuous_aggregates
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 5
 boundaries:
@@ -25,34 +26,34 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0145 — Continuous aggregates para time-series
+# SPEC-0145 â€” Continuous aggregates para time-series
 
 ## Contexto
 
 Frontier 2026 (TimescaleDB, InfluxDB): continuous aggregates (materialized views
-pre-calculadas). RuscaDB tiene downsampling (SPEC-0118). Esta spec añade
-agregados continuos detrás de un feature flag.
+pre-calculadas). RuscaDB tiene downsampling (SPEC-0118). Esta spec aÃ±ade
+agregados continuos detrÃ¡s de un feature flag.
 
 ## Superficie
 
 - Feature `ts-aggregates` en `ruscadb` (off por defecto).
-- `crates/ruscadb/src/ts_aggregates.rs` — `ContinuousAggregate` con `compute`.
-- Integración futura: materialized views persistentes, refresh automático.
+- `crates/ruscadb/src/ts_aggregates.rs` â€” `ContinuousAggregate` con `compute`.
+- IntegraciÃ³n futura: materialized views persistentes, refresh automÃ¡tico.
 
 ## Estado del arte
 
-- **TimescaleDB**: continuous aggregates con refresh automático.
+- **TimescaleDB**: continuous aggregates con refresh automÃ¡tico.
 - **InfluxDB**: downsampling con tasks.
-- **RuscaDB actual**: downsampling básico (SPEC-0118).
+- **RuscaDB actual**: downsampling bÃ¡sico (SPEC-0118).
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **ContinuousAggregate**: computa agregados (avg, min, max, sum, count) por ventana.
 2. **Ventanas**: tumbling, sliding, session.
-3. **Materialización**: persiste el resultado como una tabla derivada.
+3. **MaterializaciÃ³n**: persiste el resultado como una tabla derivada.
 
 ## Notas
 
-- Implementación inicial: computación en memoria (sin persistencia).
+- ImplementaciÃ³n inicial: computaciÃ³n en memoria (sin persistencia).
 - Materialized views persistentes quedan como trabajo futuro.
 ---

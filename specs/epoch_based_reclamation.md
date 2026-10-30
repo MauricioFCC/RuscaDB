@@ -2,6 +2,7 @@
 id: SPEC-0146
 feature: epoch_based_reclamation
 status: implemented
+maturity: stub
 owner: storage-team
 appetite_days: 5
 boundaries:
@@ -26,45 +27,45 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0146 — Epoch-based reclamation (RCU)
+# SPEC-0146 â€” Epoch-based reclamation (RCU)
 
 ## Contexto
 
 Frontier 2026 (Linux kernel RCU, left-right lock): epoch-based reclamation
-permite liberar memoria/páginas sin bloquear lectores. El escritor incrementa
-el epoch; los lectores capturan el epoch al entrar; las páginas se liberan
+permite liberar memoria/pÃ¡ginas sin bloquear lectores. El escritor incrementa
+el epoch; los lectores capturan el epoch al entrar; las pÃ¡ginas se liberan
 cuando todos los lectores han salido del epoch anterior.
 
 RuscaDB actual: `reap` purga filas obsoletas pero no usa epoch-based
-reclamation para páginas copy-on-write.
+reclamation para pÃ¡ginas copy-on-write.
 
 ## Superficie
 
-- `crates/ruscadb/src/rcu.rs` — `EpochGuard`, `RcuDomain`.
-- Integración con copy-on-write B+tree (SPEC-0130).
+- `crates/ruscadb/src/rcu.rs` â€” `EpochGuard`, `RcuDomain`.
+- IntegraciÃ³n con copy-on-write B+tree (SPEC-0130).
 
 ## Estado del arte
 
 - **Linux kernel RCU**: readers no bloquean, writers sincronizan.
 - **left-right lock**: dos copias, readers siempre consistentes.
-- **redb**: epoch-based reclamation para páginas CoW.
+- **redb**: epoch-based reclamation para pÃ¡ginas CoW.
 - **RuscaDB actual**: `reap` con watermark MVCC, sin epoch-based.
 
-## Diseño propuesto
+## DiseÃ±o propuesto
 
 1. **EpochGuard**: captura el epoch actual al entrar, lo restaura al salir.
-2. **RcuDomain**: gestiona epochs, low_watermark, y la free-list de páginas.
-3. **reclaim**: libera páginas con epoch < low_watermark.
-4. **Sincronización**: el escritor espera a que todos los lectores salgan del
+2. **RcuDomain**: gestiona epochs, low_watermark, y la free-list de pÃ¡ginas.
+3. **reclaim**: libera pÃ¡ginas con epoch < low_watermark.
+4. **SincronizaciÃ³n**: el escritor espera a que todos los lectores salgan del
    epoch anterior antes de liberar.
 
-## Criterios de aceptación
+## Criterios de aceptaciÃ³n
 
 - **AC-0146-01** - RCU snapshot: el lector ve el estado del epoch capturado.
 
 ## Notas
 
-- Implementación inicial: stub sin sincronización real.
+- ImplementaciÃ³n inicial: stub sin sincronizaciÃ³n real.
 - RCU real queda como trabajo futuro (requiere atomics y memory ordering).
 - ADR requerido: `docs/adr/ADR-0146-rcu.md`.
 ---

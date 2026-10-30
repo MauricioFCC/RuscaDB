@@ -157,6 +157,13 @@ escribir, sino **cambios upstream** o **politicas que requieren datos reales**:
 - ~~**Ajuste de nprobe/oversampling**~~: **cerrado** con
   `IvfPqIndex::calibrate` (elige la configuracion mas barata que cumple el
   recall objetivo con datos reales).
+- ~~**Time-travel `--as-of`**~~: **cerrado** con
+  `execute_at_lsn`/`snapshot_at`/`current_tx`/`replay_as_of` y el ABI
+  `ruscadb_execute_at`; test de visibilidad historica y borrado posterior.
+- ~~**CRDT serializable**~~: **cerrado** con `CrdtSnapshot` +
+  `to_json`/`from_json`/`export`/`restore`.
+- ~~**S3Backup sin credenciales**~~: **cerrado** con el puerto `ObjectStore` +
+  `LocalObjectStore`; el cliente S3 real se inyecta como adapter.
 
 Detalle, fuentes y plan de desbloqueo: `docs/research/frontier-2026-10-29.md`
 (referencia cruzada al analisis del consumidor en
@@ -178,3 +185,17 @@ de la lista).
 - `scripts/check_architecture.py`: 0 ciclos, 0 aristas prohibidas.
 - `scripts/check_core_unsafe.py`: OK (presupuesto 76).
 - `scripts/check_ci_config.py`: OK.
+
+## 10. Modulos stub declarados (no cablear aun)
+
+Auditoria 2026-10-30: estos modulos exponen API publica pero su logica es
+simplificada. Sus specs llevan `maturity: stub` y **no deben consumirse como
+produccion** (evita el anti-patron "implemented de nombre"):
+
+`async_io`, `branching`, `concurrent_txn`, `cow_btree`, `kms`, `lance_format`,
+`materialized_view`, `onnx`, `otel`, `otel_real`, `pgwire`, `prepared`,
+`query_cache`, `rcu`, `rtree_split`, `simd`, `stemming`, `ts_aggregates`, `vle`,
+`geo`.
+
+`ivf_clustering` (SPEC-0147) paso a `maturity: real`: k-means real que reutiliza
+`ivf_pq::kmeans` (sin duplicar), con centroides, asignaciones y `nprobe`.

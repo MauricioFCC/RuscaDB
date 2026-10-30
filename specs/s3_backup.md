@@ -2,6 +2,7 @@
 id: SPEC-0128
 feature: s3_backup
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:
