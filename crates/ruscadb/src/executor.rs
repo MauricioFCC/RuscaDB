@@ -15,8 +15,8 @@ use ruscadb_query::limits::{
     DEFAULT_TIMEOUT_MILLIS, FULL_SCAN_WARN_THRESHOLD, IMPLICIT_LIMIT, check_budget,
 };
 use ruscadb_query::{
-    AggFunc, Aggregate, CompareOp, Expr, HavingCondition, KnnClause, OrderBy, Projection, Select,
-    TraverseClause,
+    AggFunc, Aggregate, CompareOp, Expr, HavingCondition, KnnClause, KnnMode, OrderBy, Projection,
+    Select, TraverseClause,
 };
 use ruscadb_txn::{Snapshot, Version};
 
@@ -420,27 +420,29 @@ fn apply_matches(
         .collect())
 }
 
-/// Aplica `KNN`: top-k restringido al filtro `WHERE` mediante FVS.
+/// Aplica `KNN`: top-k según el modo declarado con `USING`.
 ///
 /// `records` ya viene filtrado por visibilidad MVCC y por el `WHERE` escalar,
 /// de modo que sus ids son el conjunto `allowed`.
 ///
-/// - **Con `WHERE`** (`has_filter`): delega en `ifvs_vector_search`, que cablea
-///   `ruscadb_fvs::search_auto_indexed` sobre el `HnswIndex` real de la tabla y
-///   elige la estrategia (pre/in/post) por selectividad (SPEC-0048). `pre` e
-///   `in` son exactos; `post` es sonoro y recalcula exacto si no cubre `k`.
-/// - **Sin `WHERE`**: conserva el comportamiento previo
-///   (`filtered_vector_search`), equivalente al KNN clásico.
+/// - [`KnnMode::Auto`] (por defecto): con `WHERE` delega en
+///   `ifvs_vector_search` (FVS pre/in/post por selectividad, SPEC-0048); sin
+///   `WHERE` usa `filtered_vector_search` (KNN clásico).
+/// - [`KnnMode::Quantized`]: ANN en dos etapas sobre el índice cuantizado
+///   (`search_vectors_quantized`, RaBitQ + re-rank) y recorte a `allowed`.
+/// - [`KnnMode::Filtered`]: ACORN filtrado (`search_vectors_filtered`, SPEC-0172),
+///   que respeta `allowed` durante el recorrido.
+/// - [`KnnMode::Exact`]: fuerza bruta exacta sobre los candidatos visibles.
 ///
 /// Args:
 ///     database: Base abierta.
 ///     table: Definición de la tabla.
-///     knn: Cláusula `KNN` (columna, `k` y vector de consulta).
+///     knn: Cláusula `KNN` (columna, `k`, vector de consulta y modo).
 ///     records: Candidatos visibles y filtrados por `WHERE` (conjunto `allowed`).
 ///     has_filter: `true` si la consulta lleva `WHERE` (filtro escalar).
 ///
 /// Returns:
-///     Los registros del top-k filtrado, en orden de distancia ascendente.
+///     Los registros del top-k, en orden de distancia ascendente.
 ///
 /// Errors:
 ///     [`RuscaError::MissingVector`] si la tabla no tiene índice vectorial;
@@ -472,21 +474,39 @@ fn apply_knn(
             });
         }
         let allowed: BTreeSet<RecordId> = records.iter().map(|record| record.id).collect();
-        let ranked = if has_filter {
-            index.ifvs_vector_search(&query, k, &allowed)?
-        } else {
-            index.filtered_vector_search(&query, k, &allowed)?
+        let metric = index.vector_metric();
+        let mut served: Vec<RecordId> = match knn.mode {
+            KnnMode::Auto => {
+                let ranked = if has_filter {
+                    index.ifvs_vector_search(&query, k, &allowed)?
+                } else {
+                    index.filtered_vector_search(&query, k, &allowed)?
+                };
+                ranked.into_iter().map(|(id, _)| id).collect()
+            }
+            KnnMode::Quantized => database
+                .search_vectors_quantized(&table.name, &query, k)?
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect(),
+            KnnMode::Filtered => database
+                .search_vectors_filtered(&table.name, &query, k, &allowed)?
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect(),
+            KnnMode::Exact => Vec::new(),
         };
-        let served: Vec<RecordId> = ranked
-            .iter()
-            .map(|(id, _)| *id)
-            .filter(|id| allowed.contains(id))
-            .collect();
-        let expected = exact_top_k(&records, &query, k, index.vector_metric());
+        let expected = exact_top_k(&records, &query, k, metric);
+        if knn.mode == KnnMode::Exact {
+            served = expected.clone();
+        } else {
+            served.retain(|id| allowed.contains(id));
+            served.truncate(k);
+        }
         (served, expected)
     };
     if database.shadow_reads_enabled() {
-        let label = format!("KNN {} k={k}", knn.column);
+        let label = format!("KNN {} k={k} mode={}", knn.column, knn.mode.as_str());
         database.record_shadow_check(label, expected, served.clone());
     }
     let mut by_id: BTreeMap<RecordId, Record> = records

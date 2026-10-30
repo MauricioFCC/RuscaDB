@@ -180,3 +180,4 @@
 | SPEC-0178 | `gorilla_ts_compression` | implemented | real | `gorilla_ts_compression.md` |
 | SPEC-0179 | `crdt_sync_real` | implemented | real | `crdt_sync_real.md` |
 | SPEC-0180 | `post_quantum_crypto` | proposed | placeholder | `post_quantum_crypto.md` |
+| SPEC-0181 | `knn_modes` | implemented | real | `knn_modes.md` |

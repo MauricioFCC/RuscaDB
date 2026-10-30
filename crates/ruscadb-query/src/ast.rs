@@ -227,7 +227,53 @@ pub struct Delete {
     pub returning: Option<Vec<String>>,
 }
 
-/// Cláusula `KNN <columna> <|k|> [v1, v2, ...]` de búsqueda de vecinos.
+/// Estrategia de resolución de `KNN` (SPEC-0113 / SPEC-0171 / SPEC-0172).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KnnMode {
+    /// Comportamiento por defecto: FVS con `WHERE` o KNN clásico sin él.
+    #[default]
+    Auto,
+    /// ANN en dos etapas sobre el índice cuantizado (RaBitQ + re-rank).
+    Quantized,
+    /// Búsqueda filtrada ACORN restringida al `WHERE`.
+    Filtered,
+    /// Fuerza bruta exacta sobre los candidatos visibles (oráculo).
+    Exact,
+}
+
+impl KnnMode {
+    /// Texto canónico del modo (para `Display` y errores).
+    ///
+    /// Returns:
+    ///     `AUTO`, `QUANTIZED`, `FILTERED` o `EXACT`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "AUTO",
+            Self::Quantized => "QUANTIZED",
+            Self::Filtered => "FILTERED",
+            Self::Exact => "EXACT",
+        }
+    }
+
+    /// Reconoce un modo desde texto (sin distinguir mayúsculas).
+    ///
+    /// Args:
+    ///     text: Texto del modo.
+    ///
+    /// Returns:
+    ///     El modo, o `None` si no es válido.
+    pub fn from_text(text: &str) -> Option<Self> {
+        match text.to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "quantized" => Some(Self::Quantized),
+            "filtered" => Some(Self::Filtered),
+            "exact" => Some(Self::Exact),
+            _ => None,
+        }
+    }
+}
+
+/// Cláusula `KNN <columna> <|k|> [v1, v2, ...] [USING <modo>]` de búsqueda de vecinos.
 #[derive(Clone, Debug, PartialEq)]
 pub struct KnnClause {
     /// Columna de embedding sobre la que buscar.
@@ -236,6 +282,8 @@ pub struct KnnClause {
     pub k: u64,
     /// Vector de consulta (puede ser vacío).
     pub query: Vec<f64>,
+    /// Estrategia de resolución (`Auto` si no se declara `USING`).
+    pub mode: KnnMode,
 }
 
 /// Cláusula `TRAVERSE <columna> DEPTH <n>` de recorrido de grafo.
@@ -416,7 +464,11 @@ impl fmt::Display for KnnClause {
             }
             write_float(formatter, *value)?;
         }
-        write!(formatter, "]")
+        write!(formatter, "]")?;
+        if self.mode != KnnMode::Auto {
+            write!(formatter, " USING {}", self.mode.as_str())?;
+        }
+        Ok(())
     }
 }
 

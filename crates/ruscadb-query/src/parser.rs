@@ -2,8 +2,8 @@
 
 use crate::ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Delete, Explain, Expr,
-    HavingCondition, Insert, JoinClause, JoinKind, KnnClause, OnConflict, OrderBy, Projection,
-    Select, Statement, TraverseClause, Update,
+    HavingCondition, Insert, JoinClause, JoinKind, KnnClause, KnnMode, OnConflict, OrderBy,
+    Projection, Select, Statement, TraverseClause, Update,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use crate::limits::check_depth;
@@ -155,6 +155,26 @@ impl Parser {
             true
         } else {
             false
+        }
+    }
+
+    /// Consume un identificador si coincide con `word` (sin distinguir caja).
+    ///
+    /// Se usa para modificadores opcionales (`USING <modo>`) que no reservan
+    /// palabras clave y por tanto no rompen columnas existentes.
+    ///
+    /// Args:
+    ///     word: Texto esperado.
+    ///
+    /// Returns:
+    ///     `true` si lo consumió.
+    fn match_word(&mut self, word: &str) -> bool {
+        match self.peek() {
+            Some(Token::Ident(ident)) if ident.eq_ignore_ascii_case(word) => {
+                self.advance();
+                true
+            }
+            _ => false,
         }
     }
 
@@ -896,7 +916,10 @@ impl Parser {
         Ok(expr)
     }
 
-    /// Parsea la cláusula `KNN <col> <|k|> [v1, v2, ...]`.
+    /// Parsea la cláusula `KNN <col> <|k|> [v1, v2, ...] [USING <modo>]`.
+    ///
+    /// `USING` es opcional y no reserva palabra clave: se acepta como
+    /// identificador para no romper columnas llamadas `using`.
     fn parse_knn(&mut self) -> Result<KnnClause, RuscaError> {
         let column = self.expect_ident()?;
         self.expect_token(
@@ -909,7 +932,22 @@ impl Parser {
             &format!("{EXPECTED_PREFIX}'|>' tras k en KNN"),
         )?;
         let query = self.parse_vector()?;
-        Ok(KnnClause { column, k, query })
+        let mode = if self.match_word("using") {
+            let raw = self.expect_ident()?;
+            KnnMode::from_text(&raw).ok_or_else(|| {
+                self.error(format!(
+                    "{EXPECTED_PREFIX}AUTO, QUANTIZED, FILTERED o EXACT tras USING"
+                ))
+            })?
+        } else {
+            KnnMode::Auto
+        };
+        Ok(KnnClause {
+            column,
+            k,
+            query,
+            mode,
+        })
     }
 
     /// Parsea la cláusula `TRAVERSE <col> DEPTH <n>`.

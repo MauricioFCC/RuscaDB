@@ -18,8 +18,8 @@ pub mod provider;
 
 pub use ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Delete, Explain, Expr,
-    HavingCondition, Insert, JoinClause, JoinKind, KnnClause, OnConflict, OrderBy, Projection,
-    Select, Statement, TraverseClause, Update,
+    HavingCondition, Insert, JoinClause, JoinKind, KnnClause, KnnMode, OnConflict, OrderBy,
+    Projection, Select, Statement, TraverseClause, Update,
 };
 pub use limits::{
     COMPLEXITY_BUDGET, DEFAULT_TIMEOUT_MILLIS, FULL_SCAN_WARN_THRESHOLD, IMPLICIT_LIMIT,
@@ -287,10 +287,57 @@ mod tests {
                 column: "embedding".to_string(),
                 k: 5,
                 query: vec![0.1, 0.2, 0.3],
+                mode: KnnMode::Auto,
             })
         );
         assert_eq!(select.traverse, None);
         assert_eq!(select.limit, None);
+    }
+
+    /// `USING <modo>` se parsea sin reservar palabra clave y hace round-trip.
+    #[test]
+    fn knn_using_mode_roundtrip() {
+        for (text, mode) in [
+            (
+                "SELECT * FROM docs KNN embedding <|3|> [1.0] USING QUANTIZED",
+                KnnMode::Quantized,
+            ),
+            (
+                "SELECT * FROM docs KNN embedding <|3|> [1.0] USING filtered",
+                KnnMode::Filtered,
+            ),
+            (
+                "SELECT * FROM docs KNN embedding <|3|> [1.0] USING exact",
+                KnnMode::Exact,
+            ),
+            (
+                "SELECT * FROM docs KNN embedding <|3|> [1.0] USING auto",
+                KnnMode::Auto,
+            ),
+            (
+                "SELECT * FROM docs KNN embedding <|3|> [1.0]",
+                KnnMode::Auto,
+            ),
+        ] {
+            let statement = parse_statement(text).expect("parse");
+            let Statement::Select(select) = statement else {
+                panic!("se esperaba SELECT: {text}");
+            };
+            let text = select.to_string();
+            let knn = select.knn.expect("knn");
+            assert_eq!(knn.mode, mode, "modo de {text}");
+            let reparsed = parse(&text).expect("reparse");
+            assert_eq!(reparsed.knn.expect("knn").mode, mode);
+        }
+
+        let error = parse("SELECT * FROM docs KNN embedding <|3|> [1.0] USING turbo")
+            .expect_err("modo invalido");
+        match error {
+            RuscaError::ParseError { message, .. } => {
+                assert!(message.contains("QUANTIZED"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     /// AC-0015-02 — parseo de `TRAVERSE`.
@@ -627,7 +674,7 @@ mod tests {
                 join: None,
                 from: table,
                 filter: None,
-                knn: Some(KnnClause { column: knn_column, k, query }),
+                knn: Some(KnnClause { column: knn_column, k, query, mode: KnnMode::Auto }),
                 traverse: Some(TraverseClause { column: traverse_column, depth }),
                 order_by: None,
                 limit,

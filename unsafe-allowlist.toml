@@ -16,7 +16,9 @@ ruscadb-graph = 0
 ruscadb-multimodal = 0
 ruscadb-ai = 0
 ruscadb-wal = 0
-ruscadb-ffi = 86
+# +7 (ciclo 5): dos funciones ABI de busqueda vectorial (`search_quantized` y
+# `search_filtered`): atributo no_mangle + CStr/from_raw_parts con `// SAFETY:`.
+ruscadb-ffi = 93
 ruscadb-py = 0
 ruscadb-node = 0
 ruscadb = 0

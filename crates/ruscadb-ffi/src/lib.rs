@@ -19,7 +19,7 @@
 
 use core::ffi::{c_char, c_int};
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::ffi::{CStr, CString};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
@@ -1569,6 +1569,155 @@ pub extern "C" fn ruscadb_search_bq(
                 }
                 Err(error) => {
                     set_last_error(&format!("ruscadb_search_bq: {error}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// Serializa pares `(RecordId, distancia)` a JSON.
+///
+/// Args:
+///     hits: Resultados del indice vectorial.
+///
+/// Returns:
+///     `[{"id": "...", "distance": ...}]`.
+fn hits_to_json(hits: &[(ruscadb::RecordId, f32)]) -> String {
+    let json: Vec<serde_json::Value> = hits
+        .iter()
+        .map(|(id, distance)| serde_json::json!({"id": id.to_string(), "distance": distance}))
+        .collect();
+    serde_json::to_string(&json).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Parsea un array JSON de ids (`["01H...", ...]`) al conjunto `allowed`.
+///
+/// Args:
+///     text: JSON de entrada.
+///
+/// Returns:
+///     Conjunto de `RecordId` (sin duplicados).
+///
+/// Errors:
+///     Texto accionable si el JSON no es un array de strings o un id es invalido.
+fn parse_allowed_ids(text: &str) -> Result<BTreeSet<ruscadb::RecordId>, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(text).map_err(|error| format!("json invalido: {error}"))?;
+    let array = value
+        .as_array()
+        .ok_or_else(|| "allowed_json debe ser un array de ids".to_string())?;
+    let mut allowed = BTreeSet::new();
+    for item in array {
+        let id = item
+            .as_str()
+            .ok_or_else(|| "cada id debe ser un string".to_string())?;
+        let record_id =
+            ruscadb::RecordId::from_string(id).map_err(|_| format!("id invalido: {id}"))?;
+        allowed.insert(record_id);
+    }
+    Ok(allowed)
+}
+
+/// KNN cuantizado en dos etapas (RaBitQ + re-rank) expuesto al ABI.
+///
+/// Args:
+///     handle: Handle abierto.
+///     table: Tabla con embeddings.
+///     query: Vector de consulta (`dim` floats).
+///     dim: Dimension de la consulta.
+///     top_k: Resultados deseados.
+///     out_json: Buffer de salida.
+///     buf_len: Capacidad de `out_json`.
+///
+/// Returns:
+///     `RC_OK`, `RC_NULL_POINTER`, `RC_INVALID_HANDLE`, `RC_DOMAIN_ERROR` o
+///     `RC_BUFFER_TOO_SMALL`.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_search_quantized(
+    handle: *mut RuscadbHandle,
+    table: *const c_char,
+    query: *const f32,
+    dim: usize,
+    top_k: usize,
+    out_json: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if table.is_null() || query.is_null() {
+            set_last_error("ruscadb_search_quantized: puntero nulo (table/query)");
+            return RC_NULL_POINTER;
+        }
+        let table_name = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .into_owned();
+        // SAFETY: el llamador garantiza que `query` apunta a `dim` floats.
+        let query_vector = unsafe { std::slice::from_raw_parts(query, dim) };
+        resolve(with_handle(handle, |reference| {
+            let db = lock_handle(reference);
+            match db.search_vectors_quantized(&table_name, query_vector, top_k) {
+                Ok(hits) => write_string_out(&hits_to_json(&hits), out_json, buf_len),
+                Err(error) => {
+                    set_last_error(&format!("ruscadb_search_quantized: {error}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
+/// KNN filtrado ACORN restringido a un conjunto de ids (SPEC-0172).
+///
+/// Args:
+///     handle: Handle abierto.
+///     table: Tabla con embeddings.
+///     query: Vector de consulta (`dim` floats).
+///     dim: Dimension de la consulta.
+///     top_k: Resultados deseados.
+///     allowed_json: Array JSON de ids permitidos (`["01H...", ...]`).
+///     out_json: Buffer de salida.
+///     buf_len: Capacidad de `out_json`.
+///
+/// Returns:
+///     `RC_OK`, `RC_NULL_POINTER`, `RC_INVALID_HANDLE`, `RC_DOMAIN_ERROR` o
+///     `RC_BUFFER_TOO_SMALL`.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_search_filtered(
+    handle: *mut RuscadbHandle,
+    table: *const c_char,
+    query: *const f32,
+    dim: usize,
+    top_k: usize,
+    allowed_json: *const c_char,
+    out_json: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if table.is_null() || query.is_null() || allowed_json.is_null() {
+            set_last_error("ruscadb_search_filtered: puntero nulo (table/query/allowed)");
+            return RC_NULL_POINTER;
+        }
+        let table_name = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .into_owned();
+        let allowed_text = unsafe { CStr::from_ptr(allowed_json) }
+            .to_string_lossy()
+            .into_owned();
+        let allowed = match parse_allowed_ids(&allowed_text) {
+            Ok(ids) => ids,
+            Err(message) => {
+                set_last_error(&format!("ruscadb_search_filtered: {message}"));
+                return RC_DOMAIN_ERROR;
+            }
+        };
+        // SAFETY: el llamador garantiza que `query` apunta a `dim` floats.
+        let query_vector = unsafe { std::slice::from_raw_parts(query, dim) };
+        resolve(with_handle(handle, |reference| {
+            let db = lock_handle(reference);
+            match db.search_vectors_filtered(&table_name, query_vector, top_k, &allowed) {
+                Ok(hits) => write_string_out(&hits_to_json(&hits), out_json, buf_len),
+                Err(error) => {
+                    set_last_error(&format!("ruscadb_search_filtered: {error}"));
                     RC_DOMAIN_ERROR
                 }
             }
