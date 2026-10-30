@@ -8,6 +8,7 @@ Comprueba, sin dependencias externas obligatorias (solo stdlib):
    cola de runners (SPEC-0046).
 2. ``.github/workflows/nightly.yml`` (T3) es YAML parseable y declara los jobs
    ``mutation``/``fuzz``/``miri``/``sanitizers`` (alert-only) más el job
+   bloqueante ``mutation-score`` que agrega los shards (MS >= 85 %), y el job
    ``test-macos`` que corre en ``macos-latest`` (SPEC-0046), ``loom``
    (SPEC-0053) y ``benches`` (criterion smoke, SPEC-0059); además, el job
    ``fuzz`` declara la matriz de targets ``query_parse``/``wal_recover`` y el
@@ -270,6 +271,31 @@ def check_nightly(errors: list[str]) -> None:
                         f"nightly.yml: el job 'fuzz' no incluye el target "
                         f"'{target}' en su matriz"
                     )
+        gate = jobs.get("mutation-score")
+        if not isinstance(gate, dict):
+            errors.append(
+                "nightly.yml: falta el job 'mutation-score' "
+                "(gate agregado MS >= 85 %)"
+            )
+        else:
+            if gate.get("continue-on-error") is True:
+                errors.append(
+                    "nightly.yml: el job 'mutation-score' no puede ser alert-only"
+                )
+            needs = gate.get("needs")
+            needs_mutation = needs == "mutation" or (
+                isinstance(needs, list) and "mutation" in needs
+            )
+            if not needs_mutation:
+                errors.append(
+                    "nightly.yml: 'mutation-score' debe depender de 'mutation'"
+                )
+            gate_text = str(gate)
+            for token in ("mutation_score.py", "--threshold"):
+                if token not in gate_text:
+                    errors.append(
+                        f"nightly.yml: 'mutation-score' debe usar {token}"
+                    )
         if data.get("permissions") != {"contents": "read"}:
             errors.append("nightly.yml: permissions debe ser contents: read")
         if not _has_runner(jobs, NIGHTLY_OS):
@@ -300,6 +326,11 @@ def check_nightly(errors: list[str]) -> None:
     if NIGHTLY_OS not in text:
         errors.append(
             f"nightly.yml: no declara el runner '{NIGHTLY_OS}' (chequeo textual)"
+        )
+    if "mutation-score:" not in text or "mutation_score.py" not in text:
+        errors.append(
+            "nightly.yml: falta el gate agregado 'mutation-score' "
+            "(chequeo textual)"
         )
 
 

@@ -3,7 +3,8 @@
 # Gate T2 (merge):    cargo mutants --in-diff pr.diff --shard k/n --in-place --baseline=skip
 #   Mutation score objetivo: >= 70 % (roadmap FF-08).
 # Gate T3 (nightly):  cargo mutants --workspace --shard k/8 --in-place
-#   Mutation score objetivo: >= 85 % (alert-only; ver .github/workflows/nightly.yml).
+#   Mutation score objetivo: >= 85 %, **bloqueante** en el job agregado
+#   `mutation-score` (scripts/mutation_score.py; ver nightly.yml).
 #
 # Toolchain: el pin de reproducibilidad vive en `rust-toolchain.toml` (canal
 # estable). cargo-mutants invoca `cargo`, por lo que hereda ese toolchain; la

@@ -50,8 +50,8 @@ jobs:
           tool: cargo-mutants
 
       - name: cargo mutants (shard ${{ matrix.shard }}/8)
-        # Umbral T3 documentado: mutation score >= 85 % (roadmap FF-08).
-        # Alert-only: no bloquea merge; el reporte se adjunta como artifact.
+        # MS por shard informativo; el gate bloqueante agrega los 8 shards en
+        # el job `mutation-score` (umbral global >= 85 %).
         run: cargo mutants --workspace --shard=${{ matrix.shard }}/8 --in-place
 
       - name: Mutation score (informativo, umbral MS >= 85 %)
@@ -82,6 +82,26 @@ jobs:
           retention-days: 30
 
   # ── T3.2 — Fuzzing continuo (libFuzzer, nightly) ────────────────────────────
+  # ── T3.1b ── Gate agregado de mutacion (MS >= 85 % sobre todos los shards) ──
+  mutation-score:
+    name: Mutation gate (MS >= 85 %)
+    needs: mutation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: mutants-outcomes-*
+          path: mutants-shards
+      - name: Mutation score global (bloqueante)
+        run: |
+          mapfile -t files < <(find mutants-shards -name outcomes.json -type f)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No se descargaron outcomes.json de ningun shard" >&2
+            exit 2
+          fi
+          python3 scripts/mutation_score.py --threshold 85 "${files[@]}"
+
   fuzz:
     name: Fuzz (${{ matrix.target }})
     runs-on: ubuntu-latest
