@@ -1385,6 +1385,145 @@ pub extern "C" fn ruscadb_explain(
     })
 }
 
+/// Cuantiza `n` vectores `f32` a codigos RaBitQ (1 bit por dimension).
+///
+/// Contrato ABI (SPEC-0171 / `ruscadb-ivf-pq` §6.1): escribe
+/// `n * ceil(dim/8)` bytes en `out_codes` y `n` normas en `out_norms`.
+///
+/// Args:
+///     vectors: `n * dim` floats en row-major.
+///     n: Numero de vectores.
+///     dim: Dimension de cada vector (>= 1).
+///     out_codes: Buffer de `n * ceil(dim/8)` bytes.
+///     out_codes_len: Capacidad de `out_codes`.
+///     out_norms: Buffer de `n` floats.
+///     out_norms_len: Capacidad de `out_norms` (en floats).
+///
+/// Returns:
+///     `RC_OK`, `RC_NULL_POINTER`, `RC_DOMAIN_ERROR` (dim 0) o
+///     `RC_BUFFER_TOO_SMALL`.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_quantize(
+    vectors: *const f32,
+    n: usize,
+    dim: usize,
+    out_codes: *mut u8,
+    out_codes_len: usize,
+    out_norms: *mut f32,
+    out_norms_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if vectors.is_null() || out_codes.is_null() || out_norms.is_null() {
+            set_last_error("ruscadb_quantize: puntero nulo");
+            return RC_NULL_POINTER;
+        }
+        if dim == 0 {
+            set_last_error("ruscadb_quantize: dim debe ser >= 1");
+            return RC_DOMAIN_ERROR;
+        }
+        let Some(elements) = n.checked_mul(dim) else {
+            set_last_error("ruscadb_quantize: n * dim desborda usize");
+            return RC_DOMAIN_ERROR;
+        };
+        let code_len = ruscadb::RabitqQuantizer::code_len(dim);
+        let Some(required_codes) = n.checked_mul(code_len) else {
+            set_last_error("ruscadb_quantize: n * code_len desborda usize");
+            return RC_DOMAIN_ERROR;
+        };
+        if out_codes_len < required_codes {
+            set_last_error(&format!(
+                "ruscadb_quantize: out_codes_len {out_codes_len} < {required_codes}"
+            ));
+            return RC_BUFFER_TOO_SMALL;
+        }
+        if out_norms_len < n {
+            set_last_error(&format!(
+                "ruscadb_quantize: out_norms_len {out_norms_len} < {n}"
+            ));
+            return RC_BUFFER_TOO_SMALL;
+        }
+
+        // SAFETY: el llamador garantiza que `vectors` apunta a `n * dim` floats
+        // legibles y que los buffers de salida tienen al menos las capacidades
+        // comprobadas arriba; no se solapan entre si en uso correcto.
+        let input = unsafe { std::slice::from_raw_parts(vectors, elements) };
+        // SAFETY: `out_codes` tiene al menos `required_codes` bytes utilizables.
+        let codes = unsafe { std::slice::from_raw_parts_mut(out_codes, required_codes) };
+        // SAFETY: `out_norms` tiene al menos `n` floats utilizables.
+        let norms = unsafe { std::slice::from_raw_parts_mut(out_norms, n) };
+
+        let quantizer = ruscadb::RabitqQuantizer::new();
+        for index in 0..n {
+            let start = index * dim;
+            let code = quantizer.encode(&input[start..start + dim]);
+            codes[index * code_len..(index + 1) * code_len].copy_from_slice(&code.bits);
+            norms[index] = code.norm;
+        }
+        RC_OK
+    })
+}
+
+/// KNN binario RaBitQ con oversampling + rescore exacto float32.
+///
+/// Contrato ABI (SPEC-0171 / `ruscadb-ivf-pq` §6.1): escribe un JSON
+/// `[{"id": "...", "distance": ...}]` en `out_json`.
+///
+/// Args:
+///     handle: Handle abierto.
+///     table: Tabla con embeddings.
+///     query: Vector de consulta (`dim` floats).
+///     dim: Dimension de la consulta.
+///     top_k: Resultados deseados.
+///     oversample: Candidatos antes del rescore (>= 1; 0 se trata como 1).
+///     out_json: Buffer de salida.
+///     buf_len: Capacidad de `out_json`.
+///
+/// Returns:
+///     `RC_OK`, `RC_NULL_POINTER`, `RC_INVALID_HANDLE`, `RC_DOMAIN_ERROR` o
+///     `RC_BUFFER_TOO_SMALL`.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_search_bq(
+    handle: *mut RuscadbHandle,
+    table: *const c_char,
+    query: *const f32,
+    dim: usize,
+    top_k: usize,
+    oversample: usize,
+    out_json: *mut c_char,
+    buf_len: usize,
+) -> c_int {
+    guard_ffi(|| {
+        if table.is_null() || query.is_null() {
+            set_last_error("ruscadb_search_bq: puntero nulo (table/query)");
+            return RC_NULL_POINTER;
+        }
+        let table_name = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .into_owned();
+        // SAFETY: el llamador garantiza que `query` apunta a `dim` floats.
+        let query_vector = unsafe { std::slice::from_raw_parts(query, dim) };
+        resolve(with_handle(handle, |reference| {
+            let db = lock_handle(reference);
+            match db.search_vectors_bq(&table_name, query_vector, top_k, oversample) {
+                Ok(hits) => {
+                    let json: Vec<serde_json::Value> = hits
+                        .iter()
+                        .map(|(id, distance)| {
+                            serde_json::json!({"id": id.to_string(), "distance": distance})
+                        })
+                        .collect();
+                    let text = serde_json::to_string(&json).unwrap_or_else(|_| "[]".to_string());
+                    write_string_out(&text, out_json, buf_len)
+                }
+                Err(error) => {
+                    set_last_error(&format!("ruscadb_search_bq: {error}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
+    })
+}
+
 /// Abre una base con opciones extendidas: blob store opcional y solo lectura.
 #[unsafe(no_mangle)]
 pub extern "C" fn ruscadb_open_opts(

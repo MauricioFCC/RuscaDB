@@ -139,9 +139,12 @@ rebuild por mutante (~85 s) excede el presupuesto de una sesion interactiva.
 El cableado esta completo. Lo que queda abierto no es codigo pendiente de
 escribir, sino **cambios upstream** o **politicas que requieren datos reales**:
 
-- **RaBitQ / IVF-PQ por C-ABI**: el cuantizador es real y esta cableado en la
-  fachada, pero el FFI solo expone 29 simbolos y ninguno de cuantizacion.
-  Desbloqueo: `ruscadb_quantize` + `ruscadb_search_bq` (oversample + rescore).
+- ~~**RaBitQ por C-ABI**~~: **cerrado** con `ruscadb_quantize` +
+  `ruscadb_search_bq` (31 simbolos, tests en
+  `crates/ruscadb-ffi/tests/bq_abi.rs`).
+- **IVF-PQ real (product quantization)**: `IvfPqIndex` es un stub (promedio por
+  subespacio) y SPEC-0125 quedo marcada `maturity: stub`; falta k-means por
+  subespacio y codebooks para cumplir recall >= 0.90.
 - **Columnas de gobernanza** (`derived_from`, `session_id`,
   `write_gate_verdict`): el esquema fijo las mantiene en metadata sin indice;
   requieren migracion/`ALTER TABLE` expuesto en el ABI.

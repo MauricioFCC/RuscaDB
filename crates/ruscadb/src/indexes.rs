@@ -975,6 +975,32 @@ impl Database {
         }
     }
 
+    /// KNN binario RaBitQ con oversampling + rescore exacto (SPEC-0171).
+    ///
+    /// Args:
+    ///     table: Tabla con indice vectorial.
+    ///     query: Vector de consulta.
+    ///     k: Resultados deseados.
+    ///     oversample: Factor de candidatos antes del rescore (minimo 1).
+    ///
+    /// Returns:
+    ///     Hasta `k` pares `(RecordId, distancia)` ordenados por distancia.
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si la consulta no encaja.
+    pub fn search_vectors_bq(
+        &self,
+        table: &str,
+        query: &[f32],
+        k: usize,
+        oversample: usize,
+    ) -> Result<Vec<(RecordId, f32)>, RuscaError> {
+        match self.table_indexes(table) {
+            Some(indexes) => indexes.quantized_vector_search(query, k, oversample.max(1)),
+            None => Ok(Vec::new()),
+        }
+    }
+
     /// Guarda un snapshot binario del indice vectorial de `table` (SPEC-0173).
     ///
     /// El snapshot incluye vectores y adyacencia del nivel base; el mapeo a
