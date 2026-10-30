@@ -88,6 +88,19 @@ impl Rng {
     }
 }
 
+/// Configuracion calibrada para una carga real (nprobe + oversampling).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Calibration {
+    /// Listas IVF a explorar.
+    pub nprobe: usize,
+    /// Candidatos = `k * rerank_factor` antes del re-rank exacto.
+    pub rerank_factor: usize,
+    /// Recall@k medido sobre las consultas de calibracion.
+    pub recall: f64,
+    /// Vectores puntuados por consulta (media).
+    pub mean_scored: f64,
+}
+
 /// Indice IVF-PQ.
 #[derive(Debug, Clone)]
 pub struct IvfPqIndex {
@@ -357,6 +370,17 @@ impl IvfPqIndex {
         k: usize,
         nprobe: usize,
     ) -> (Vec<(usize, f32)>, SearchStats) {
+        self.search_internal(query, k, nprobe, self.rerank_factor)
+    }
+
+    /// Nucleo de busqueda con oversampling explicito (usado por `calibrate`).
+    fn search_internal(
+        &self,
+        query: &[f32],
+        k: usize,
+        nprobe: usize,
+        rerank_factor: usize,
+    ) -> (Vec<(usize, f32)>, SearchStats) {
         let mut stats = SearchStats::default();
         if !self.trained || k == 0 || self.codes.is_empty() || query.len() != self.dimension {
             return (Vec::new(), stats);
@@ -397,7 +421,7 @@ impl IvfPqIndex {
 
         // 3) Puntuar solo las listas exploradas, con un heap acotado.
         // Oversampling configurable para el re-rank (sigue siendo sublineal).
-        let keep = k.saturating_mul(self.rerank_factor).max(k);
+        let keep = k.saturating_mul(rerank_factor).max(k);
         let mut heap: BinaryHeap<Neighbor> = BinaryHeap::with_capacity(keep + 1);
         for &cluster in &probes {
             let Some(list) = self.lists.get(cluster) else {
@@ -442,6 +466,93 @@ impl IvfPqIndex {
                 .collect(),
             stats,
         )
+    }
+
+    /// Calibra `nprobe` y el oversampling para una carga real.
+    ///
+    /// Recorre una rejilla geometrica de `nprobe` (1, 2, 4, ... hasta el numero
+    /// de clusters) y varios factores de oversampling; elige la configuracion
+    /// **mas barata** (menos vectores puntuados) que alcance `target_recall` sin
+    /// superar `max_scored`.
+    ///
+    /// Args:
+    ///     queries: Consultas de calibracion (misma dimension).
+    ///     truth: Ground truth por consulta (ids del top-k exacto).
+    ///     k: `k` del recall.
+    ///     target_recall: Recall minimo, en `0..=1`.
+    ///     max_scored: Tope de vectores puntuados por consulta (0 = sin tope).
+    ///
+    /// Returns:
+    ///     La configuracion elegida, o `None` si ninguna cumple el objetivo.
+    pub fn calibrate(
+        &self,
+        queries: &[Vec<f32>],
+        truth: &[Vec<usize>],
+        k: usize,
+        target_recall: f64,
+        max_scored: usize,
+    ) -> Option<Calibration> {
+        if queries.is_empty() || queries.len() != truth.len() || k == 0 {
+            return None;
+        }
+        let clusters = if self.coarse_centroids.is_empty() {
+            1
+        } else {
+            self.coarse_centroids.len()
+        };
+        let mut probes: Vec<usize> = Vec::new();
+        let mut probe = 1usize;
+        while probe < clusters {
+            probes.push(probe);
+            probe = probe.saturating_mul(2);
+        }
+        probes.push(clusters);
+        probes.sort_unstable();
+        probes.dedup();
+
+        let limit = if max_scored == 0 {
+            f64::INFINITY
+        } else {
+            max_scored as f64
+        };
+        let mut best: Option<Calibration> = None;
+        for nprobe in probes {
+            for rerank_factor in [4usize, 8, 20, 50] {
+                let mut hits = 0usize;
+                let mut total = 0usize;
+                let mut scored = 0usize;
+                for (query, expected) in queries.iter().zip(truth) {
+                    let (found, stats) = self.search_internal(query, k, nprobe, rerank_factor);
+                    scored += stats.scored;
+                    hits += found.iter().filter(|(id, _)| expected.contains(id)).count();
+                    total += expected.len();
+                }
+                if total == 0 {
+                    continue;
+                }
+                let recall = hits as f64 / total as f64;
+                let mean_scored = scored as f64 / queries.len() as f64;
+                if recall < target_recall || mean_scored > limit {
+                    continue;
+                }
+                let candidate = Calibration {
+                    nprobe,
+                    rerank_factor,
+                    recall,
+                    mean_scored,
+                };
+                let better = best.is_none_or(|current| {
+                    candidate.mean_scored < current.mean_scored
+                        || (candidate.mean_scored == current.mean_scored
+                            && (candidate.nprobe, candidate.rerank_factor)
+                                < (current.nprobe, current.rerank_factor))
+                });
+                if better {
+                    best = Some(candidate);
+                }
+            }
+        }
+        best
     }
 
     /// Memoria estimada `(codigos, float32 equivalentes)`.
@@ -704,5 +815,69 @@ mod tests {
         assert!(index.train(&[vec![0.0; 31]], 8, 4, 3).is_err());
         assert!(index.train(&[vec![0.0; 32]], 300, 4, 3).is_err());
         assert!(index.search(&[0.0; 32], 5, 2).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod calibration_tests {
+    use super::{IvfPqIndex, l2};
+
+    struct Rng(u64);
+    impl Rng {
+        fn next_u64(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x >> 12;
+            x ^= x << 25;
+            x ^= x >> 27;
+            self.0 = x;
+            x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        }
+        fn normal(&mut self) -> f32 {
+            let u1 = ((self.next_u64() >> 11) as f64 + 1.0) / (1u64 << 53) as f64;
+            let u2 = ((self.next_u64() >> 11) as f64) / (1u64 << 53) as f64;
+            ((-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()) as f32
+        }
+        fn vector(&mut self, dim: usize) -> Vec<f32> {
+            (0..dim).map(|_| self.normal()).collect()
+        }
+    }
+
+    fn corpus(n: usize, dim: usize, seed: u64) -> Vec<Vec<f32>> {
+        let mut rng = Rng(seed | 1);
+        (0..n).map(|_| rng.vector(dim)).collect()
+    }
+
+    /// La calibracion elige una configuracion que cumple recall y trabajo.
+    #[test]
+    fn calibration_meets_recall_and_work_budget() {
+        let dim = 16;
+        let vectors = corpus(400, dim, 0x55);
+        let mut index = IvfPqIndex::new(4, 4);
+        index.train(&vectors, 32, 16, 5).expect("train");
+        let queries = corpus(10, dim, 0x66);
+        let truth: Vec<Vec<usize>> = queries
+            .iter()
+            .map(|query| {
+                let mut exact: Vec<(usize, f32)> = vectors
+                    .iter()
+                    .enumerate()
+                    .map(|(id, vector)| (id, l2(query, vector)))
+                    .collect();
+                exact.sort_by(|a, b| a.1.total_cmp(&b.1));
+                exact.iter().take(10).map(|(id, _)| *id).collect()
+            })
+            .collect();
+
+        let calibration = index
+            .calibrate(&queries, &truth, 10, 0.90, 400)
+            .expect("hay configuracion valida");
+        assert!(calibration.recall >= 0.90, "recall {}", calibration.recall);
+        assert!(calibration.mean_scored <= 400.0);
+        assert!(calibration.nprobe <= 16);
+        assert!((1..=50).contains(&calibration.rerank_factor));
+
+        // Objetivo imposible -> None (no miente).
+        assert!(index.calibrate(&queries, &truth, 10, 1.1, 400).is_none());
+        assert!(index.calibrate(&[], &[], 10, 0.9, 10).is_none());
     }
 }

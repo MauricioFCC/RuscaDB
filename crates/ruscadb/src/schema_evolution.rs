@@ -129,6 +129,58 @@ impl Database {
             .any(|existing| existing.name == column))
     }
 
+    /// Crea indices secundarios sobre las columnas de gobernanza (idempotente).
+    ///
+    /// Indexa `session_id`, `derived_from` y `trust_tier` si existen y aun no
+    /// tienen indice. Un indice acelera los filtros de gobernanza de `O(n)` a
+    /// `O(log n + k)`.
+    ///
+    /// Args:
+    ///     table: Tabla objetivo.
+    ///
+    /// Returns:
+    ///     Columnas indexadas en esta pasada (vacio si ya estaban).
+    ///
+    /// Errors:
+    ///     [`RuscaError`] si la tabla no existe o la indexacion falla.
+    pub fn add_governance_indexes(&mut self, table: &str) -> Result<Vec<String>, RuscaError> {
+        let mut added = Vec::new();
+        for column in ["session_id", "derived_from", "trust_tier"] {
+            if !self.has_column(table, column)? {
+                continue;
+            }
+            let already_indexed = {
+                let catalog = Catalog::load(self)?;
+                catalog.get(table)?.index_for(column).is_some()
+            };
+            if already_indexed {
+                continue;
+            }
+            self.create_index(table, column)?;
+            added.push(column.to_string());
+        }
+        Ok(added)
+    }
+
+    /// Asegura columnas **e** indices de gobernanza en una sola llamada.
+    ///
+    /// Args:
+    ///     table: Tabla objetivo.
+    ///
+    /// Returns:
+    ///     `(columnas_anadidas, indices_creados)`.
+    ///
+    /// Errors:
+    ///     [`RuscaError`] si la tabla no existe o la persistencia falla.
+    pub fn ensure_governance(
+        &mut self,
+        table: &str,
+    ) -> Result<(Vec<String>, Vec<String>), RuscaError> {
+        let columns = self.add_governance_columns(table)?;
+        let indexes = self.add_governance_indexes(table)?;
+        Ok((columns, indexes))
+    }
+
     /// Anade las columnas de gobernanza estandar (idempotente).
     ///
     /// Columnas: `derived_from`, `session_id`, `write_gate_verdict`,

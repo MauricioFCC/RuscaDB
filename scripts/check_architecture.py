@@ -19,7 +19,14 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tomllib
 from collections import defaultdict
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+# Contratos declarados (tach-style `depends_on`). Si existe, es la fuente de
+# verdad; `ALLOWED` queda como fallback para repos sin el archivo.
+ALLOWLIST_FILE = ROOT / "architecture.toml"
 
 # Aristas internas permitidas: crate -> crates de las que PUEDE depender.
 ALLOWED: dict[str, set[str]] = {
@@ -69,6 +76,35 @@ ALLOWED: dict[str, set[str]] = {
     "ruscadb-cli": {"ruscadb", "ruscadb-mcp"},
     "xtask": set(),
 }
+
+
+def load_declared() -> dict[str, set[str]] | None:
+    """Lee ``architecture.toml`` (contratos declarados por crate).
+
+    Returns:
+        Mapa ``crate -> dependencias permitidas``, o ``None`` si no existe el
+        archivo (se usa el mapa embebido ``ALLOWED``).
+    """
+    if not ALLOWLIST_FILE.exists():
+        return None
+    with ALLOWLIST_FILE.open("rb") as handle:
+        data = tomllib.load(handle)
+    crates = data.get("crates")
+    if not isinstance(crates, dict):
+        raise SystemExit(
+            "[FAIL] architecture.toml: falta la tabla [crates] con los contratos"
+        )
+    declared: dict[str, set[str]] = {}
+    for crate, deps in crates.items():
+        if not isinstance(deps, list) or any(
+            not isinstance(dep, str) for dep in deps
+        ):
+            raise SystemExit(
+                f"[FAIL] architecture.toml: '{crate}' debe declarar una lista "
+                "de crates"
+            )
+        declared[str(crate)] = set(deps)
+    return declared
 
 
 def load_graph() -> dict[str, set[str]]:
@@ -123,25 +159,35 @@ def find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
 def main() -> int:
     """Ejecuta las verificaciones y devuelve el exit code."""
     graph = load_graph()
+    declared = load_declared()
+    allowed = declared if declared is not None else ALLOWED
+    source = "architecture.toml" if declared is not None else "ALLOWED (embebido)"
     errors: list[str] = []
 
-    # 3. Toda crate conocida.
+    # 3. Toda crate conocida y sin contratos obsoletos.
     for crate in sorted(graph):
-        if crate not in ALLOWED:
+        if crate not in allowed:
             errors.append(
-                f"crate desconocida '{crate}': agregala a ALLOWED en "
-                f"scripts/check_architecture.py"
+                f"crate desconocida '{crate}': declara sus dependencias en "
+                f"{source}"
             )
+    if declared is not None:
+        for crate in sorted(declared):
+            if crate not in graph:
+                errors.append(
+                    f"contrato obsoleto: '{crate}' declarada en architecture.toml "
+                    "pero no existe en el workspace"
+                )
 
     # 2. Aristas permitidas.
     for crate, deps in sorted(graph.items()):
-        if crate not in ALLOWED:
+        if crate not in allowed:
             continue
-        forbidden = deps - ALLOWED[crate]
+        forbidden = deps - allowed[crate]
         for dep in sorted(forbidden):
             errors.append(
                 f"arista prohibida: '{crate}' -> '{dep}' "
-                f"(permitidas: {sorted(ALLOWED[crate]) or 'ninguna'})"
+                f"(permitidas: {sorted(allowed[crate]) or 'ninguna'})"
             )
 
     # 1. Ciclos.
@@ -154,7 +200,10 @@ def main() -> int:
             print(f"  - {err}")
         return 1
 
-    print(f"[OK] check_architecture: {len(graph)} crates, 0 ciclos, 0 aristas prohibidas.")
+    print(
+        f"[OK] check_architecture: {len(graph)} crates, 0 ciclos, "
+        f"0 aristas prohibidas (contratos: {source})."
+    )
     return 0
 
 

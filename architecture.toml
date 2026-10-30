@@ -1,0 +1,33 @@
+# Contratos de dependencia declarados (equivalente Rust a `tach.toml`).
+#
+# Cada crate declara las aristas internas que PUEDE usar. El gate
+# `scripts/check_architecture.py` lee este archivo como fuente de verdad: una
+# arista nueva sin declarar bloquea el merge (revision explicita).
+#
+# Regla hexagonal: las flechas apuntan a `ruscadb-core`; un adapter no depende
+# de otro adapter (la composicion vive en la fachada `ruscadb`).
+
+[crates]
+"ruscadb-core" = []
+"ruscadb-wal" = ["ruscadb-core", "ruscadb-crypto"]
+"ruscadb-storage" = ["ruscadb-core"]
+"ruscadb-query" = ["ruscadb-core"]
+"ruscadb-vector" = ["ruscadb-core"]
+"ruscadb-graph" = ["ruscadb-core"]
+"ruscadb-multimodal" = ["ruscadb-core", "ruscadb-storage", "ruscadb-crypto"]
+"ruscadb-ai" = ["ruscadb-core"]
+"ruscadb-fts" = ["ruscadb-core"]
+"ruscadb-txn" = ["ruscadb-core"]
+"ruscadb-btree" = ["ruscadb-core"]
+"ruscadb-fvs" = ["ruscadb-core", "ruscadb-vector"]
+"ruscadb-wasm" = ["ruscadb-core", "ruscadb-query", "ruscadb-vector", "ruscadb-fts", "ruscadb-fvs", "ruscadb-crypto"]
+"ruscadb-ffi" = ["ruscadb-core", "ruscadb"]
+"ruscadb-py" = ["ruscadb-ffi"]
+"ruscadb-node" = ["ruscadb-ffi"]
+"ruscadb" = ["ruscadb-core", "ruscadb-storage", "ruscadb-query", "ruscadb-vector", "ruscadb-graph", "ruscadb-multimodal", "ruscadb-ai", "ruscadb-fts", "ruscadb-txn", "ruscadb-btree", "ruscadb-fvs", "ruscadb-wal", "ruscadb-crypto", "ruscadb-ts"]
+"ruscadb-testkit" = ["ruscadb-core"]
+"ruscadb-crypto" = ["ruscadb-core"]
+"ruscadb-ts" = ["ruscadb-core"]
+"ruscadb-mcp" = ["ruscadb"]
+"ruscadb-cli" = ["ruscadb", "ruscadb-mcp"]
+"xtask" = []

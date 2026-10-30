@@ -148,10 +148,15 @@ escribir, sino **cambios upstream** o **politicas que requieren datos reales**:
 - ~~**Eviccion por calor**~~: **cerrado** (`HeatTracker`).
 - ~~**Umbral aprendido**~~: **cerrado** (`LearnedThreshold`).
 - ~~**Reconciliacion programada**~~: **cerrado** (`ReconciliationJob`).
-- **Contratos de dependencia declarados**: hoy se detectan ciclos y pureza; una
-  allow-list por modulo (`tach` o equivalente) evitaria aristas nuevas.
-- **Indices sobre columnas de gobernanza**: las columnas existen; falta
-  `CREATE INDEX` sobre ellas si el consumidor lo pide.
+- ~~**Contratos de dependencia declarados**~~: **cerrado** con
+  `architecture.toml` (equivalente Rust a `tach.toml`); el guard falla ante
+  aristas no declaradas y contratos obsoletos.
+- ~~**Indices sobre columnas de gobernanza**~~: **cerrado** con
+  `add_governance_indexes` / `ensure_governance` (idempotente; el planificador
+  usa `IndexScan`).
+- ~~**Ajuste de nprobe/oversampling**~~: **cerrado** con
+  `IvfPqIndex::calibrate` (elige la configuracion mas barata que cumple el
+  recall objetivo con datos reales).
 
 Detalle, fuentes y plan de desbloqueo: `docs/research/frontier-2026-10-29.md`
 (referencia cruzada al analisis del consumidor en

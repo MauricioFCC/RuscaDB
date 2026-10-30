@@ -140,3 +140,68 @@ fn governance_columns_are_added_once() {
         .expect("select");
     assert_eq!(rows.len(), 1);
 }
+
+/// Los indices de gobernanza se crean una vez y el planificador los usa.
+#[test]
+fn governance_indexes_are_created_and_used() {
+    let (_dir, mut database) = open_test_db("gov_idx");
+    database
+        .create_table(
+            "mem",
+            vec![ColumnDef {
+                name: "texto".to_string(),
+                col_type: ColumnType::Text,
+            }],
+        )
+        .expect("create_table");
+
+    let (columns, indexes) = database.ensure_governance("mem").expect("ensure");
+    assert_eq!(columns.len(), 4);
+    assert_eq!(
+        indexes,
+        vec![
+            "session_id".to_string(),
+            "derived_from".to_string(),
+            "trust_tier".to_string()
+        ]
+    );
+    let (_, again) = database.ensure_governance("mem").expect("segunda");
+    assert!(again.is_empty(), "idempotente: {again:?}");
+
+    database
+        .insert(
+            "mem",
+            ScalarMap::from([
+                ("texto".to_string(), ScalarValue::Text("hola".to_string())),
+                (
+                    "session_id".to_string(),
+                    ScalarValue::Text("s-1".to_string()),
+                ),
+                (
+                    "derived_from".to_string(),
+                    ScalarValue::Text("doc-1".to_string()),
+                ),
+                (
+                    "write_gate_verdict".to_string(),
+                    ScalarValue::Text("accepted".to_string()),
+                ),
+                (
+                    "trust_tier".to_string(),
+                    ScalarValue::Text("verified".to_string()),
+                ),
+            ]),
+        )
+        .expect("insert");
+
+    let plan = database
+        .explain("EXPLAIN SELECT texto FROM mem WHERE session_id = 's-1'")
+        .expect("explain");
+    assert!(
+        plan.iter().any(|line| line.contains("IndexScan")),
+        "el plan debe usar el indice: {plan:?}"
+    );
+    let rows = database
+        .execute("SELECT texto FROM mem WHERE session_id = 's-1'")
+        .expect("select");
+    assert_eq!(rows.len(), 1);
+}
