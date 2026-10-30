@@ -220,6 +220,8 @@ impl Database {
     /// `<data>.cache.json` (SPEC-0093) para que un crash antes de re-persistir
     /// no resucite filas obsoletas en la próxima apertura.
     pub(crate) fn invalidate_semantic_cache(&mut self) {
+        // Cualquier escritura invalida tambien el cache exacto de resultados.
+        self.query_cache.invalidate();
         if self.semantic_cache.entries.is_empty() {
             return;
         }

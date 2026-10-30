@@ -166,6 +166,7 @@ mod ts_advanced;
 mod ts_aggregates;
 #[cfg(feature = "ts-retention")]
 mod ts_retention;
+mod views_api;
 #[cfg(feature = "vle")]
 mod vle;
 #[cfg(feature = "zstd-real")]

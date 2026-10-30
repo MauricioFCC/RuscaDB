@@ -91,6 +91,8 @@ jobs:
       # no solo local. Valida ci.yml/nightly.yml/mutants.toml/deny.toml.
       - name: CI config consistency
         run: python scripts/check_ci_config.py
+      - name: SDD spec frontmatter consistency
+        run: python scripts/check_specs.py
       - name: SDD traceability (spec -> test)
         run: cargo xtask trace
       # D2 (retrospectiva 5): contrato bidireccional spec <-> test

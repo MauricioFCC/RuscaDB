@@ -193,7 +193,7 @@ simplificada. Sus specs llevan `maturity: stub` y **no deben consumirse como
 produccion** (evita el anti-patron "implemented de nombre"):
 
 `async_io`, `branching`, `concurrent_txn`, `cow_btree`, `kms`, `lance_format`,
-`materialized_view`, `onnx`, `otel`, `otel_real`, `pgwire`, `prepared`,
+`onnx`, `otel`, `otel_real`, `pgwire`, `prepared`,
 `rtree_split`, `simd`, `stemming`, `ts_aggregates`, `vle`, `geo`.
 
 Pasaron a `maturity: real` en este ciclo:
@@ -202,6 +202,8 @@ Pasaron a `maturity: real` en este ciclo:
 - `rcu` (SPEC-0146): `RcuDomain` + `RcuCell` segura (snapshot por `Arc`, sin
   `unsafe`), con retiro y `synchronize`.
 - `query_cache` (SPEC-0159): TTL + capacidad + metricas (hits/misses/evictions).
+- `materialized_view` (SPEC-0149): cableada al executor (`create_materialized_view`,
+  `refresh_materialized_view`, `materialized_view_rows`, `drop_materialized_view`).
 
 ## 11. Higiene de lints (2026-10-30)
 
@@ -211,3 +213,13 @@ Pasaron a `maturity: real` en este ciclo:
 - `TODO:`/`FIXME:` reales: **0**.
 - Features declaradas sin uso: **0**.
 - Archivos trackeados >1 MB: **0**.
+
+## 12. Refactor de specs (2026-10-30)
+
+- **`scripts/check_specs.py`**: valida frontmatter (id unico, feature, status),
+  `status`/`maturity` permitidos, ACs declarados con el prefijo correcto y
+  `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
+- **`docs/specs-index.md`**: indice generado (175 specs) con
+  `scripts/gen_specs_index.py`; fuente unica para ver status y madurez.
+- Estado: 174 `implemented` + 1 `proposed`; madurez declarada 27 `real`,
+  17 `stub`, 1 `placeholder` (el resto sin declarar).

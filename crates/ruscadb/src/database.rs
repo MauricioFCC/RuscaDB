@@ -129,6 +129,10 @@ pub struct Database {
     pub(crate) semantic_cache: SemanticCache,
     /// Coste por query acumulado (SPEC-0065).
     pub(crate) cost_report: CostReport,
+    /// Vistas materializadas en memoria (SPEC-0149); se recrean al abrir.
+    pub(crate) materialized_views: BTreeMap<String, crate::materialized_view::MaterializedView>,
+    /// Cache exacto de resultados RQL (SPEC-0159).
+    pub(crate) query_cache: crate::query_cache::QueryCache,
     /// Rol de instancia para RBAC (SPEC-0066): Admin por defecto.
     pub(crate) role: Role,
     /// Captura de auditoría habilitada (SPEC-0066): OFF por defecto.
@@ -271,6 +275,8 @@ impl Database {
             models_path: config.data_path.with_extension("models.json"),
             semantic_cache: SemanticCache::default(),
             cost_report: CostReport::default(),
+            materialized_views: BTreeMap::new(),
+            query_cache: crate::query_cache::QueryCache::default(),
             role: Role::default(),
             audit_enabled: false,
             audit: Vec::new(),
