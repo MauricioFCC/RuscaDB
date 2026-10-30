@@ -107,6 +107,9 @@ default = [
     "blockmax-wand",
     "gorilla-ts",
     "crdt-sync",
+    "heat",
+    "learned-threshold",
+    "reconciliation",
     "post-quantum",
     "rcu",
     "ivf-clustering",
@@ -222,6 +225,10 @@ blockmax-wand = []
 gorilla-ts = []
 # SPEC-0179: CRDT sync real.
 crdt-sync = []
+# Politicas de memoria (SPEC-0169/0179 extendidas).
+heat = []
+learned-threshold = []
+reconciliation = []
 # SPEC-0180: Post-quantum crypto.
 post-quantum = []
 # SPEC-0146: Epoch-based reclamation (RCU).

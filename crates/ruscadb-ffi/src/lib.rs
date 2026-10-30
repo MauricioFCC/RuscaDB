@@ -25,7 +25,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use ruscadb::{Database, DbConfig, PAGE_SIZE, Page, PageId};
+use ruscadb::{ColumnType, Database, DbConfig, PAGE_SIZE, Page, PageId};
 
 /// Código de retorno: operación exitosa.
 pub const RC_OK: c_int = 0;
@@ -871,6 +871,58 @@ pub extern "C" fn ruscadb_last_inserted_id(out_buf: *mut c_char, buf_len: usize)
             *out_buf.add(bytes.len()) = 0;
         }
         bytes.len()
+    })
+}
+
+/// `ALTER TABLE ADD COLUMN` (SPEC-0160): evoluciona el esquema sin reescribir
+/// filas (las existentes leen `NULL`).
+///
+/// Args:
+///     handle: Handle abierto.
+///     table: Tabla existente.
+///     column: Columna nueva.
+///     type_code: `0` = INT, `1` = FLOAT, `2` = TEXT, `3` = BOOL.
+///
+/// Returns:
+///     `RC_OK`, `RC_NULL_POINTER`, `RC_INVALID_HANDLE`, `RC_DOMAIN_ERROR`.
+#[unsafe(no_mangle)]
+pub extern "C" fn ruscadb_alter_table(
+    handle: *mut RuscadbHandle,
+    table: *const c_char,
+    column: *const c_char,
+    type_code: c_int,
+) -> c_int {
+    guard_ffi(|| {
+        if table.is_null() || column.is_null() {
+            set_last_error("ruscadb_alter_table: puntero nulo (table/column)");
+            return RC_NULL_POINTER;
+        }
+        let column_type = match type_code {
+            0 => ColumnType::Int,
+            1 => ColumnType::Float,
+            2 => ColumnType::Text,
+            3 => ColumnType::Bool,
+            _ => {
+                set_last_error("ruscadb_alter_table: type_code fuera de 0..=3");
+                return RC_DOMAIN_ERROR;
+            }
+        };
+        let table_name = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .into_owned();
+        let column_name = unsafe { CStr::from_ptr(column) }
+            .to_string_lossy()
+            .into_owned();
+        resolve(with_handle(handle, |reference| {
+            let mut db = lock_handle(reference);
+            match db.alter_table_add_column(&table_name, &column_name, column_type) {
+                Ok(()) => RC_OK,
+                Err(error) => {
+                    set_last_error(&format!("ruscadb_alter_table: {error}"));
+                    RC_DOMAIN_ERROR
+                }
+            }
+        }))
     })
 }
 

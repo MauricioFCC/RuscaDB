@@ -74,6 +74,8 @@ mod geo;
 mod geo_proj;
 #[cfg(feature = "gorilla-ts")]
 mod gorilla_ts;
+#[cfg(feature = "heat")]
+mod heat;
 #[cfg(feature = "incremental-backup")]
 mod incremental_backup;
 #[cfg(feature = "ivf-clustering")]
@@ -88,6 +90,8 @@ mod kms;
 mod lance_format;
 #[cfg(feature = "learned-index")]
 mod learned_index;
+#[cfg(feature = "learned-threshold")]
+mod learned_threshold;
 #[cfg(feature = "materialized-views")]
 mod materialized_view;
 #[cfg(feature = "mvcc-gc-real")]
@@ -120,6 +124,8 @@ mod query_cache;
 mod rabitq;
 #[cfg(feature = "rcu")]
 mod rcu;
+#[cfg(feature = "reconciliation")]
+mod reconciliation;
 #[cfg(feature = "rql-cte")]
 mod rql_cte;
 #[cfg(feature = "rql-expr")]
@@ -211,6 +217,8 @@ pub use geo::{Point, Rect};
 pub use geo_proj::GeoPoint;
 #[cfg(feature = "gorilla-ts")]
 pub use gorilla_ts::GorillaTs;
+#[cfg(feature = "heat")]
+pub use heat::{HeatEntry, HeatTracker, Tier};
 #[cfg(feature = "incremental-backup")]
 pub use incremental_backup::IncrementalBackup;
 #[cfg(feature = "ivf-clustering")]
@@ -225,6 +233,8 @@ pub use kms::KmsProvider;
 pub use lance_format::LanceTable;
 #[cfg(feature = "learned-index")]
 pub use learned_index::LearnedIndex;
+#[cfg(feature = "learned-threshold")]
+pub use learned_threshold::LearnedThreshold;
 #[cfg(feature = "materialized-views")]
 pub use materialized_view::MaterializedView;
 #[cfg(feature = "mvcc-gc-real")]
@@ -259,6 +269,10 @@ pub use query_cache::QueryCache;
 pub use rabitq::RabitqQuantizer;
 #[cfg(feature = "rcu")]
 pub use rcu::RcuDomain;
+#[cfg(feature = "reconciliation")]
+pub use reconciliation::{
+    ReconcilableEntry, ReconciliationJob, ReconciliationPolicy, ReconciliationReport,
+};
 #[cfg(feature = "rql-cte")]
 pub use rql_cte::{CteOutcome, RqlCte};
 #[cfg(feature = "rql-expr")]

@@ -2,7 +2,7 @@
 id: SPEC-0125
 feature: ivf_pq
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

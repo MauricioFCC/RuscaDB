@@ -140,22 +140,18 @@ El cableado esta completo. Lo que queda abierto no es codigo pendiente de
 escribir, sino **cambios upstream** o **politicas que requieren datos reales**:
 
 - ~~**RaBitQ por C-ABI**~~: **cerrado** con `ruscadb_quantize` +
-  `ruscadb_search_bq` (31 simbolos, tests en
-  `crates/ruscadb-ffi/tests/bq_abi.rs`).
-- **IVF-PQ real (product quantization)**: `IvfPqIndex` es un stub (promedio por
-  subespacio) y SPEC-0125 quedo marcada `maturity: stub`; falta k-means por
-  subespacio y codebooks para cumplir recall >= 0.90.
-- **Columnas de gobernanza** (`derived_from`, `session_id`,
-  `write_gate_verdict`): el esquema fijo las mantiene en metadata sin indice;
-  requieren migracion/`ALTER TABLE` expuesto en el ABI.
+  `ruscadb_search_bq`.
+- ~~**IVF-PQ real**~~: **cerrado** (`IvfPqIndex` con k-means por subespacio,
+  codebooks de 256, IVF + ADC + re-rank; recall@10 >= 0.90).
+- ~~**Columnas de gobernanza**~~: **cerrado** con
+  `alter_table_add_column`, `add_governance_columns` y `ruscadb_alter_table`.
+- ~~**Eviccion por calor**~~: **cerrado** (`HeatTracker`).
+- ~~**Umbral aprendido**~~: **cerrado** (`LearnedThreshold`).
+- ~~**Reconciliacion programada**~~: **cerrado** (`ReconciliationJob`).
 - **Contratos de dependencia declarados**: hoy se detectan ciclos y pureza; una
   allow-list por modulo (`tach` o equivalente) evitaria aristas nuevas.
-- **Eviccion por calor (STM/MTM/LPM)**: falta segmentar por calor y decidir
-  promocion/eviccion; requiere datos de uso.
-- **Umbral aprendido por prompt (vCache)**: solo hay umbral global; falta el
-  bucle de feedback.
-- **Reconciliacion programada (SSGM)**: falta job periodico que revalide
-  entradas antiguas contra memoria nueva.
+- **Indices sobre columnas de gobernanza**: las columnas existen; falta
+  `CREATE INDEX` sobre ellas si el consumidor lo pide.
 
 Detalle, fuentes y plan de desbloqueo: `docs/research/frontier-2026-10-29.md`
 (referencia cruzada al analisis del consumidor en
