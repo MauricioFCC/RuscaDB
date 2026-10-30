@@ -2,7 +2,7 @@
 id: SPEC-0111
 feature: onnx_inference
 status: implemented
-maturity: stub
+maturity: real
 owner: ai-team
 appetite_days: 5
 boundaries:

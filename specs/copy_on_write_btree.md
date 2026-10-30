@@ -2,7 +2,7 @@
 id: SPEC-0130
 feature: copy_on_write_btree
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 8
 boundaries:

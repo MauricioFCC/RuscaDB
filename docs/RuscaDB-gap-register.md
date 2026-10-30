@@ -192,8 +192,8 @@ Auditoria 2026-10-30: estos modulos exponen API publica pero su logica es
 simplificada. Sus specs llevan `maturity: stub` y **no deben consumirse como
 produccion** (evita el anti-patron "implemented de nombre"):
 
-`async_io`, `branching`, `concurrent_txn`, `cow_btree`, `kms`, `lance_format`,
-`onnx`, `otel`, `otel_real`, `pgwire`, `simd`, `vle`, `geo`.
+`async_io`, `branching`, `concurrent_txn`, `lance_format`, `pgwire`, `simd`,
+`vle`.
 
 Pasaron a `maturity: real` en este ciclo:
 
@@ -210,6 +210,15 @@ Pasaron a `maturity: real` en este ciclo:
   por punto) con `merge` asociativo y min/max/avg.
 - `rtree_split` (SPEC-0156): R-tree real con split por mediana y consulta
   con poda por MBR (`O(log n + k)` esperado).
+- `cow_btree` (SPEC-0130): treap persistente con path copying (`O(log n)`,
+  `fork` `O(1)`), snapshots inmutables.
+- `kms` (SPEC-0143): sellado AEAD real XChaCha20-Poly1305 (nonce unico);
+  KMS/HSM remoto sigue pendiente por credenciales.
+- `onnx` (SPEC-0111): MLP `2 capas + ReLU + softmax` en Rust puro; `ort`
+  queda para transformers.
+- `otel` / `otel_real` (SPEC-0126/0155): payload OTLP/JSON
+  (`resourceSpans`/`scopeSpans`); transporte HTTP pendiente (externo).
+- `geo` (SPEC-0112/0114): GeoHash + curva de Hilbert + R-tree con poda.
 
 ## 11. Higiene de lints (2026-10-30)
 
@@ -227,5 +236,5 @@ Pasaron a `maturity: real` en este ciclo:
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
 - **`docs/specs-index.md`**: indice generado (175 specs) con
   `scripts/gen_specs_index.py`; fuente unica para ver status y madurez.
-- Estado: 174 `implemented` + 1 `proposed`; madurez declarada 29 `real`,
-  15 `stub`, 1 `placeholder` (el resto sin declarar).
+- Estado: 174 `implemented` + 1 `proposed`; madurez declarada 37 `real`,
+  7 `stub`, 1 `placeholder` (el resto sin declarar).

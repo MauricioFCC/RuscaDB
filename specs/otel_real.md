@@ -2,7 +2,7 @@
 id: SPEC-0155
 feature: otel_real
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

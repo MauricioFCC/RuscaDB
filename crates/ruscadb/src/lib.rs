@@ -214,7 +214,7 @@ pub use fts_scoring::FuzzyScorer;
 #[cfg(feature = "spatial")]
 pub use geo::RTree;
 #[cfg(feature = "geo")]
-pub use geo::{Point, Rect};
+pub use geo::{Point, Rect, geohash_decode, geohash_encode, hilbert_index};
 #[cfg(feature = "geo-proj")]
 pub use geo_proj::GeoPoint;
 #[cfg(feature = "gorilla-ts")]
@@ -244,7 +244,7 @@ pub use mvcc_gc_real::{MvccGcReal, Version as MvccVersion};
 #[cfg(feature = "observability")]
 pub use observability::MetricsRegistry;
 #[cfg(feature = "onnx")]
-pub use onnx::OnnxModel;
+pub use onnx::{Mlp, OnnxModel};
 #[cfg(feature = "otel")]
 pub use otel::{OtelExporter, Span};
 #[cfg(feature = "otel-real")]

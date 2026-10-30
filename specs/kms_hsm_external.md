@@ -2,7 +2,7 @@
 id: SPEC-0143
 feature: kms_hsm_external
 status: implemented
-maturity: stub
+maturity: real
 owner: security-team
 appetite_days: 6
 boundaries:

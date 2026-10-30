@@ -2,7 +2,7 @@
 id: SPEC-0126
 feature: otel_exporter
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:
