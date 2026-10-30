@@ -102,6 +102,8 @@ extendido (RQL)**.
 - `insert_record` con `Embedding` (+ `EmbeddingMeta` con modelo, dimensión y `Metric::L2`).
 - Búsqueda `KNN embedding <|k|> [...]`.
 - `KNN` con `WHERE` resuelto por **iFVS** (estrategia pre/in/post por selectividad).
+- `KNN ... USING AUTO|QUANTIZED|FILTERED|EXACT` (SPEC-0181) y equivalentes en la
+  C-ABI (`ruscadb_search_quantized`, `ruscadb_search_filtered`).
 - HNSW index.
 
 ### 2.8 Modelo de grafo
@@ -200,7 +202,7 @@ extendido (RQL)**.
 
 | Feature | Spec | Descripción |
 |---|---|---|
-| `columnar` | SPEC-0110 | Engine columnar en memoria (typed columns, scan, project, filter, aggregates) |
+| `columnar` | SPEC-0110 | Engine columnar en memoria y fichero `RCOL1` (ALP/FOR + bit-packing) |
 | `onnx` | SPEC-0111 | Inferencia ONNX (modelo lineal, salida normalizada) |
 | `geo` | SPEC-0112 | Tipos geoespaciales (Point, Rect) con distancia y contención |
 | `pgwire` | SPEC-0113 | Codec PostgreSQL wire v3 (big-endian): frontend/backend + `handle_query`; sin servidor TCP |

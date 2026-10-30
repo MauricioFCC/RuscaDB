@@ -112,7 +112,6 @@ default = [
     "heat",
     "learned-threshold",
     "reconciliation",
-    "post-quantum",
     "rcu",
     "ivf-clustering",
     "prepared",

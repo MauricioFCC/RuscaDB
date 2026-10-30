@@ -105,12 +105,19 @@ re-exporta para no romper la API ni la trazabilidad de AC. `PersistentHnsw`,
 en la fachada porque son politicas del composition root sobre adapters ya
 existentes (page manager, HNSW, planner, TS, columnar).
 
+### Cerrados en el ciclo 5 (2026-10-30)
+
+- **ALP en disco**: `ColumnarTable::write_to/read_from` (`RCOL1`) codifica
+  enteros con FOR + bit-packing, flotantes con **ALP** y el resto etiquetado,
+  con escritura atomica (`tmp` + rename) y validacion de cotas.
+- **RQL/FFI**: `KNN ... USING AUTO|QUANTIZED|FILTERED|EXACT` (SPEC-0181) y
+  `ruscadb_search_quantized` / `ruscadb_search_filtered` en la C-ABI.
+
 ### Pendiente (no bloqueante)
 
-- Cablear `AlpCompressor` al almacenamiento columnar **en disco** cuando exista
-  el formato fisico de columna (hoy el adaptador es en memoria).
-- Exponer `search_vectors_filtered`/`search_vectors_quantized` en el lenguaje
-  RQL (hoy son API de la fachada y del FFI pendiente).
+- Endpoint HTTP de scrape Prometheus (el registry y el export de texto son
+  reales; el transporte es adapter).
+- Aplicar zstd al formato fisico de pagina columnar (hoy ALP/FOR propios).
 
 ## 6. Mutation testing (modulos nuevos)
 
@@ -130,9 +137,12 @@ los matan por construccion.
 
 El resto de modulos nuevos anade tests de rama en este ciclo (NULL/3VL, float
 no finito, horizonte MVCC, listas disjuntas/vacias, mascara corta, magic
-incorrecta, serializacion determinista). El gate T2/T3
-(`cargo mutants --in-diff` / `--workspace`) sigue siendo el juez final: el
-rebuild por mutante (~85 s) excede el presupuesto de una sesion interactiva.
+incorrecta, serializacion determinista).
+
+**Gate T3 (nightly)**: `scripts/mutation_score.py` agrega los 8 shards y
+**falla** si el score global < 85 % (job `mutation-score` de `nightly.yml`,
+bloqueante). Verificado localmente contra el run parcial de `segmented_wal`:
+`85,71 %` (12 caught, 2 missed) -> exit 0; un fixture 1/3 -> exit 1.
 
 ## 7. Gaps residuales (upstream o politica no trivial)
 
@@ -171,21 +181,24 @@ Detalle, fuentes y plan de desbloqueo: `docs/research/frontier-2026-10-29.md`
 
 ## 8. Siguiente paso recomendado
 
-Ejecutar el gate de mutacion completo en nightly (objetivo >= 85%) y, cuando el
-consumidor lo requiera, exponer la cuantizacion en el ABI (primer gap upstream
-de la lista).
+Quedan solo los adapters externos de §7 (Lance, pgwire TCP, KMS/HSM, OTLP
+HTTP, S3, ONNX runtime, endpoint Prometheus). El gate de mutacion nightly ya es
+bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 
 ## 9. Verificacion de gates (2026-10-30)
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test -p ruscadb --all-features`: OK (280 lib tests + integracion).
-- `cargo xtask trace`: 568 AC trazados.
+- `cargo test -p ruscadb --all-features`: OK (284 lib tests + integracion; 646 en total).
+- `cargo test --workspace --all-features --exclude ruscadb`: OK (68 suites, 496 tests).
+- `cargo xtask trace`: 575 AC trazados.
 - `cargo xtask contract`: OK.
 - `scripts/check_architecture.py`: 0 ciclos, 0 aristas prohibidas.
 - `scripts/check_core_unsafe.py`: OK (presupuesto 76).
-- `scripts/check_ci_config.py`: OK.
-- `scripts/check_specs.py`: 175 specs, 44 `real` + 1 `placeholder`.
+- `scripts/check_ci_config.py`: OK (incluye el gate `mutation-score`).
+- `scripts/check_specs.py`: 176 specs, 45 `real` + 1 `placeholder`.
+- `scripts/mutation_score.py`: 85,71 % sobre el run parcial de `segmented_wal`
+  (objetivo 85 %); fixture 1/3 -> exit 1.
 
 ## 10. Modulos stub declarados (no cablear aun)
 
@@ -235,6 +248,10 @@ Pasaron a `maturity: real` en este ciclo:
 - `otel` / `otel_real` (SPEC-0126/0155): payload OTLP/JSON
   (`resourceSpans`/`scopeSpans`); transporte HTTP pendiente (externo).
 - `geo` (SPEC-0112/0114): GeoHash + curva de Hilbert + R-tree con poda.
+- `columnar` (SPEC-0110): formato en disco `RCOL1` con ALP/FOR + bit-packing,
+  escritura atomica y validacion de cotas.
+- `knn_modes` (SPEC-0181): `USING AUTO|QUANTIZED|FILTERED|EXACT` en RQL y ABI
+  (`ruscadb_search_quantized` / `ruscadb_search_filtered`).
 
 ## 11. Higiene de lints (2026-10-30)
 
@@ -250,7 +267,7 @@ Pasaron a `maturity: real` en este ciclo:
 - **`scripts/check_specs.py`**: valida frontmatter (id unico, feature, status),
   `status`/`maturity` permitidos, ACs declarados con el prefijo correcto y
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
-- **`docs/specs-index.md`**: indice generado (175 specs) con
+- **`docs/specs-index.md`**: indice generado (176 specs) con
   `scripts/gen_specs_index.py`; fuente unica para ver status y madurez.
-- Estado: 174 `implemented` + 1 `proposed`; madurez declarada **44 `real`,
+- Estado: 175 `implemented` + 1 `proposed`; madurez declarada **45 `real`,
   0 `stub`, 1 `placeholder`** (el resto sin declarar).

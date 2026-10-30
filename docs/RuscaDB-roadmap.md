@@ -983,9 +983,9 @@ requiere ADR y actualización de este documento antes de tocar código.*
 ## Ola 9 - Frontier (SPEC-0109..0112)
 
 - SPEC-0109 (MVCC concurrent readers: `open_readonly`, `RuscaError::ReadOnly`): implementado.
-- SPEC-0110 (engine columnar opcional: `ColumnarTable`, feature `columnar`): implementado (stub sin Arrow).
-- SPEC-0111 (inferencia ONNX opcional: `OnnxModel`, feature `onnx`): implementado (stub).
-- SPEC-0112 (geoespacial basico: `Point`, feature `geo`): implementado (stub).
+- SPEC-0110 (engine columnar opcional: `ColumnarTable`, feature `columnar`): implementado (real sin Arrow; formato propio `RCOL1` con ALP).
+- SPEC-0111 (inferencia ONNX opcional: `OnnxModel`, feature `onnx`): implementado (real).
+- SPEC-0112 (geoespacial basico: `Point`, feature `geo`): implementado (real).
 - Features pure-Rust **on por defecto**; solo las de dependencias externas
   (`datafusion`, `pgwire-real`, `onnx-real`) quedan off. Ver
   `docs/RuscaDB-funcionalidades.md` §3.
@@ -1000,7 +1000,7 @@ requiere ADR y actualización de este documento antes de tocar código.*
 - SPEC-0124 (Arrow columnar: `ArrowColumnarTable`, dep opcional `arrow`): implementado.
 - SPEC-0125 (IVF-PQ: `IvfPqIndex`, k-means por subespacio + codebooks + ADC + re-rank): implementado (real).
 - SPEC-0126 (OpenTelemetry: `OtelExporter`, spans JSON): implementado.
-- SPEC-0127 (pgwire real: `PgWireRealServer`, dep opcional `pgwire`): implementado (stub).
+- SPEC-0127 (pgwire real: `PgWireRealServer`, dep opcional `pgwire`): implementado (real codec; servidor TCP pendiente).
 - SPEC-0128 (S3 backup: `S3Backup`, manifiesto + puerto `ObjectStore` + `LocalObjectStore`): implementado (real).
 - SPEC-0129 (time-travel: `TimeTravel`, snapshot por tx_id): implementado.
 - Features pure-Rust on por defecto; las de dependencias externas off (ver `docs/RuscaDB-funcionalidades.md` §3).
@@ -1039,50 +1039,50 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 
 ## Ola 12 - Frontier III (SPEC-0130..0145)
 
-- SPEC-0130 (copy-on-write B+tree: CowBTree, snapshot isolation): implementado (stub).
-- SPEC-0131 (BEGIN CONCURRENT: multi-writer, ConcurrentTxnManager): implementado (stub).
-- SPEC-0132 (Lance format: LanceTable, multimodal columnar): implementado (stub).
-- SPEC-0133 (Single-file VLE: VleDatabase): implementado (stub).
-- SPEC-0134 (Sync protocol: SyncProtocol, checkpoint): implementado (stub).
-- SPEC-0135 (Copy-on-write branching: Branch, fork): implementado (stub).
+- SPEC-0130 (copy-on-write B+tree: CowBTree, snapshot isolation): implementado (real).
+- SPEC-0131 (BEGIN CONCURRENT: multi-writer, ConcurrentTxnManager): implementado (real).
+- SPEC-0132 (Lance format: LanceTable, multimodal columnar): implementado (real).
+- SPEC-0133 (Single-file VLE: VleDatabase): implementado (real).
+- SPEC-0134 (Sync protocol: SyncProtocol, checkpoint): implementado (real).
+- SPEC-0135 (Copy-on-write branching: Branch, fork): implementado (real).
 - SPEC-0136 (Geospatial projections: GeoPoint, Haversine): implementado.
-- SPEC-0137 (SQL standard: WindowFunc, row_number): implementado (stub).
-- SPEC-0138 (Cost-based planner: CostEstimator): implementado (stub).
-- SPEC-0139 (KMS/HSM externo: KmsProvider, wrap/unwrap): implementado (stub).
-- SPEC-0140 (Stemming Snowball: SnowballStemmer): implementado (stub).
-- SPEC-0141 (Continuous aggregates: ContinuousAggregate): implementado (stub).
+- SPEC-0137 (SQL standard: WindowFunc, row_number): implementado (real).
+- SPEC-0138 (Cost-based planner: CostEstimator): implementado (real).
+- SPEC-0139 (KMS/HSM externo: KmsProvider, wrap/unwrap): implementado (real).
+- SPEC-0140 (Stemming Snowball: SnowballStemmer): implementado (real).
+- SPEC-0141 (Continuous aggregates: ContinuousAggregate): implementado (real).
 - Features pure-Rust on por defecto; las de dependencias externas off (ver `docs/RuscaDB-funcionalidades.md` §3).
 
 
 ## Ola 13 - Frontier III (SPEC-0130..0160)
 
-- SPEC-0130 (copy-on-write B+tree: CowBTree): implementado (stub).
-- SPEC-0131 (BEGIN CONCURRENT: ConcurrentTxnManager): implementado (stub).
-- SPEC-0132 (Lance format: LanceTable): implementado (stub).
-- SPEC-0133 (Single-file VLE: VleDatabase): implementado (stub).
-- SPEC-0134 (Sync protocol: SyncProtocol): implementado (stub).
-- SPEC-0135 (Copy-on-write branching: Branch): implementado (stub).
+- SPEC-0130 (copy-on-write B+tree: CowBTree): implementado (real).
+- SPEC-0131 (BEGIN CONCURRENT: ConcurrentTxnManager): implementado (real).
+- SPEC-0132 (Lance format: LanceTable): implementado (real).
+- SPEC-0133 (Single-file VLE: VleDatabase): implementado (real).
+- SPEC-0134 (Sync protocol: SyncProtocol): implementado (real).
+- SPEC-0135 (Copy-on-write branching: Branch): implementado (real).
 - SPEC-0136 (Geospatial projections: GeoPoint, Haversine): implementado.
-- SPEC-0137 (SQL standard: WindowFunc): implementado (stub).
-- SPEC-0138 (Cost-based planner: CostEstimator): implementado (stub).
-- SPEC-0139 (KMS/HSM: KmsProvider): implementado (stub).
-- SPEC-0140 (Stemming Snowball: SnowballStemmer): implementado (stub).
-- SPEC-0141 (Continuous aggregates: ContinuousAggregate): implementado (stub).
-- SPEC-0142 (Epoch-based reclamation: RcuDomain): implementado (stub).
-- SPEC-0143 (IVF clustering: IvfClusterer): implementado (stub).
-- SPEC-0144 (Prepared statements: PreparedStatement): implementado (stub).
-- SPEC-0145 (Materialized views: MaterializedView): implementado (stub).
-- SPEC-0146 (SIMD acceleration: SimdOps): implementado (stub).
-- SPEC-0147 (Async I/O: AsyncReader): implementado (stub).
-- SPEC-0148 (FTS proximity: ProximityMatcher): implementado (stub).
-- SPEC-0149 (Join reordering: JoinReorderer): implementado (stub).
-- SPEC-0150 (zstd real: ZstdReal): implementado (stub).
-- SPEC-0151 (OTLP real: OtelRealExporter): implementado (stub).
-- SPEC-0152 (R-tree splitting: RTreeSplit): implementado (stub).
-- SPEC-0153 (Backup verification: BackupVerifier): implementado (stub).
-- SPEC-0154 (Time-travel real: TimeTravelReal): implementado (stub).
-- SPEC-0155 (Query cache: QueryCache): implementado (stub).
-- SPEC-0156 (Schema evolution: SchemaEvolution): implementado (stub).
+- SPEC-0137 (SQL standard: WindowFunc): implementado (real).
+- SPEC-0138 (Cost-based planner: CostEstimator): implementado (real).
+- SPEC-0139 (KMS/HSM: KmsProvider): implementado (real).
+- SPEC-0140 (Stemming Snowball: SnowballStemmer): implementado (real).
+- SPEC-0141 (Continuous aggregates: ContinuousAggregate): implementado (real).
+- SPEC-0142 (Epoch-based reclamation: RcuDomain): implementado (real).
+- SPEC-0143 (IVF clustering: IvfClusterer): implementado (real).
+- SPEC-0144 (Prepared statements: PreparedStatement): implementado (real).
+- SPEC-0145 (Materialized views: MaterializedView): implementado (real).
+- SPEC-0146 (SIMD acceleration: SimdOps): implementado (real).
+- SPEC-0147 (Async I/O: AsyncReader): implementado (real).
+- SPEC-0148 (FTS proximity: ProximityMatcher): implementado (real).
+- SPEC-0149 (Join reordering: JoinReorderer): implementado (real).
+- SPEC-0150 (zstd real: ZstdReal): implementado (real).
+- SPEC-0151 (OTLP real: OtelRealExporter): implementado (real).
+- SPEC-0152 (R-tree splitting: RTreeSplit): implementado (real).
+- SPEC-0153 (Backup verification: BackupVerifier): implementado (real).
+- SPEC-0154 (Time-travel real: TimeTravelReal): implementado (real).
+- SPEC-0155 (Query cache: QueryCache): implementado (real).
+- SPEC-0156 (Schema evolution: SchemaEvolution): implementado (real).
 - Features pure-Rust on por defecto; las de dependencias externas off (ver `docs/RuscaDB-funcionalidades.md` §3).
 
 
@@ -1093,28 +1093,28 @@ sync, HNSW, planner, TS, columnar, FTS): ver la tabla de
 `docs/RuscaDB-gap-register.md` §5 y `docs/adr/ADR-0180-post-quantum-deferred.md`
 para la decision sobre ML-KEM.
 
-Implementados como stubs (TDD adversarial + mutation, feature flags pure-Rust on por defecto):
+Implementados (19 reales + 1 placeholder ML-KEM; TDD adversarial + mutation, features pure-Rust on por defecto):
 
-- SPEC-0161 (RQL expression language: RqlExprEngine): implementado (stub).
-- SPEC-0162 (RQL subqueries: RqlSubquery): implementado (stub).
-- SPEC-0163 (RQL CTE: RqlCte): implementado (stub).
-- SPEC-0164 (RQL set operations: RqlSetOps): implementado (stub).
-- SPEC-0165 (RQL window functions: RqlWindowFuncs): implementado (stub).
-- SPEC-0166 (Prepared statements real: PreparedStmtReal): implementado (stub).
-- SPEC-0167 (Page checksums: PageChecksum): implementado (stub).
-- SPEC-0168 (Segmented WAL: SegmentedWal): implementado (stub).
-- SPEC-0169 (MVCC GC real: MvccGcReal): implementado (stub).
-- SPEC-0170 (SSI: SsiTracker): implementado (stub).
-- SPEC-0171 (RaBitQ: RabitqQuantizer): implementado (stub).
-- SPEC-0172 (ACORN: AcornSearch): implementado (stub).
-- SPEC-0173 (Persistent HNSW: PersistentHnsw): implementado (stub).
-- SPEC-0174 (Learned index: LearnedIndex): implementado (stub).
-- SPEC-0175 (ALP: AlpCompressor): implementado (stub).
-- SPEC-0176 (FastLanes: FastLanes): implementado (stub).
-- SPEC-0177 (BlockMax WAND: BlockMaxWand): implementado (stub).
-- SPEC-0178 (Gorilla TS: GorillaTs): implementado (stub).
-- SPEC-0179 (CRDT sync: CrdtSyncReal): implementado (stub).
-- SPEC-0180 (Post-quantum: MlKemStub): implementado (stub).
+- SPEC-0161 (RQL expression language: RqlExprEngine): implementado (real).
+- SPEC-0162 (RQL subqueries: RqlSubquery): implementado (real).
+- SPEC-0163 (RQL CTE: RqlCte): implementado (real).
+- SPEC-0164 (RQL set operations: RqlSetOps): implementado (real).
+- SPEC-0165 (RQL window functions: RqlWindowFuncs): implementado (real).
+- SPEC-0166 (Prepared statements real: PreparedStmtReal): implementado (real).
+- SPEC-0167 (Page checksums: PageChecksum): implementado (real).
+- SPEC-0168 (Segmented WAL: SegmentedWal): implementado (real).
+- SPEC-0169 (MVCC GC real: MvccGcReal): implementado (real).
+- SPEC-0170 (SSI: SsiTracker): implementado (real).
+- SPEC-0171 (RaBitQ: RabitqQuantizer): implementado (real).
+- SPEC-0172 (ACORN: AcornSearch): implementado (real).
+- SPEC-0173 (Persistent HNSW: PersistentHnsw): implementado (real).
+- SPEC-0174 (Learned index: LearnedIndex): implementado (real).
+- SPEC-0175 (ALP: AlpCompressor): implementado (real).
+- SPEC-0176 (FastLanes: FastLanes): implementado (real).
+- SPEC-0177 (BlockMax WAND: BlockMaxWand): implementado (real).
+- SPEC-0178 (Gorilla TS: GorillaTs): implementado (real).
+- SPEC-0179 (CRDT sync: CrdtSyncReal): implementado (real).
+- SPEC-0180 (Post-quantum: MlKemStub): placeholder (feature off por defecto; ADR-0180).
 
 ## Ola 15 - Cierre de stubs (SPEC-0113/0131/0136/0137/0139/0150/0151) - madurez: 7 reales, 0 stubs
 
@@ -1134,12 +1134,24 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
 - SPEC-0150 (SIMD): acumuladores independientes + Neumaier, sin intrinsics.
 - SPEC-0151 (async I/O): `Future`/`poll_read` en memoria, sin Tokio.
 
+## Ola 16 - KNN por estrategia y columnar en disco (SPEC-0181)
+
+- **RQL**: `KNN ... USING AUTO|QUANTIZED|FILTERED|EXACT`; `USING` no reserva
+  palabra clave (compatibilidad con columnas existentes). `EXACT` es el oraculo
+  brute-force; `FILTERED` cablea ACORN y `QUANTIZED` el ANN RaBitQ + re-rank.
+- **ABI**: `ruscadb_search_quantized` y `ruscadb_search_filtered` (JSON de
+  resultados, `RC_DOMAIN_ERROR`/`RC_NULL_POINTER`/`RC_BUFFER_TOO_SMALL`).
+- **Columnar en disco**: `RCOL1` con ALP para flotantes, FOR + bit-packing para
+  enteros, etiquetado para texto/NULL/bool y escritura atomica.
+- **Politica**: `post-quantum` sale de `default` (el placeholder ML-KEM solo se
+  compila con `--all-features` o la feature explicita).
+
 ## Estado actual (2026-10-30)
 
-- 23 crates, 175 specs (174 `implemented` + 1 `proposed`), 568 AC trazados.
+- 23 crates, 176 specs (175 `implemented` + 1 `proposed`), 568 AC trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- Madurez declarada: **44 `real`, 0 `stub`, 1 `placeholder`** (ML-KEM, decision
+- Madurez declarada: **45 `real`, 0 `stub`, 1 `placeholder`** (ML-KEM, decision
   en `docs/adr/ADR-0180-post-quantum-deferred.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).

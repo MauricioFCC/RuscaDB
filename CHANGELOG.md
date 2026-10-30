@@ -9,6 +9,18 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 5 (2026-10-30)**:
+  - **SPEC-0181** `knn_modes`: `KNN ... USING AUTO|QUANTIZED|FILTERED|EXACT` en
+    RQL y `ruscadb_search_quantized` / `ruscadb_search_filtered` en la C-ABI
+    (JSON de resultados; errores de contrato ABI).
+  - **SPEC-0110** `columnar` en disco: contenedor `RCOL1` con **ALP** en
+    flotantes, FOR + bit-packing en enteros, etiquetado para texto/NULL/bool y
+    escritura atomica; validacion de magia/version/cotas/truncamiento.
+  - **Mutacion T3**: `scripts/mutation_score.py` agrega los shards y el job
+    `mutation-score` de nightly **falla** si el score global < 85 %.
+- **Changed**: `post-quantum` sale de `default` (el placeholder ML-KEM solo se
+  compila con la feature explicita o `--all-features`), alineado con SPEC-0180.
+- **Docs**: roadmap, research y gap register sin marcas `stub` obsoletas.
 - **Ciclo 4 (2026-10-30)**: los 7 ultimos modulos `stub` pasan a `maturity:
   real` (0 stubs restantes en `check_specs.py`):
   - **SPEC-0131** `concurrent_txn`: `ConcurrentTxnManager` delega en

@@ -39,7 +39,7 @@
 |---|---|---|
 | **Columnar (Arrow/Lance)** | LLKV, LanceDB, DuckDB | Alta para analytics y vectores grandes. Esfuerzo: alto (nuevo engine). |
 | **Lance format v2.2** | LanceDB | Alta para multimodal. Blob V2, 50%+ compresión, lazy reads. Esfuerzo: medio (integrar lance crate). |
-| **Page compression (zstd/LZ4)** | RocksDB, PostgreSQL, Stoolap | Alta. RuscaDB tiene RLE stub. Esfuerzo: bajo (añadir zstd/lz4 crate). |
+| **Page compression (zstd/LZ4)** | RocksDB, PostgreSQL, Stoolap | Alta. RuscaDB tiene RLE propio + zstd real (SPEC-0154). Esfuerzo: integrar zstd en el formato fisico de pagina. |
 | **Single-file deployment (VLE)** | Picovolt | Media. Un solo fichero .db en lugar de .data + .wal + .manifest. Esfuerzo: medio. |
 | **Checkpoint a object storage (S3)** | FFS | Media. Backup/restore a S3-compatible. Esfuerzo: medio. |
 | **Time-travel / versioning** | Picovolt, CrepeDB | Media. MVCC history permite leer estado anterior. Esfuerzo: medio. |
@@ -78,7 +78,7 @@
 
 | Técnica | Fuente | Aplicabilidad |
 |---|---|---|
-| **Prometheus export** | RuscaDB (SPEC-0119) | ✅ Stub implementado. Necesita exportador real. |
+| **Prometheus export** | RuscaDB (SPEC-0119) | Registry + export de texto Prometheus real; falta endpoint HTTP de scrape (adapter). |
 | **OpenTelemetry tracing** | RuscaDB (SPEC-0080) | ✅ Spans implementados. Necesita OTLP exporter. |
 | **Metrics (histograms, gauges)** | Prometheus | Media. RuscaDB tiene contadores. Mejora: histograms, gauges, summaries. |
 
@@ -96,7 +96,7 @@
 ## 3. Gaps identificados (priorizados por ROI)
 
 ### P0 — Alto impacto, esfuerzo medio
-1. **zstd/LZ4 compression para WAL** — reduce I/O 20-40%. Reemplazar RLE stub con zstd (optional dep).
+1. **zstd/LZ4 compression para WAL** - zstd real ya integrado (SPEC-0154); queda aplicarlo al formato fisico de pagina.
 2. **MVCC snapshot readers sin bloqueo** — ya tiene open_readonly; mejorar con snapshot consistente (last_committed_tx ya implementado).
 3. **Retention policies para time-series** — downsampling automático + TTL.
 4. **Fuzzy scoring en FTS** — BM25 + Levenshtein para ranking fuzzy.

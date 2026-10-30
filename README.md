@@ -266,18 +266,22 @@ RuscaDB ships optional capabilities behind feature flags. Enable with `--feature
 
 | Feature | Spec | Description |
 | --- | --- | --- |
-| `columnar` | SPEC-0110 | Columnar engine in memory (typed columns, scan, project, filter, aggregates) |
-| `onnx` | SPEC-0111 | ONNX inference stub (linear model, normalized output) |
+| `columnar` | SPEC-0110 | Columnar engine: in-memory + on-disk `RCOL1` (ALP/FOR + bit-packing) |
+| `onnx` | SPEC-0111 | MLP inference in pure Rust (2-layer ReLU + softmax); `ort` runtime pending |
 | `geo` | SPEC-0112 | Geospatial types (Point, Rect) with distance and containment |
-| `pgwire` | SPEC-0113 | PostgreSQL wire protocol server (stub) |
+| `pgwire` | SPEC-0113 | PostgreSQL wire v3 codec (big-endian, `handle_query`); TCP server pending |
 | `spatial` | SPEC-0114 | R-tree spatial index (insert + range query) |
 | `compression` | SPEC-0115 | RLE compression (compress/decompress) |
 | `backup` | SPEC-0116 | Online backup (file copy) |
 | `fts-advanced` | SPEC-0117 | Fuzzy matching (Levenshtein), phrase matching, stemming |
 | `ts-advanced` | SPEC-0118 | Time-series downsampling (avg/max/min) |
-| `observability` | SPEC-0119 | Prometheus metrics registry |
+| `observability` | SPEC-0119 | Prometheus metrics registry + text export |
 | `incremental-backup` | SPEC-0120 | Incremental backup (timestamp-based) |
 | `metrics` | SPEC-0080 | Commit latency metrics |
+
+Vector search can select its resolution strategy in RQL (SPEC-0181):
+`KNN embedding <|k|> [v...] USING AUTO|QUANTIZED|FILTERED|EXACT`
+(`ruscadb_search_quantized` / `ruscadb_search_filtered` in the C ABI).
 
 ### Concurrent readers (SPEC-0109)
 
