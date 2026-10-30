@@ -151,6 +151,46 @@ impl HnswIndex {
         self.nodes.is_empty()
     }
 
+    /// Vecinos de `node` en `layer` (nodos del mismo nivel).
+    ///
+    /// Args:
+    ///     node: Id de nodo (posición de inserción).
+    ///     layer: Nivel del grafo (0 = nivel base).
+    ///
+    /// Returns:
+    ///     Slice de vecinos; vacío si el nodo o el nivel no existen.
+    pub fn neighbors(&self, node: usize, layer: usize) -> &[usize] {
+        self.nodes
+            .get(node)
+            .and_then(|node| node.neighbors.get(layer))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// Nodo de entrada del grafo (nivel superior).
+    ///
+    /// Returns:
+    ///     `Some(node)` si el índice tiene nodos, `None` si está vacío.
+    pub fn entry_point(&self) -> Option<usize> {
+        self.entry
+    }
+
+    /// Numero de niveles del grafo.
+    ///
+    /// Returns:
+    ///     `top_level + 1`.
+    pub fn levels(&self) -> usize {
+        self.top_level + 1
+    }
+
+    /// Numero de nodos indexados (alias de [`Self::len`]).
+    ///
+    /// Returns:
+    ///     Cardinalidad.
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
     /// Inserta un vector y devuelve su id de nodo.
     ///
     /// Args:

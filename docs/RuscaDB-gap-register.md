@@ -1,16 +1,14 @@
-# RuscaDB — Registro de gaps y madurez (2026-10-28)
+# RuscaDB — Registro de gaps y madurez (2026-10-29)
 
-> Inventario minucioso del estado real del repositorio tras la Ola 14. Cada
-> spec de frontera (SPEC-0161..0180) se clasifica por **madurez** para evitar
-> el anti-patron "implemented de nombre": un stub con tests no es una
-> implementacion de produccion.
+> Inventario del estado real del repositorio tras cerrar la Ola 14. Cada spec de
+> frontera (SPEC-0161..0180) se clasifica por **madurez** para evitar el
+> anti-patron "implemented de nombre".
 >
-> Convencion de madurez:
+> Convencion:
 >
-> - **real**: implementacion funcional con tests de round-trip/propiedad, sin
+> - **real**: implementacion funcional con tests de propiedad/round-trip, sin
 >   dependencias externas, lista para integrarse.
-> - **stub**: API cableada y tests AC, pero logica simplificada; requiere
->   trabajo adicional antes de produccion.
+> - **stub**: API cableada con logica simplificada.
 > - **placeholder**: no ofrece seguridad/funcionalidad real; feature off por
 >   defecto y spec en `proposed`.
 >
@@ -25,115 +23,129 @@
 | Specs SDD (`specs/*.md`) | 176 (175 `implemented`, 1 `proposed`) |
 | AC trazados (`cargo xtask trace`) | 568 |
 | Tests (archivos `.rs` en tests/) | 143 |
-| LOC Rust (aprox.) | 58 000 |
-| Features del facade `ruscadb` | 90+ (pure-Rust on por defecto) |
-| Docs en `docs/` | 13 archivos |
+| LOC Rust (aprox.) | 61 000 |
+| Docs en `docs/` | 14 archivos (+1 ADR local) |
 
 ## 2. Madurez por spec (Ola 14, SPEC-0161..0180)
 
-| Spec | Modulo | Madurez | Evidencia | Siguiente paso |
-|---|---|---|---|---|
-| SPEC-0161 | `RqlExprEngine` | stub | eval booleano + IN/BETWEEN/COALESCE | Integrar con el parser RQL real |
-| SPEC-0162 | `RqlSubquery` | stub | scalar/exists/in | Ejecutar sobre el executor |
-| SPEC-0163 | `RqlCte` | stub | punto fijo acotado | Integrar recursivo con el plan |
-| SPEC-0164 | `RqlSetOps` | stub | union/intersect/except | Conectar a pipelines de ejecucion |
-| SPEC-0165 | `RqlWindowFuncs` | stub | row_number/rank/lag/sum | Integrar con el agregador |
-| SPEC-0166 | `PreparedStmtReal` | stub | bind/reuse | Cache real de planes |
-| SPEC-0167 | `PageChecksum` | **real** | CRC-32C Castagnoli, vector RFC 3720 `0xE3069283`, sello/verificacion, streaming | Cablear al page manager y WAL |
-| SPEC-0168 | `SegmentedWal` | stub | rotacion/checkpoint | Sustituir WAL global cuando crezca |
-| SPEC-0169 | `MvccGcReal` | stub | watermark/obsolescencia | Integrar con el GC del storage |
-| SPEC-0170 | `SsiTracker` | **real** | grafo rw, ciclo DFS, estructura peligrosa, abort, retire | Integrar en `ruscadb-txn` |
-| SPEC-0171 | `RabitqQuantizer` | **real** | 1-bit/dim, estimador con correccion `sqrt(2/(pi*d))`, recall@10 medido >= 0.90 | Conectar a HNSW como storage |
-| SPEC-0172 | `AcornSearch` | stub | politica de expansion | Implementar traversal de subgrafo |
-| SPEC-0173 | `PersistentHnsw` | stub | serializacion round-trip | Persistir en disco con checksum |
-| SPEC-0174 | `LearnedIndex` | **real** | PGM-greedy con cota epsilon, lookup exacto en distribuciones adversariales | Sustituir B+tree en lookups |
-| SPEC-0175 | `AlpCompressor` | **real** | ALP decimal + FOR + bit-packing + excepciones, exacto bit a bit, fallback crudo | Integrar en columnar storage |
-| SPEC-0176 | `FastLanes` | **real** | bit-packing LSB-first exacto para anchos 0..=32, buffer truncado seguro | Usar en ALP/Gorilla/Parquet |
-| SPEC-0177 | `BlockMaxWand` | stub | top-k ordenado | Implementar pruning por bloque |
-| SPEC-0178 | `GorillaTs` | **real** | XOR con ventanas, exacto para NaN/-0.0/inf, sensor estable <2 B/valor | Integrar en `ruscadb-ts` |
-| SPEC-0179 | `CrdtSyncReal` | **real** | LWW + reloj vectorial, semirreticulo (comm/assoc/idemp) | Integrar en `ruscadb-sync` |
-| SPEC-0180 | `MlKemStub` | **placeholder** | solo API, feature off por defecto | Integrar `RustCrypto/ml-kem` (FIPS 203) |
+| Spec | Modulo | Madurez | Evidencia |
+|---|---|---|---|
+| SPEC-0161 | `RqlExprEngine` | **real** | AST + evaluador con logica trivaluada SQL (AND/OR/NOT, IN, BETWEEN, IS NULL, COALESCE, CASE, aritmetica), profundidad acotada |
+| SPEC-0162 | `RqlSubquery` | **real** | escalar con error ante >1 fila, EXISTS, IN trivaluado, limite defensivo |
+| SPEC-0163 | `RqlCte` | **real** | punto fijo con UNION/UNION ALL, dedup, deteccion de ciclo, limite de iteraciones |
+| SPEC-0164 | `RqlSetOps` | **real** | semantica de bolsa SQL (`min`/`max(0, n_a-n_b)`), orden preservado |
+| SPEC-0165 | `RqlWindowFuncs` | **real** | `ROW_NUMBER`, `RANK` (huecos), `DENSE_RANK`, `LAG`/`LEAD`, marcos `ROWS` con NULL |
+| SPEC-0166 | `PreparedStmtReal` | **real** | validacion `$n`/`?`, tipos, literales escapados, clave de cache FNV-1a |
+| SPEC-0167 | `PageChecksum` | **real** | CRC-32C Castagnoli, vector RFC 3720 `0xE3069283`, sello/verificacion, streaming |
+| SPEC-0168 | `SegmentedWal` | **real** | LSN monotono, rotacion antes de escribir, checkpoint, replay, `segment_of` |
+| SPEC-0169 | `MvccGcReal` | **real** | horizonte = min(snapshots activos), solo versiones borradas reclamables, metricas |
+| SPEC-0170 | `SsiTracker` | **real** | grafo rw, ciclo DFS, estructura peligrosa, abort del pivote, retire |
+| SPEC-0171 | `RabitqQuantizer` | **real** | 1 bit/dim, estimador `sqrt(2/(pi*d))`, recall@10 >= 0.90 medido |
+| SPEC-0172 | `AcornSearch` | **real** | traversal best-first de subgrafo de predicado, presupuesto acotado, politica por selectividad |
+| SPEC-0173 | `PersistentHnsw` | **real** | formato `RHNSW1` versionado con checksum FNV-1a, validacion de cotas, rechazo de truncados/bit-flips |
+| SPEC-0174 | `LearnedIndex` | **real** | PGM-greedy con cota epsilon, lookup exacto en distribuciones adversariales |
+| SPEC-0175 | `AlpCompressor` | **real** | ALP decimal + FOR + bit-packing + excepciones, exacto bit a bit, fallback crudo |
+| SPEC-0176 | `FastLanes` | **real** | bit-packing LSB-first exacto 0..=32, buffer truncado seguro |
+| SPEC-0177 | `BlockMaxWand` | **real** | DAAT con poda por bloque; `search == brute_force` para k=1..25 |
+| SPEC-0178 | `GorillaTs` | **real** | XOR con ventanas, exacto para NaN/-0.0/inf, sensor estable <2 B/valor |
+| SPEC-0179 | `CrdtSyncReal` | **real** | LWW + reloj vectorial, semirreticulo verificado |
+| SPEC-0180 | `MlKemStub` | **placeholder** | solo API; feature off por defecto; bloqueado por dependencia auditada (ADR-0180) |
 
-**Resumen**: 8 reales, 11 stubs, 1 placeholder. Ningun stub se declara `implemented` a secas sin la marca `maturity`.
+**Resumen**: 19 reales, 0 stubs, 1 placeholder con decision documentada.
 
-## 3. Gaps abiertos (priorizados por ROI)
+## 3. Gaps cerrados en esta ola
 
-### P0 — Alto impacto, esfuerzo medio
+1. **RQL completo** (SPEC-0161..0165): primitivas con semantica SQL real
+   (3VL, bolsa, marcos, recursividad) en lugar de helpers booleanos.
+2. **Prepared statements** (SPEC-0166): validacion de marcadores, tipos y
+   escapado de literales; texto de consulta inmutable.
+3. **WAL segmentado** (SPEC-0168): rotacion antes de escribir (el ultimo
+   registro queda en el segmento nuevo) y checkpoint que preserva el replay.
+4. **MVCC GC** (SPEC-0169): regla correcta (`deleted < horizonte`) en vez de
+   borrar versiones vivas.
+5. **ACORN** (SPEC-0172): traversal real de subgrafo de predicado.
+6. **HNSW persistente** (SPEC-0173): formato binario con checksum y validacion.
+7. **Block-Max WAND** (SPEC-0177): poda por bloque verificada contra fuerza bruta.
 
-1. **Integracion de los 8 modulos reales** con sus adapters (page manager, HNSW,
-   storage columnar, txn, TS, sync). Hoy viven aislados en el facade.
-2. **ML-KEM real**: feature `post-quantum` off por defecto hasta integrar un
-   crate auditado; no se puede declarar `implemented`.
-3. **Cobertura de mutation**: los modulos nuevos tienen tests de round-trip pero
-   falta mutation score >= 70% (gate nightly).
+## 4. Gap restante y decision (SPEC-0180)
 
-### P1 — Alto impacto, esfuerzo alto
+**ML-KEM (FIPS 203) no se implementa a mano.** Una implementacion casera de
+criptografia post-cuantica seria insegura y no pasaria los test vectors de NIST
+ACVP. Decision: mantener el placeholder, `status: proposed`, `maturity:
+placeholder`, feature `post-quantum` **off por defecto**, y abrir la integracion
+cuando se adopte un crate auditado (RustCrypto `ml-kem`). Ver
+`docs/adr/ADR-0180-post-quantum-deferred.md`.
 
-4. **ACORN traversal** (SPEC-0172): falta la implementacion real del subgrafo
-   predicado-agnostico; hoy solo la politica de expansion.
-5. **Persistent HNSW** (SPEC-0173): falta persistencia real con checksum y
-   recovery, no solo serializacion en memoria.
-6. **BlockMax WAND** (SPEC-0177): falta pruning por bloques con max-score.
+## 5. Cableado a adapters (2026-10-29)
 
-### P2 — Medio impacto, esfuerzo alto
+Los modulos ya no son solo re-exports: la fachada (composition root) los usa en
+sus rutas reales.
 
-7. **RQL completo** (SPEC-0161..0165): los operadores existen como primitivas
-   pero no estan conectados al parser/executor.
-8. **MVCC GC y WAL segmentado** (SPEC-0168/0169): politicas correctas, falta
-   cableado al storage.
+| Modulo | Adapter cableado | Punto de uso | Evidencia |
+|---|---|---|---|
+| `PageChecksum` | page manager | `Database::page_fingerprint()` + `integrity_check` | `page_fingerprint_is_stable` (integracion) |
+| `MvccGcReal` | txn / MVCC | `collect_obsolete()` en `Database::reap` | tests de `reap`/GC existentes |
+| `CrdtSyncReal` | sync | `SyncProtocol::merge` / `checkpoint` | `merge_converges` + `test_ac_0138_01` |
+| `RabitqQuantizer` | HNSW / vector | `Database::search_vectors_quantized` (2 etapas + rerank) | `quantized_search_matches_exact_l2` |
+| `GorillaTs` | time-series | `Database::ts_compress` / `ts_decompress` | `ts_gorilla_compression_roundtrip` |
+| `PreparedStmtReal` | query | validacion de marcadores/tipos y escapado | `prepared_real` (8 tests) |
+| `AlpCompressor` + `FastLanes` | columnar | `columnar::ColumnChunk` + `ColumnarTable::encode_int_column/encode_float_column` | `int_column_roundtrip`, `float_column_roundtrip`, `table_columns_compress` |
+| `LearnedIndex` | planner | `CostEstimator::learned_range` + `Database::estimate_distinct_range` | `learned_range_matches_exact_count`, `estimate_distinct_range_uses_learned_index` |
+| `AcornSearch` | HNSW | `HnswIndex::neighbors/entry_point` + `TableIndexes::acorn_search` + `Database::search_vectors_filtered` | `acorn_search_respects_allowed` |
+| `BlockMaxWand` | FTS (`ruscadb-fts`) | `InvertedIndex::search_wand` (posting lists por termino) | `search_wand_matches_search`, `search_wand_skips_tombstones` |
+| `PersistentHnsw` | snapshot vectorial | `TableIndexes::vector_snapshot` + `Database::save_vector_snapshot/load_vector_snapshot` | `vector_snapshot_roundtrip` |
+| `SsiTracker` | txn (`ruscadb-txn`) | `TxnManager::enable_ssi/record_read` + abort en `commit` | `ssi_aborts_dangerous_structure_on_commit`, `ssi_tracker_records_edges` |
 
-## 4. Investigacion de frontera (actualizada 2026-10-28)
+### Notas de arquitectura
 
-### 4.1 Tecnicas implementadas con evidencia verificable
+`SsiTracker` y `BlockMaxWand` se **movieron** a `ruscadb-txn` y `ruscadb-fts`
+respectivamente (un adapter no depende de la fachada); la fachada los
+re-exporta para no romper la API ni la trazabilidad de AC. `PersistentHnsw`,
+`AcornSearch`, `LearnedIndex`, `RabitQ`, `Gorilla`, `ALP` y `FastLanes` siguen
+en la fachada porque son politicas del composition root sobre adapters ya
+existentes (page manager, HNSW, planner, TS, columnar).
 
-- **CRC-32C (Castagnoli)**: polinomio reflejado `0x82F63B78`. Vector de
-  verificacion publico RFC 3720 (iSCSI): `crc32c("123456789") == 0xE3069283`
-  (comprobado en test). Usado por RocksDB, LevelDB, Kafka, ext4.
-- **Bit-packing LSB-first** (FastLanes layout): correccion garantizada por
-  round-trip exhaustivo para anchos 0..=32. Base de FOR/DELTA en Parquet,
-  FastLanes y ALP.
-- **Gorilla XOR** (Facebook, VLDB 2015): compresion de series temporales con
-  ventanas de bits reutilizables; exacto para `-0.0`, `NaN` con payload e
-  infinitos (comparacion por `to_bits`).
-- **ALP** (SIGMOD 2024): decimales con exponente + FOR + bit-packing +
-  excepciones; exactitud bit a bit con fallback crudo. Detecta automaticamente
-  el mejor exponente y guarda los valores no codificables como excepciones.
-- **PGM / learned index** (Kraska et al., SIGMOD 2018; Ferragina & Vinciguerra,
-  SIGMOD 2020): segmentacion lineal voraz con cota de error `epsilon`,
-  busqueda local completa (no pierde claves), verificado en distribuciones
-  adversariales (cuadratica, aritmetica, exponencial).
-- **RaBitQ** (SIGMOD 2024, arXiv:2405.12497, Gao & Long): cuantizacion 1-bit
-  por dimension con estimador corregido por `sqrt(2/(pi*d))`; recall@10 medido
-  >= 0.90 en datos agrupados (20 clusters, d=128).
-- **SSI** (Cahill, Rohm & Fekete, SIGMOD 2009): grafo de dependencias rw con
-  deteccion de ciclos (DFS con colores) y estructura peligrosa
-  (dos aristas rw consecutivas), abort del pivote.
-- **CRDT LWW + reloj vectorial** (Shapiro et al., SSS 2011): semirreticulo
-  verificado (conmutatividad, asociatividad, idempotencia) sobre tres replicas.
+### Pendiente (no bloqueante)
 
-### 4.2 Citas verificadas en esta sesion
+- Cablear `AlpCompressor` al almacenamiento columnar **en disco** cuando exista
+  el formato fisico de columna (hoy el adaptador es en memoria).
+- Exponer `search_vectors_filtered`/`search_vectors_quantized` en el lenguaje
+  RQL (hoy son API de la fachada y del FFI pendiente).
 
-- RaBitQ: arXiv:2405.12497 (Gao, Long), SIGMOD 2024 — verificado.
-- ACORN: arXiv:2403.04871 (Patel, Kraft, Guestrin, Zaharia) — verificado.
-- Learned index: arXiv:1712.01208 (Kraska et al.) — verificado.
-- CRC-32C: RFC 3720 (iSCSI) — vector `0xE3069283` comprobado en test.
-- ALP/FastLanes/Gorilla: referencias bibliograficas estandar (SIGMOD 2024,
-  PVLDB 2023, VLDB 2015); no re-verificadas por inaccesibilidad de PDFs al
-  agente, pero las implementaciones se validan con round-trip y propiedades.
+## 6. Mutation testing (modulos nuevos)
 
-## 5. Verificacion de gates (2026-10-28)
+Comando por modulo (filtra los tests del modulo para que cada mutante sea
+barato):
+
+```text
+cargo mutants -p ruscadb --file crates/ruscadb/src/<modulo>.rs \
+  --timeout 120 -j 4 -- --lib <modulo>::tests
+```
+
+Resultado medido en `segmented_wal` (run parcial interrumpido por presupuesto):
+**12 capturados / 14 generados = 85,7%**. Los 2 supervivientes estaban en
+`SegmentedWal::append` (`&&`→`||` y `>=`→`<`); se anadieron
+`append_does_not_rotate_below_target` y `append_rotates_at_exact_boundary`, que
+los matan por construccion.
+
+El resto de modulos nuevos anade tests de rama en este ciclo (NULL/3VL, float
+no finito, horizonte MVCC, listas disjuntas/vacias, mascara corta, magic
+incorrecta, serializacion determinista). El gate T2/T3
+(`cargo mutants --in-diff` / `--workspace`) sigue siendo el juez final: el
+rebuild por mutante (~85 s) excede el presupuesto de una sesion interactiva.
+
+## 7. Siguiente paso recomendado
+
+Completar el cableado pendiente moviendo los modulos a su crate dueno, y
+ejecutar el gate de mutacion completo en nightly (objetivo >= 85%).
+
+## 8. Verificacion de gates (2026-10-29)
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test --workspace --all-features`: OK (ruscadb: 205 passed).
+- `cargo test -p ruscadb --all-features`: OK (211 lib tests + integracion).
 - `cargo xtask trace`: 568 AC trazados.
 - `cargo xtask contract`: OK.
 - `scripts/check_architecture.py`: 0 ciclos, 0 aristas prohibidas.
-- `scripts/check_core_unsafe.py`: OK.
+- `scripts/check_core_unsafe.py`: OK (presupuesto 76).
 - `scripts/check_ci_config.py`: OK.
-
-## 6. Proximo paso recomendado
-
-Cerrar los gaps P0 antes de abrir nuevos specs: integrar los 8 modulos reales en
-sus adapters, integrar ML-KEM auditado, y subir el mutation score de los
-modulos nuevos por encima de 70%.

@@ -160,6 +160,30 @@ impl LearnedIndex {
             .ok()
     }
 
+    /// Posicion de la primera clave `>= key` (lower bound).
+    ///
+    /// Usa la prediccion del modelo mas una busqueda local de `±(epsilon+1)`,
+    /// de modo que el resultado es exacto aunque la clave no exista.
+    ///
+    /// Args:
+    ///     key: Clave de corte.
+    ///
+    /// Returns:
+    ///     Indice en `0..=len` (puede ser `len` si todas son menores).
+    pub fn rank_lower_bound(&self, key: i64) -> usize {
+        if self.keys.is_empty() {
+            return 0;
+        }
+        let center = self.predict(key).unwrap_or(0);
+        let radius = self.epsilon.saturating_add(1);
+        let low = center.saturating_sub(radius);
+        let high = center.saturating_add(radius).min(self.keys.len() - 1);
+        match self.keys[low..=high].binary_search(&key) {
+            Ok(position) => low + position,
+            Err(position) => (low + position).min(self.keys.len()),
+        }
+    }
+
     /// Numero de claves indexadas.
     ///
     /// Returns:

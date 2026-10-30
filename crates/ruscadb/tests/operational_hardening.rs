@@ -316,3 +316,22 @@ fn test_ac_0062_05_shadow_off_by_default() {
         "sin habilitar shadow no debe haber verificaciones"
     );
 }
+
+/// SPEC-0167 — el fingerprint CRC-32C de las páginas es estable entre lecturas
+/// y cubre el heap (page manager).
+#[test]
+fn page_fingerprint_is_stable() {
+    let (_dir, mut database) = open_test_db("fingerprint");
+    create_items(&mut database, "items");
+    database
+        .insert("items", scalars(1, "uno"))
+        .expect("insert uno");
+    database
+        .insert("items", scalars(2, "dos"))
+        .expect("insert dos");
+
+    let first = database.page_fingerprint().expect("fingerprint");
+    let second = database.page_fingerprint().expect("fingerprint");
+    assert!(first.0 > 0, "debe leer páginas: {first:?}");
+    assert_eq!(first, second, "el fingerprint es estable");
+}

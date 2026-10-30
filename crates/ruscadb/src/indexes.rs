@@ -25,9 +25,11 @@ use ruscadb_fvs::{
 use ruscadb_graph::{CsrGraph, Direction, NodeId};
 use ruscadb_vector::{HnswIndex, HnswParams};
 
+use crate::acorn::{AcornSearch, Graph};
 use crate::catalog::{Catalog, ColumnType, TableDef};
 use crate::database::Database;
 use crate::heap::{RowLocator, heap_read, heap_scan};
+use crate::rabitq::RabitqQuantizer;
 
 /// Orden (máximo de hijos por nodo) del B+tree del índice primario.
 const PRIMARY_INDEX_ORDER: usize = 8;
@@ -151,6 +153,185 @@ impl TableIndexes {
                     .map(|id| (id, distance))
             })
             .collect())
+    }
+
+    /// Busqueda ANN en dos etapas con cuantizacion RaBitQ (SPEC-0171).
+    ///
+    /// Etapa 1: codifica cada vector vivo en `d` bits y estima la distancia L2
+    /// con el estimador de RaBitQ (barato, `d/8` bytes por vector). Etapa 2:
+    /// re-rankea los `k * rerank_factor` candidatos mas prometedores con la
+    /// distancia exacta, de modo que el resultado final es exacto sobre el
+    /// subconjunto explorado.
+    ///
+    /// Solo se aplica a la metrica L2 (el estimador de RaBitQ aproxima L2); con
+    /// otra metrica se devuelve el resultado exacto sin cuantizar.
+    ///
+    /// Args:
+    ///     query: Vector de consulta.
+    ///     k: Resultados deseados.
+    ///     rerank_factor: Multiplicador de candidatos para la segunda etapa.
+    ///
+    /// Returns:
+    ///     Hasta `k` pares `(RecordId, distancia)` ordenados por distancia.
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si la dimension no coincide.
+    pub(crate) fn quantized_vector_search(
+        &self,
+        query: &[f32],
+        k: usize,
+        rerank_factor: usize,
+    ) -> Result<Vec<(RecordId, f32)>, RuscaError> {
+        let Some(metric) = self.vector.metric else {
+            return Ok(Vec::new());
+        };
+        if k == 0 || self.vector.ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        if metric != Metric::L2 {
+            // Otra metrica: el estimador de RaBitQ no aplica; camino exacto.
+            return self.quantized_exact(query, k, metric);
+        }
+        let quantizer = RabitqQuantizer::new();
+        let mut candidates: Vec<(f32, usize)> = Vec::new();
+        for (node, (id, vector)) in self.vector.ids.iter().zip(&self.vector.vectors).enumerate() {
+            if self.deleted.contains(id) {
+                continue;
+            }
+            let code = quantizer.encode(vector);
+            candidates.push((quantizer.estimate_l2(query, &code), node));
+        }
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        candidates.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        let rerank = k.saturating_mul(rerank_factor.max(1)).max(k);
+        let mut results: Vec<(RecordId, f32)> = Vec::new();
+        for (_, node) in candidates.into_iter().take(rerank) {
+            let (Some(&id), Some(vector)) =
+                (self.vector.ids.get(node), self.vector.vectors.get(node))
+            else {
+                continue;
+            };
+            let distance = ruscadb_vector::distance(metric, query, vector)?;
+            results.push((id, distance));
+        }
+        results.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        results.truncate(k);
+        Ok(results)
+    }
+
+    /// Busqueda filtrada ACORN sobre el grafo HNSW (SPEC-0172).
+    ///
+    /// Construye la lista de adyacencia del nivel base del HNSW y recorre el
+    /// subgrafo de predicado: los nodos que no cumplen el filtro se atraviesan
+    /// (con presupuesto) para no desconectar la busqueda cuando el filtro es
+    /// selectivo.
+    ///
+    /// Args:
+    ///     query: Vector de consulta.
+    ///     k: Resultados deseados.
+    ///     allowed: `RecordId` que cumplen el predicado.
+    ///
+    /// Returns:
+    ///     Hasta `k` pares `(RecordId, distancia)` admitidos, por distancia.
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si la consulta no encaja.
+    pub(crate) fn acorn_search(
+        &self,
+        query: &[f32],
+        k: usize,
+        allowed: &BTreeSet<RecordId>,
+    ) -> Result<Vec<(RecordId, f32)>, RuscaError> {
+        let Some(metric) = self.vector.metric else {
+            return Ok(Vec::new());
+        };
+        let Some(index) = self.vector.index.as_ref() else {
+            return Ok(Vec::new());
+        };
+        if k == 0 || self.vector.ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut graph = Graph::new(self.vector.ids.len());
+        for node in 0..self.vector.ids.len() {
+            for &neighbor in index.neighbors(node, 0) {
+                if neighbor < graph.len() {
+                    graph.connect(node, neighbor);
+                }
+            }
+        }
+        let mask: Vec<bool> = self
+            .vector
+            .ids
+            .iter()
+            .map(|id| allowed.contains(id) && !self.deleted.contains(id))
+            .collect();
+        let entry = index.entry_point().unwrap_or(0);
+        let searcher = AcornSearch::new(4);
+        let nodes = searcher.filtered_search(&graph, entry, &mask, k, |node| {
+            self.vector
+                .vectors
+                .get(node)
+                .and_then(|vector| ruscadb_vector::distance(metric, query, vector).ok())
+                .unwrap_or(f32::MAX)
+        });
+        Ok(nodes
+            .into_iter()
+            .filter_map(|node| {
+                let id = *self.vector.ids.get(node)?;
+                let distance = self
+                    .vector
+                    .vectors
+                    .get(node)
+                    .and_then(|vector| ruscadb_vector::distance(metric, query, vector).ok())?;
+                Some((id, distance))
+            })
+            .collect())
+    }
+
+    /// Exporta vectores + adyacencia del nivel base a `PersistentHnsw`.
+    ///
+    /// Returns:
+    ///     Snapshot serializable (SPEC-0173).
+    pub(crate) fn vector_snapshot(&self) -> crate::persistent_hnsw::PersistentHnsw {
+        let dimension = self.vector.vectors.first().map_or(0, Vec::len);
+        let mut snapshot = crate::persistent_hnsw::PersistentHnsw::with_dimension(dimension);
+        for (node, vector) in self.vector.vectors.iter().enumerate() {
+            let neighbors: Vec<u32> = self
+                .vector
+                .index
+                .as_ref()
+                .map(|index| {
+                    index
+                        .neighbors(node, 0)
+                        .iter()
+                        .map(|neighbor| *neighbor as u32)
+                        .collect()
+                })
+                .unwrap_or_default();
+            snapshot.insert(node as u64, vector.clone(), neighbors);
+        }
+        snapshot
+    }
+
+    /// Camino exacto usado cuando la metrica no es L2.
+    fn quantized_exact(
+        &self,
+        query: &[f32],
+        k: usize,
+        metric: Metric,
+    ) -> Result<Vec<(RecordId, f32)>, RuscaError> {
+        let mut results: Vec<(RecordId, f32)> = Vec::new();
+        for (id, vector) in self.vector.ids.iter().zip(&self.vector.vectors) {
+            if self.deleted.contains(id) {
+                continue;
+            }
+            results.push((*id, ruscadb_vector::distance(metric, query, vector)?));
+        }
+        results.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        results.truncate(k);
+        Ok(results)
     }
 
     /// Busca el top-k restringido a `allowed` con iFVS sobre el índice HNSW.
@@ -743,6 +924,103 @@ impl Database {
         self.indexes.get(table)
     }
 
+    /// Busqueda ANN en dos etapas (RaBitQ + re-rank exacto) sobre `table`.
+    ///
+    /// Args:
+    ///     table: Tabla con indice vectorial.
+    ///     query: Vector de consulta.
+    ///     k: Resultados deseados.
+    ///
+    /// Returns:
+    ///     Hasta `k` pares `(RecordId, distancia)` ordenados por distancia; vacio
+    ///     si la tabla no tiene indice vectorial.
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si la dimension no coincide.
+    pub fn search_vectors_quantized(
+        &self,
+        table: &str,
+        query: &[f32],
+        k: usize,
+    ) -> Result<Vec<(RecordId, f32)>, RuscaError> {
+        match self.table_indexes(table) {
+            Some(indexes) => indexes.quantized_vector_search(query, k, 4),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// Busqueda filtrada ACORN sobre el HNSW de `table` (SPEC-0172).
+    ///
+    /// Args:
+    ///     table: Tabla con indice vectorial.
+    ///     query: Vector de consulta.
+    ///     k: Resultados deseados.
+    ///     allowed: `RecordId` que cumplen el predicado `WHERE`.
+    ///
+    /// Returns:
+    ///     Hasta `k` pares `(RecordId, distancia)` admitidos.
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si la consulta no encaja.
+    pub fn search_vectors_filtered(
+        &self,
+        table: &str,
+        query: &[f32],
+        k: usize,
+        allowed: &BTreeSet<RecordId>,
+    ) -> Result<Vec<(RecordId, f32)>, RuscaError> {
+        match self.table_indexes(table) {
+            Some(indexes) => indexes.acorn_search(query, k, allowed),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// Guarda un snapshot binario del indice vectorial de `table` (SPEC-0173).
+    ///
+    /// El snapshot incluye vectores y adyacencia del nivel base; el mapeo a
+    /// `RecordId` se reconstruye desde el heap al reabrir (los ids del snapshot
+    /// son posiciones de nodo).
+    ///
+    /// Args:
+    ///     table: Tabla con indice vectorial.
+    ///     path: Ruta de destino.
+    ///
+    /// Returns:
+    ///     Numero de nodos escritos (0 si la tabla no tiene indice).
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si la escritura falla.
+    pub fn save_vector_snapshot(
+        &self,
+        table: &str,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<usize, RuscaError> {
+        let Some(indexes) = self.table_indexes(table) else {
+            return Ok(0);
+        };
+        let snapshot = indexes.vector_snapshot();
+        std::fs::write(path, snapshot.save())?;
+        Ok(snapshot.len())
+    }
+
+    /// Carga un snapshot binario del indice vectorial (SPEC-0173).
+    ///
+    /// Args:
+    ///     path: Ruta del snapshot.
+    ///
+    /// Returns:
+    ///     Snapshot validado, o `None` si el archivo esta corrupto.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si la lectura falla.
+    pub fn load_vector_snapshot(
+        &self,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Option<crate::persistent_hnsw::PersistentHnsw>, RuscaError> {
+        let bytes = std::fs::read(path)?;
+        Ok(crate::persistent_hnsw::PersistentHnsw::load(&bytes))
+    }
+
     /// Reconstruye el índice primario `RecordId -> RowLocator` desde el heap.
     ///
     /// Se invoca al abrir la base (durabilidad, FR-0024-04): el índice primario
@@ -910,6 +1188,77 @@ mod tests {
         }
     }
 
+    /// Registro con un vector concreto (misma tabla/esquema que `sample_record`).
+    fn record_with_vector(id: RecordId, vector: Vec<f32>) -> Record {
+        let mut record = sample_record(id);
+        record.vector = Some(
+            Embedding::new(
+                vector,
+                EmbeddingMeta {
+                    model_id: "test".to_string(),
+                    dim: 3,
+                    metric: Metric::L2,
+                },
+            )
+            .expect("embedding valido"),
+        );
+        record
+    }
+
+    /// SPEC-0171 — la busqueda en dos etapas (RaBitQ + re-rank) devuelve el
+    /// vecino mas cercano exacto y no pierde resultados.
+    #[test]
+    fn quantized_search_matches_exact_l2() {
+        let table = table_def();
+        let mut indexes = TableIndexes::default();
+        // Tres grupos bien separados para que el vecino mas cercano sea inequivoco.
+        let vectors: Vec<Vec<f32>> = (0..24)
+            .map(|i| {
+                let group = (i % 3) as f32 * 10.0;
+                vec![group + (i % 4) as f32 * 0.01, group, -group]
+            })
+            .collect();
+        let ids: Vec<RecordId> = vectors.iter().map(|_| RecordId::new()).collect();
+        for (id, vector) in ids.iter().zip(&vectors) {
+            indexes
+                .index_record(&record_with_vector(*id, vector.clone()), &table)
+                .expect("index");
+        }
+        indexes.finalize();
+
+        let query = vec![10.02, 10.0, -10.0];
+        let exact = indexes
+            .quantized_exact(&query, 5, Metric::L2)
+            .expect("exacto");
+        let quantized = indexes
+            .quantized_vector_search(&query, 5, 4)
+            .expect("cuantizado");
+        assert_eq!(quantized.len(), 5);
+        assert_eq!(
+            quantized[0].0, exact[0].0,
+            "el re-rank recupera el vecino mas cercano"
+        );
+        // Las distancias devueltas son exactas (no estimadas).
+        for (id, distance) in &quantized {
+            let node = indexes
+                .vector
+                .ids
+                .iter()
+                .position(|candidate| candidate == id)
+                .expect("id indexado");
+            let expected =
+                ruscadb_vector::distance(Metric::L2, &query, &indexes.vector.vectors[node])
+                    .expect("distancia");
+            assert!((distance - expected).abs() < 1e-6);
+        }
+
+        // k mayor que el corpus: devuelve todo sin duplicar.
+        let all = indexes
+            .quantized_vector_search(&query, 100, 2)
+            .expect("todo");
+        assert_eq!(all.len(), vectors.len());
+    }
+
     /// SPEC-0022 — `remove_record` excluye el id de los índices vectorial y de
     /// texto (tombstone) sin afectar a las filas vivas.
     #[test]
@@ -951,5 +1300,53 @@ mod tests {
             !hits.contains(&victim) && hits.contains(&survivor),
             "el índice invertido excluye al borrado y conserva al vivo"
         );
+    }
+
+    /// SPEC-0172 — ACORN respeta el filtro y ordena por distancia.
+    #[test]
+    fn acorn_search_respects_allowed() {
+        let table = table_def();
+        let mut indexes = TableIndexes::default();
+        let vectors: Vec<Vec<f32>> = (0..12).map(|i| vec![i as f32, 0.0, 0.0]).collect();
+        let ids: Vec<RecordId> = vectors.iter().map(|_| RecordId::new()).collect();
+        for (id, vector) in ids.iter().zip(&vectors) {
+            indexes
+                .index_record(&record_with_vector(*id, vector.clone()), &table)
+                .expect("index");
+        }
+        indexes.finalize();
+        let allowed: BTreeSet<RecordId> = ids.iter().step_by(2).copied().collect();
+        let results = indexes
+            .acorn_search(&[0.0, 0.0, 0.0], 3, &allowed)
+            .expect("acorn");
+        assert!(!results.is_empty());
+        assert!(results.iter().all(|(id, _)| allowed.contains(id)));
+        assert!(
+            results.windows(2).all(|pair| pair[0].1 <= pair[1].1),
+            "ordenado por distancia"
+        );
+    }
+
+    /// SPEC-0173 — el snapshot del HNSW hace round-trip con vectores y vecinos.
+    #[test]
+    fn vector_snapshot_roundtrip() {
+        let table = table_def();
+        let mut indexes = TableIndexes::default();
+        let ids: Vec<RecordId> = (0..6).map(|_| RecordId::new()).collect();
+        for (index, id) in ids.iter().enumerate() {
+            indexes
+                .index_record(
+                    &record_with_vector(*id, vec![index as f32, 1.0, 0.0]),
+                    &table,
+                )
+                .expect("index");
+        }
+        indexes.finalize();
+        let snapshot = indexes.vector_snapshot();
+        assert_eq!(snapshot.len(), 6);
+        let bytes = snapshot.save();
+        let restored = crate::persistent_hnsw::PersistentHnsw::load(&bytes).expect("load");
+        assert_eq!(restored.len(), 6);
+        assert_eq!(restored.dimension, 3);
     }
 }

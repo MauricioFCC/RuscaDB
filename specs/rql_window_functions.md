@@ -2,7 +2,7 @@
 id: SPEC-0165
 feature: rql_window_functions
 status: implemented
-maturity: stub
+maturity: real
 owner: query-team
 appetite_days: 8
 boundaries:
@@ -76,3 +76,9 @@ parser ni el executor. Esta spec implementa window functions completas.
 
 `docs/adr/ADR-0165-rql-window-functions.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\rql_window_functions.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/rql_window_funcs.rs` (`RqlWindowFuncs`, `Frame`, `Bound`).
+- Tests: `test_ac_0165_01..03` + marco movil, marco vacio y NULL.
+- Invariantes: agregados ignoran NULL y devuelven NULL con marco vacio;
+  `RANK` deja huecos y `DENSE_RANK` no.

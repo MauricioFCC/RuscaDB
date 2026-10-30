@@ -148,16 +148,26 @@
 - Cahill, Rohm, Fekete, Serializable Isolation for Snapshot Databases, SIGMOD 2009.
 - Afroozeh et al., ALP, SIGMOD 2024; Afroozeh & Boncz, FastLanes, PVLDB 2023; Pelkonen et al., Gorilla, VLDB 2015.
 
-## 6. Ola 14 — implementaciones reales (2026-10-28)
+## 6. Ola 14 — implementaciones reales (2026-10-29)
 
-Ocho modulos pasaron de stub a implementacion funcional con evidencia:
-PageChecksum (CRC-32C), SsiTracker (grafo rw + DFS), RabitqQuantizer
-(1-bit/dim + estimador corregido), LearnedIndex (PGM-greedy), AlpCompressor
-(ALP + excepciones), FastLanes (bit-packing), GorillaTs (XOR), CrdtSyncReal
-(LWW + reloj vectorial). Detalle y madurez en `docs/RuscaDB-gap-register.md`.
+Diecinueve modulos pasaron de stub a implementacion funcional con evidencia:
 
-Once stubs restantes y un placeholder (ML-KEM, feature off por defecto) se
-marcan con `maturity: stub`/`placeholder` en sus specs.
+- **Integridad/almacenamiento**: PageChecksum (CRC-32C), FastLanes (bit-packing),
+  AlpCompressor (ALP + excepciones), GorillaTs (XOR), SegmentedWal (LSN +
+  rotacion + checkpoint), PersistentHnsw (formato `RHNSW1` + checksum).
+- **Concurrencia/consistencia**: SsiTracker (grafo rw + DFS), MvccGcReal
+  (horizonte de snapshots), CrdtSyncReal (LWW + reloj vectorial).
+- **Busqueda**: RabitqQuantizer (1 bit/dim + estimador), LearnedIndex
+  (PGM-greedy), AcornSearch (subgrafo de predicado), BlockMaxWand (poda por
+  bloque verificada contra fuerza bruta).
+- **RQL**: RqlExprEngine (logica trivaluada SQL), RqlSubquery, RqlCte
+  (recursiva con dedup/ciclo), RqlSetOps (semantica de bolsa), RqlWindowFuncs
+  (marcos `ROWS`), PreparedStmtReal (marcadores, tipos, escapado).
+
+Queda un unico **placeholder** (ML-KEM) cerrado por decision documentada
+(`docs/adr/ADR-0180-post-quantum-deferred.md`): no se implementa criptografia a
+mano y la feature permanece off por defecto. Detalle y evidencia por modulo en
+`docs/RuscaDB-gap-register.md`.
 
 - redb design doc: https://github.com/cberner/redb/blob/master/docs/design.md
 - Lance format: https://lance.org/

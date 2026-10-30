@@ -2,7 +2,7 @@
 id: SPEC-0163
 feature: rql_cte
 status: implemented
-maturity: stub
+maturity: real
 owner: query-team
 appetite_days: 7
 boundaries:
@@ -71,3 +71,9 @@ jerarquias). RuscaDB no los soporta.
 
 `docs/adr/ADR-0163-rql-cte.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\rql_cte.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/rql_cte.rs` (`RqlCte`, `CteOutcome`).
+- Tests: `test_ac_0163_01..02` + `fixed_point` historico.
+- Invariantes: `UNION ALL` conserva multiplicidades; `UNION` deduplica; un paso
+  que reemite una fila marca `hit_cycle`; `max_iterations` evita no terminar.

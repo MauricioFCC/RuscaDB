@@ -2,7 +2,7 @@
 id: SPEC-0164
 feature: rql_set_operations
 status: implemented
-maturity: stub
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:
@@ -78,3 +78,9 @@ comparacion de resultados. RuscaDB no las soporta.
 
 `docs/adr/ADR-0164-rql-set-ops.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\rql_set_operations.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/rql_set_ops.rs` (`RqlSetOps`).
+- Tests: `test_ac_0164_01..04` + multiplicidades.
+- Invariantes: semantica de bolsa SQL (`INTERSECT` = min, `EXCEPT` = max(0, a-b));
+  orden de la entrada izquierda preservado.

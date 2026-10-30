@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::bm25::Bm25;
 use crate::tokenizer::tokenize;
+use crate::wand::{BlockMaxWand, PostingList};
 
 /// Entrada de una lista de postings: documento y frecuencia de término.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +174,84 @@ impl InvertedIndex {
             self.accumulate_term(&term, &bm25, average, &mut scores);
         }
         rank(scores, k)
+    }
+
+    /// Top-k con Block-Max WAND (SPEC-0177).
+    ///
+    /// Construye una posting list por termino (documento ordinal + contribucion
+    /// BM25) y aplica la poda por bloque. Devuelve el mismo top-k que
+    /// [`Self::search`], pero sin puntuar documentos que no pueden entrar en el
+    /// corte.
+    ///
+    /// Args:
+    ///     query: Texto de la consulta (se tokeniza).
+    ///     k: Numero maximo de documentos.
+    ///
+    /// Returns:
+    ///     `RecordId` ordenados por score descendente.
+    pub fn search_wand(&self, query: &str, k: usize) -> Vec<(RecordId, f32)> {
+        if k == 0 {
+            return Vec::new();
+        }
+        let average = self.average_doc_len();
+        let bm25 = Bm25::default();
+        let mut per_term: Vec<Vec<(RecordId, f32)>> = Vec::new();
+        let mut documents: BTreeSet<RecordId> = BTreeSet::new();
+        for term in unique_terms(query) {
+            let Some(postings) = self.postings.get(&term) else {
+                continue;
+            };
+            let doc_freq = postings
+                .iter()
+                .filter(|posting| self.is_live(posting))
+                .count();
+            if doc_freq == 0 {
+                continue;
+            }
+            let idf = bm25.idf(self.docs.len(), doc_freq);
+            let mut contributions = Vec::new();
+            for posting in postings {
+                if !self.is_live(posting) {
+                    continue;
+                }
+                let Some(&doc_len) = self.docs.get(&posting.doc) else {
+                    continue;
+                };
+                contributions.push((
+                    posting.doc,
+                    idf * bm25.tf_norm(posting.tf, doc_len, average),
+                ));
+                documents.insert(posting.doc);
+            }
+            per_term.push(contributions);
+        }
+        if per_term.is_empty() {
+            return Vec::new();
+        }
+        let ordinal: BTreeMap<RecordId, u64> = documents
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (*id, index as u64))
+            .collect();
+        let lists: Vec<PostingList> = per_term
+            .into_iter()
+            .map(|contributions| {
+                let mut pairs: Vec<(u64, f32)> = contributions
+                    .into_iter()
+                    .map(|(doc, score)| (ordinal[&doc], score))
+                    .collect();
+                pairs.sort_by_key(|(doc, _)| *doc);
+                let doc_ids = pairs.iter().map(|(doc, _)| *doc).collect();
+                let scores = pairs.iter().map(|(_, score)| *score).collect();
+                PostingList::new(doc_ids, scores)
+            })
+            .collect();
+        let ranked = BlockMaxWand::new().search(&lists, k);
+        let ordered: Vec<RecordId> = documents.into_iter().collect();
+        ranked
+            .into_iter()
+            .filter_map(|(ord, score)| ordered.get(ord as usize).map(|id| (*id, score)))
+            .collect()
     }
 
     /// Busca documentos cuyos términos empiezan por `prefix`, ordenados por BM25.

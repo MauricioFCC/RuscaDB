@@ -2,7 +2,7 @@
 id: SPEC-0173
 feature: persistent_hnsw
 status: implemented
-maturity: stub
+maturity: real
 owner: vector-team
 appetite_days: 5
 boundaries:
@@ -68,3 +68,9 @@ requiere persistencia.
 
 `docs/adr/ADR-0173-persistent-hnsw.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\persistent_hnsw.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/persistent_hnsw.rs` (`PersistentHnsw`, `HnswNode`).
+- Tests: `test_ac_0173_01..02` + bit-flip, truncado y version no soportada.
+- Invariantes: formato `RHNSW1` con dimension, conteo y checksum FNV-1a; `load`
+  valida cotas y checksum antes de confiar en el buffer (nunca panic).

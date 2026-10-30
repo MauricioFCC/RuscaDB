@@ -2,7 +2,7 @@
 id: SPEC-0162
 feature: rql_subqueries
 status: implemented
-maturity: stub
+maturity: real
 owner: query-team
 appetite_days: 7
 boundaries:
@@ -86,3 +86,9 @@ dependientes. Es el bloqueante principal para compatibilidad con SQL.
 
 `docs/adr/ADR-0162-rql-subqueries.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\rql_subqueries.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/rql_subqueries.rs` (`RqlSubquery`, `SubqueryKind`).
+- Tests: `test_ac_0162_01..04` + `IN` trivaluado con NULL y limite de filas.
+- Invariantes: escalar con >1 fila devuelve `SubqueryError::MultipleRows`;
+  `IN` devuelve NULL si no hay match pero hay NULL.

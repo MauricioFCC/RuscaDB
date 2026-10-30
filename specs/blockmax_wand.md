@@ -2,7 +2,7 @@
 id: SPEC-0177
 feature: blockmax_wand
 status: implemented
-maturity: stub
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:
@@ -70,3 +70,9 @@ maximo no puede entrar al top-k.
 
 `docs/adr/ADR-0177-blockmax-wand.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\blockmax_wand.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/blockmax_wand.rs` (`BlockMaxWand`, `PostingList`).
+- Tests: `test_ac_0177_01..02` + `search == brute_force` para k=1..25.
+- Invariantes: la poda por bloque es conservadora (cota `block_max`) y no altera
+  el top-k; desempate estable por documento ascendente.

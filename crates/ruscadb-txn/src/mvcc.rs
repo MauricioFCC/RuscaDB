@@ -11,6 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use ruscadb_core::RuscaError;
 use serde::{Deserialize, Serialize};
 
+use crate::ssi::SsiTracker;
+
 /// Identificador de transacción (monótono creciente, nunca reutilizado).
 pub type TxId = u64;
 
@@ -112,6 +114,12 @@ pub struct TxnManager {
     committed_writes: BTreeMap<String, u64>,
     /// Contador monótono de commits (reloj lógico de first-committer-wins).
     commit_clock: u64,
+    /// Grafo SSI (SPEC-0170).
+    ssi: SsiTracker,
+    /// `true` si la deteccion SSI esta activa (opt-in).
+    ssi_enabled: bool,
+    /// Lecturas por clave: clave -> transacciones que la leyeron.
+    reads: BTreeMap<String, BTreeSet<TxId>>,
 }
 
 impl TxnManager {
@@ -129,6 +137,9 @@ impl TxnManager {
             begin_clock: BTreeMap::new(),
             committed_writes: BTreeMap::new(),
             commit_clock: 0,
+            ssi: SsiTracker::new(),
+            ssi_enabled: false,
+            reads: BTreeMap::new(),
         }
     }
 
@@ -146,7 +157,53 @@ impl TxnManager {
             begin_clock: BTreeMap::new(),
             committed_writes: BTreeMap::new(),
             commit_clock: 0,
+            ssi: SsiTracker::new(),
+            ssi_enabled: false,
+            reads: BTreeMap::new(),
         }
+    }
+
+    /// Activa o desactiva la deteccion SSI (SPEC-0170).
+    ///
+    /// Args:
+    ///     enabled: `true` para abortar commits que formen estructuras
+    ///         peligrosas o ciclos rw.
+    pub fn enable_ssi(&mut self, enabled: bool) {
+        self.ssi_enabled = enabled;
+    }
+
+    /// Indica si SSI esta activo.
+    ///
+    /// Returns:
+    ///     `true` si se aplica la deteccion.
+    pub fn is_ssi_enabled(&self) -> bool {
+        self.ssi_enabled
+    }
+
+    /// Registra una lectura de `key` por `tx` (necesario para SSI).
+    ///
+    /// Args:
+    ///     tx: Transaccion que lee.
+    ///     key: Clave leida.
+    pub fn record_read(&mut self, tx: TxId, key: &str) {
+        self.ssi.register(tx);
+        self.reads.entry(key.to_string()).or_default().insert(tx);
+    }
+
+    /// Devuelve el grafo SSI acumulado.
+    ///
+    /// Returns:
+    ///     Tracker con nodos y aristas rw.
+    pub fn ssi_tracker(&self) -> &SsiTracker {
+        &self.ssi
+    }
+
+    /// Retira `tx` de los conjuntos de lectura.
+    fn cleanup_reads(&mut self, tx: TxId) {
+        for readers in self.reads.values_mut() {
+            readers.remove(&tx);
+        }
+        self.reads.retain(|_, readers| !readers.is_empty());
     }
 
     /// Inicia una transacción y devuelve su identificador.
@@ -159,6 +216,7 @@ impl TxnManager {
         self.next_tx += 1;
         self.in_flight.insert(tx);
         self.begin_clock.insert(tx, self.commit_clock);
+        self.ssi.register(tx);
         tx
     }
 
@@ -182,6 +240,7 @@ impl TxnManager {
                 "stage_write en transacción no en vuelo: tx_id {tx}"
             )));
         }
+        self.ssi.register(tx);
         self.write_sets.entry(tx).or_default().insert(key);
         Ok(())
     }
@@ -214,19 +273,51 @@ impl TxnManager {
     ///     [`RuscaError::InvalidConfig`] si `tx` no está en vuelo;
     ///     [`RuscaError::WriteConflict`] si perdió la carrera por una clave.
     pub fn commit(&mut self, tx: TxId) -> Result<(), RuscaError> {
-        if !self.in_flight.remove(&tx) {
+        if !self.in_flight.contains(&tx) {
             return Err(RuscaError::InvalidConfig(format!(
                 "commit de transacción no en vuelo: tx_id {tx}"
             )));
         }
-        let seen = self.begin_clock.remove(&tx).unwrap_or(0);
-        let staged = self.write_sets.remove(&tx).unwrap_or_default();
+        let seen = self.begin_clock.get(&tx).copied().unwrap_or(0);
+        let staged = self.write_sets.get(&tx).cloned().unwrap_or_default();
+
+        // SPEC-0170: aristas rw writer(tx) -> lectores concurrentes de sus claves.
+        if self.ssi_enabled {
+            for key in &staged {
+                if let Some(readers) = self.reads.get(key) {
+                    for &reader in readers {
+                        if reader != tx && self.in_flight.contains(&reader) {
+                            self.ssi.add_rw_edge(tx, reader);
+                        }
+                    }
+                }
+            }
+            if self.ssi.should_abort(tx) {
+                self.in_flight.remove(&tx);
+                self.begin_clock.remove(&tx);
+                self.write_sets.remove(&tx);
+                self.cleanup_reads(tx);
+                self.ssi.retire(tx);
+                let key = staged.iter().next().cloned().unwrap_or_default();
+                return Err(RuscaError::WriteConflict { key });
+            }
+        }
+
         if let Some(key) = staged
             .iter()
             .find(|key| self.committed_writes.get(*key).copied().unwrap_or(0) > seen)
         {
+            self.in_flight.remove(&tx);
+            self.begin_clock.remove(&tx);
+            self.write_sets.remove(&tx);
+            self.cleanup_reads(tx);
+            self.ssi.retire(tx);
             return Err(RuscaError::WriteConflict { key: key.clone() });
         }
+        self.in_flight.remove(&tx);
+        self.begin_clock.remove(&tx);
+        self.write_sets.remove(&tx);
+        self.cleanup_reads(tx);
         self.commit_clock += 1;
         for key in staged {
             self.committed_writes.insert(key, self.commit_clock);
@@ -260,6 +351,8 @@ impl TxnManager {
         }
         self.write_sets.remove(&tx);
         self.begin_clock.remove(&tx);
+        self.cleanup_reads(tx);
+        self.ssi.retire(tx);
         Ok(())
     }
 

@@ -2,7 +2,7 @@
 id: SPEC-0168
 feature: segmented_wal
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -74,3 +74,9 @@ requiere segmentacion, checkpoint y group commit para throughput.
 
 `docs/adr/ADR-0168-segmented-wal.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\segmented_wal.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/segmented_wal.rs` (`SegmentedWal`, `WalRecord`).
+- Tests: `test_ac_0168_01..03` + replay y `segment_of`.
+- Invariantes: LSN monotono; la rotacion ocurre antes de escribir (el ultimo
+  registro queda en el segmento nuevo); el checkpoint conserva el replay vivo.

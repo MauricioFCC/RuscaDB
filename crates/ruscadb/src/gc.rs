@@ -22,9 +22,9 @@
 
 use std::collections::BTreeMap;
 
+use crate::mvcc_gc_real::MvccGcReal;
 use ruscadb_core::{RecordId, RuscaError};
 use ruscadb_storage::PageId;
-use ruscadb_txn::{Version, is_obsolete};
 
 use crate::catalog::Catalog;
 use crate::database::Database;
@@ -108,14 +108,14 @@ fn collect_obsolete(
 ) -> Result<Vec<ReapTarget>, RuscaError> {
     let catalog = Catalog::load(database)?;
     let mut targets = Vec::new();
+    // SPEC-0169: el horizonte MVCC se calcula con el recolector real, que
+    // respeta snapshots activos (`deleted_tx < horizonte`).
+    let mut collector = MvccGcReal::new();
+    collector.set_watermark(watermark);
     for name in catalog.table_names() {
         let table = catalog.get(&name)?.clone();
         for (locator, record) in heap_scan(database, &table)? {
-            let version = Version {
-                created_tx: record.meta.created_tx,
-                deleted_tx: record.meta.deleted_tx,
-            };
-            if is_obsolete(&version, watermark) {
+            if collector.is_obsolete(record.meta.created_tx, record.meta.deleted_tx) {
                 targets.push(ReapTarget {
                     table: name.clone(),
                     locator,

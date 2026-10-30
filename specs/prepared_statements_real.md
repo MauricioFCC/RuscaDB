@@ -2,7 +2,7 @@
 id: SPEC-0166
 feature: prepared_statements_real
 status: implemented
-maturity: stub
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:
@@ -73,3 +73,9 @@ reemplaza el stub `PreparedStatement` (SPEC-0148) con implementacion real.
 
 `docs/adr/ADR-0166-prepared-statements.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\prepared_statements_real.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/prepared_real.rs` (`PreparedStmtReal`, `ParamType`).
+- Tests: `test_ac_0166_01..03` + validaciones de marcadores y NaN/inf.
+- Invariantes: los marcadores (`$n`/`?`) se validan y son contiguos; el texto de
+  la consulta es inmutable; los valores se renderizan como literales escapados.

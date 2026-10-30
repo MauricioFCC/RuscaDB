@@ -2,7 +2,7 @@
 id: SPEC-0172
 feature: acorn_filtered_search
 status: implemented
-maturity: stub
+maturity: real
 owner: vector-team
 appetite_days: 6
 boundaries:
@@ -69,3 +69,9 @@ ACORN expande el vecindario para mantener recall.
 
 `docs/adr/ADR-0172-acorn.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\acorn_filtered_search.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/acorn.rs` (`AcornSearch`, `Graph`).
+- Tests: `test_ac_0172_01..02` + grafo totalmente filtrado y `k = 0`.
+- Invariantes: traversal best-first con presupuesto acotado; los nodos filtrados
+  se atraviesan para no desconectar el grafo; resultado ordenado por distancia.

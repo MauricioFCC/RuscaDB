@@ -2,7 +2,7 @@
 id: SPEC-0161
 feature: rql_expression_language
 status: implemented
-maturity: stub
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:
@@ -101,3 +101,9 @@ el parser para cubrir el nucleo de SQL-92 expresiones.
 
 `docs/adr/ADR-0161-rql-expressions.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\rql_expression_language.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/rql_expr.rs` (`RqlExprEngine`, `Expr`, `Value`).
+- Tests: `test_ac_0161_01..05` + columna inexistente, division por cero y profundidad.
+- Invariantes: logica trivaluada SQL (NULL propaga); `AND`/`OR` con cortocircuito;
+  profundidad maxima acotada (`max_depth`).

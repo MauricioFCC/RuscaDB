@@ -166,7 +166,7 @@ mod vle;
 mod zstd_real;
 
 #[cfg(feature = "acorn")]
-pub use acorn::AcornSearch;
+pub use acorn::{AcornSearch, Graph};
 #[cfg(feature = "alp")]
 pub use alp_compression::AlpCompressor;
 #[cfg(feature = "arrow-columnar")]
@@ -178,9 +178,11 @@ pub use backup::Backup;
 #[cfg(feature = "backup-verify")]
 pub use backup_verify::BackupVerifier;
 #[cfg(feature = "blockmax-wand")]
-pub use blockmax_wand::BlockMaxWand;
+pub use blockmax_wand::{BlockMaxWand, PostingList};
 #[cfg(feature = "branching")]
 pub use branching::Branch;
+#[cfg(all(feature = "columnar", feature = "alp", feature = "fastlanes"))]
+pub use columnar::ColumnChunk;
 #[cfg(feature = "columnar")]
 pub use columnar::{ColumnValue, ColumnarTable};
 #[cfg(feature = "compression")]
@@ -226,7 +228,7 @@ pub use learned_index::LearnedIndex;
 #[cfg(feature = "materialized-views")]
 pub use materialized_view::MaterializedView;
 #[cfg(feature = "mvcc-gc-real")]
-pub use mvcc_gc_real::MvccGcReal;
+pub use mvcc_gc_real::{MvccGcReal, Version as MvccVersion};
 #[cfg(feature = "observability")]
 pub use observability::MetricsRegistry;
 #[cfg(feature = "onnx")]
@@ -238,7 +240,7 @@ pub use otel_real::OtelRealExporter;
 #[cfg(feature = "page-checksums")]
 pub use page_checksums::PageChecksum;
 #[cfg(feature = "persistent-hnsw")]
-pub use persistent_hnsw::PersistentHnsw;
+pub use persistent_hnsw::{HnswNode, PersistentHnsw};
 #[cfg(feature = "pgwire")]
 pub use pgwire::PgWireServer;
 #[cfg(feature = "pgwire-real")]
@@ -250,7 +252,7 @@ pub use post_quantum::MlKemStub;
 #[cfg(feature = "prepared")]
 pub use prepared::PreparedStatement;
 #[cfg(feature = "prepared-real")]
-pub use prepared_real::PreparedStmtReal;
+pub use prepared_real::{BindError, ParamType, ParamValue, PrepareError, PreparedStmtReal};
 #[cfg(feature = "query-cache")]
 pub use query_cache::QueryCache;
 #[cfg(feature = "rabitq")]
@@ -258,15 +260,15 @@ pub use rabitq::RabitqQuantizer;
 #[cfg(feature = "rcu")]
 pub use rcu::RcuDomain;
 #[cfg(feature = "rql-cte")]
-pub use rql_cte::RqlCte;
+pub use rql_cte::{CteOutcome, RqlCte};
 #[cfg(feature = "rql-expr")]
-pub use rql_expr::RqlExprEngine;
+pub use rql_expr::{ArithOp, CmpOp, Expr, ExprError, RqlExprEngine, Value};
 #[cfg(feature = "rql-set-ops")]
 pub use rql_set_ops::RqlSetOps;
 #[cfg(feature = "rql-subqueries")]
-pub use rql_subqueries::RqlSubquery;
+pub use rql_subqueries::{RqlSubquery, SubqueryError, SubqueryKind};
 #[cfg(feature = "rql-window-funcs")]
-pub use rql_window_funcs::RqlWindowFuncs;
+pub use rql_window_funcs::{Bound, Frame, RqlWindowFuncs};
 #[cfg(feature = "rtree-split")]
 pub use rtree_split::RTreeSplit;
 #[cfg(feature = "s3-backup")]
@@ -274,7 +276,7 @@ pub use s3_backup::S3Backup;
 #[cfg(feature = "schema-evolution")]
 pub use schema_evolution::SchemaEvolution;
 #[cfg(feature = "segmented-wal")]
-pub use segmented_wal::SegmentedWal;
+pub use segmented_wal::{SegmentedWal, WalRecord};
 #[cfg(feature = "simd")]
 pub use simd::SimdOps;
 #[cfg(feature = "sql-std")]

@@ -2,7 +2,7 @@
 id: SPEC-0169
 feature: mvcc_gc_real
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -75,3 +75,9 @@ Esta spec implementa reclaim real con atomics y sincronizacion.
 
 `docs/adr/ADR-0169-mvcc-gc-rcu.md`.
 ---\n","path":"C:\\Users\\USUARIO\\Documents\\DEV-SPACE\\RuscaDB\\specs\\mvcc_gc_real.md
+## Estado de implementacion (2026-10-29)
+
+- Modulo: `crates/ruscadb/src/mvcc_gc_real.rs` (`MvccGcReal`, `MvccVersion`).
+- Tests: `test_ac_0169_01..03` + snapshot que bloquea el GC.
+- Invariantes: horizonte = min(snapshots activos); solo se reclaman versiones
+  borradas con `deleted_tx < horizonte`; una version viva nunca se borra.

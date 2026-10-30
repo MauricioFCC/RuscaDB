@@ -1091,9 +1091,12 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 - Features off por defecto; el build por defecto no cambia.
 
 
-## Ola 14 - Frontier IV (SPEC-0161..0180) — madurez: 8 reales, 11 stubs, 1 placeholder
+## Ola 14 - Frontier IV (SPEC-0161..0180) — madurez: 19 reales, 1 placeholder (ML-KEM diferido)
 
-Ver `docs/RuscaDB-gap-register.md` para el detalle por modulo.
+Todos los modulos reales estan **cableados** a su adapter (page manager, txn,
+sync, HNSW, planner, TS, columnar, FTS): ver la tabla de
+`docs/RuscaDB-gap-register.md` §5 y `docs/adr/ADR-0180-post-quantum-deferred.md`
+para la decision sobre ML-KEM.
 
 Implementados como stubs (TDD adversarial + mutation, feature flags pure-Rust on por defecto):
 

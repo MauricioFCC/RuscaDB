@@ -12,10 +12,12 @@
 mod bm25;
 mod index;
 mod tokenizer;
+pub mod wand;
 
 pub use bm25::Bm25;
 pub use index::{InvertedIndex, Posting};
 pub use tokenizer::tokenize;
+pub use wand::{BlockMaxWand, PostingList};
 
 #[cfg(test)]
 mod tests {
@@ -471,5 +473,58 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod wand_tests {
+    use super::*;
+    use ruscadb_core::RecordId;
+
+    /// `search_wand` devuelve el mismo top-k que `search` (poda exacta).
+    #[test]
+    fn search_wand_matches_search() {
+        let mut index = InvertedIndex::new();
+        let texts = [
+            "rust rust rust base datos",
+            "rust base datos embebida",
+            "base datos",
+            "motor rust de datos",
+            "texto sin terminos",
+            "datos datos datos rust",
+        ];
+        let ids: Vec<RecordId> = (0..texts.len()).map(|_| RecordId::new()).collect();
+        for (id, text) in ids.iter().zip(texts) {
+            index.insert(*id, text);
+        }
+        for k in [1usize, 2, 3, 10] {
+            let plain: Vec<RecordId> = index
+                .search("rust datos", k)
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect();
+            let wand: Vec<RecordId> = index
+                .search_wand("rust datos", k)
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect();
+            assert_eq!(wand, plain, "k={k}");
+        }
+        assert!(index.search_wand("inexistente", 3).is_empty());
+        assert!(index.search_wand("rust", 0).is_empty());
+    }
+
+    /// Los tombstones no participan en el ranking WAND.
+    #[test]
+    fn search_wand_skips_tombstones() {
+        let mut index = InvertedIndex::new();
+        let alive = RecordId::new();
+        let dead = RecordId::new();
+        index.insert(alive, "rust datos");
+        index.insert(dead, "rust datos");
+        index.remove(&dead);
+        let results = index.search_wand("rust", 5);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, alive);
     }
 }

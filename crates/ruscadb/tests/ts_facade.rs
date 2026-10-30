@@ -225,3 +225,37 @@ proptest! {
         }
     }
 }
+
+/// SPEC-0178 — la columna de valores se comprime con Gorilla y se recupera
+/// bit a bit (adaptador time-series).
+#[test]
+fn ts_gorilla_compression_roundtrip() {
+    let (_dir, mut database) = open_test_db("ts_gorilla");
+    create_serie_table(&mut database);
+    let values = [1.5f64, 2.25, 2.25, 3.75, -0.5, 10.0];
+    for (index, value) in values.iter().enumerate() {
+        let scalars = ScalarMap::from([
+            ("ts".to_string(), ScalarValue::Int(index as i64 * 1000)),
+            ("v".to_string(), ScalarValue::Float(*value)),
+        ]);
+        database.insert("serie", scalars).expect("insert");
+    }
+
+    let (points, bytes) = database.ts_compress("serie", "ts", "v").expect("compress");
+    assert_eq!(points, values.len());
+    assert!(
+        bytes.len() < values.len() * 8,
+        "Gorilla debe comprimir: {} bytes",
+        bytes.len()
+    );
+
+    let mut expected: Vec<u64> = values.iter().map(|value| value.to_bits()).collect();
+    let mut decoded: Vec<u64> = database
+        .ts_decompress(&bytes)
+        .iter()
+        .map(|value| value.to_bits())
+        .collect();
+    expected.sort_unstable();
+    decoded.sort_unstable();
+    assert_eq!(decoded, expected, "round-trip bit a bit");
+}

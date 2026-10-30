@@ -98,6 +98,47 @@ impl Database {
             })
             .collect())
     }
+
+    /// Comprime la columna de valores de una serie con Gorilla (SPEC-0178).
+    ///
+    /// Extrae los puntos visibles de `table` (MVCC) y codifica solo la columna
+    /// de valores con XOR de Gorilla. Los timestamps no se incluyen: el codec
+    /// es para la columna de metricas.
+    ///
+    /// Args:
+    ///     table: Tabla a recorrer.
+    ///     ts_col: Columna temporal (valida el esquema).
+    ///     value_col: Columna de valores a comprimir.
+    ///
+    /// Returns:
+    ///     `(puntos, bytes)` con la serie codificada.
+    ///
+    /// Errors:
+    ///     [`RuscaError::TableNotFound`] / [`RuscaError::ColumnNotFound`] /
+    ///     [`RuscaError::TypeMismatch`] si el esquema no es valido.
+    pub fn ts_compress(
+        &mut self,
+        table: &str,
+        ts_col: &str,
+        value_col: &str,
+    ) -> Result<(usize, Vec<u8>), RuscaError> {
+        let points = extract_points(self, table, ts_col, Some(value_col))?;
+        let values: Vec<f64> = points.iter().map(|point| point.value).collect();
+        let codec = crate::gorilla_ts::GorillaTs::new();
+        let bytes = codec.encode(&values);
+        Ok((values.len(), bytes))
+    }
+
+    /// Descomprime una columna de valores codificada con [`Self::ts_compress`].
+    ///
+    /// Args:
+    ///     bytes: Buffer Gorilla.
+    ///
+    /// Returns:
+    ///     Valores reconstruidos bit a bit.
+    pub fn ts_decompress(&self, bytes: &[u8]) -> Vec<f64> {
+        crate::gorilla_ts::GorillaTs::new().decode(bytes)
+    }
 }
 
 /// Calcula los cubos alineados a `interval_ms` (piso) agrupando por

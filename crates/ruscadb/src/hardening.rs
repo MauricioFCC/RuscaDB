@@ -13,10 +13,12 @@
 use std::collections::BTreeSet;
 
 use ruscadb_core::{RecordId, RuscaError};
+use ruscadb_storage::PageId;
 
 use crate::catalog::{Catalog, TableDef};
 use crate::database::Database;
 use crate::heap::heap_scan;
+use crate::page_checksums::PageChecksum;
 
 /// Reporte de integridad de una base abierta (SPEC-0062).
 ///
@@ -95,6 +97,32 @@ fn same_ids(left: &[RecordId], right: &[RecordId]) -> bool {
 }
 
 impl Database {
+    /// Calcula el fingerprint CRC-32C de todas las paginas del heap.
+    ///
+    /// Recorre el page manager leiendo cada pagina de cada tabla y acumula su
+    /// CRC-32C (Castagnoli) con [`PageChecksum::update`]. Es una huella estable
+    /// para comparar dos aperturas de la misma base sin volcar las paginas.
+    ///
+    /// Returns:
+    ///     `(paginas_leidas, crc32c_acumulado)`.
+    ///
+    /// Errors:
+    ///     [`RuscaError`] si el catalogo o alguna pagina no se pueden leer.
+    pub fn page_fingerprint(&mut self) -> Result<(usize, u32), RuscaError> {
+        let checksum = PageChecksum::new();
+        let tables = load_tables(self)?;
+        let mut crc = 0u32;
+        let mut pages = 0usize;
+        for table in &tables {
+            for &raw in &table.pages {
+                let page = self.read_page(PageId(raw))?;
+                crc = checksum.update(crc, page.data());
+                pages += 1;
+            }
+        }
+        Ok((pages, crc))
+    }
+
     /// Verifica la integridad del WAL, del heap y del índice vectorial.
     ///
     /// No modifica el estado servido: solo lee y reporta. Pensado para
@@ -116,6 +144,13 @@ impl Database {
             details: Vec::new(),
         };
         self.check_wal(&mut report);
+        // SPEC-0167: fingerprint CRC-32C de todas las paginas del page manager.
+        if let Err(error) = self.page_fingerprint() {
+            report.heap_ok = false;
+            report
+                .details
+                .push(format!("paginas ilegibles en el fingerprint: {error}"));
+        }
         let tables = load_tables(self)?;
         for table in &tables {
             self.check_table_heap(table, &mut report);

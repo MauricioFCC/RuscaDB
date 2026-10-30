@@ -4,6 +4,11 @@
 //! Sin dependencias externas. La integración con Arrow/Lance queda como trabajo
 //! futuro (feature `columnar` activa este módulo sin pulls adicionales).
 
+#[cfg(all(feature = "alp", feature = "fastlanes"))]
+use crate::alp_compression::AlpCompressor;
+#[cfg(all(feature = "alp", feature = "fastlanes"))]
+use crate::fastlanes::FastLanes;
+
 /// Valor tipado de una celda columnar.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ColumnValue {
@@ -239,6 +244,243 @@ impl ColumnarTable {
     pub fn columns(&self) -> &[String] {
         &self.columns
     }
+
+    /// Indice de `column` en el esquema.
+    #[cfg(all(feature = "alp", feature = "fastlanes"))]
+    fn column_index(&self, column: &str) -> Result<usize, String> {
+        self.columns
+            .iter()
+            .position(|candidate| candidate == column)
+            .ok_or_else(|| format!("columna '{column}' no existe"))
+    }
+
+    /// Comprime una columna `Int` con FOR + bit-packing (SPEC-0176).
+    ///
+    /// Args:
+    ///     column: Nombre de la columna.
+    ///
+    /// Returns:
+    ///     Bloque comprimido.
+    ///
+    /// Errors:
+    ///     Texto accionable si la columna no existe, no es `Int` o tiene NULL.
+    #[cfg(all(feature = "alp", feature = "fastlanes"))]
+    pub fn encode_int_column(&self, column: &str) -> Result<Vec<u8>, String> {
+        let index = self.column_index(column)?;
+        let mut values = Vec::with_capacity(self.len());
+        for row in self.scan() {
+            match row.get(index) {
+                Some(ColumnValue::Int(value)) => values.push(*value),
+                Some(ColumnValue::Null) => {
+                    return Err(format!("columna '{column}' contiene NULL"));
+                }
+                _ => return Err(format!("columna '{column}' no es INT")),
+            }
+        }
+        Ok(ColumnChunk::encode_i64(&values))
+    }
+
+    /// Descomprime una columna `Int`.
+    ///
+    /// Args:
+    ///     bytes: Bloque producido por [`Self::encode_int_column`].
+    ///
+    /// Returns:
+    ///     Valores reconstruidos.
+    ///
+    /// Errors:
+    ///     Texto accionable si el bloque esta vacio o corrupto.
+    #[cfg(all(feature = "alp", feature = "fastlanes"))]
+    pub fn decode_int_column(&self, bytes: &[u8]) -> Result<Vec<i64>, String> {
+        let values = ColumnChunk::decode_i64(bytes);
+        if values.is_empty() && !self.is_empty() {
+            return Err("bloque de enteros vacio o corrupto".to_string());
+        }
+        Ok(values)
+    }
+
+    /// Comprime una columna `Float` con ALP (SPEC-0175).
+    ///
+    /// Args:
+    ///     column: Nombre de la columna.
+    ///
+    /// Returns:
+    ///     Bloque comprimido (exacto bit a bit).
+    ///
+    /// Errors:
+    ///     Texto accionable si la columna no existe, no es `Float` o tiene NULL.
+    #[cfg(all(feature = "alp", feature = "fastlanes"))]
+    pub fn encode_float_column(&self, column: &str) -> Result<Vec<u8>, String> {
+        let index = self.column_index(column)?;
+        let mut values = Vec::with_capacity(self.len());
+        for row in self.scan() {
+            match row.get(index) {
+                Some(ColumnValue::Float(value)) => values.push(*value),
+                Some(ColumnValue::Null) => {
+                    return Err(format!("columna '{column}' contiene NULL"));
+                }
+                _ => return Err(format!("columna '{column}' no es FLOAT")),
+            }
+        }
+        Ok(ColumnChunk::encode_f64(&values))
+    }
+
+    /// Descomprime una columna `Float`.
+    ///
+    /// Args:
+    ///     bytes: Bloque producido por [`Self::encode_float_column`].
+    ///
+    /// Returns:
+    ///     Valores reconstruidos bit a bit.
+    ///
+    /// Errors:
+    ///     Texto accionable si el bloque esta vacio o corrupto.
+    #[cfg(all(feature = "alp", feature = "fastlanes"))]
+    pub fn decode_float_column(&self, bytes: &[u8]) -> Result<Vec<f64>, String> {
+        let values = ColumnChunk::decode_f64(bytes);
+        if values.is_empty() && !self.is_empty() {
+            return Err("bloque de flotantes vacio o corrupto".to_string());
+        }
+        Ok(values)
+    }
+}
+
+/// Bloque columnar comprimido (SPEC-0175/0176).
+///
+/// Enteros: FOR (se resta el minimo) + bit-packing LSB-first de [`FastLanes`];
+/// flotantes: [`AlpCompressor`]. Ambos con fallback crudo exacto.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg(all(feature = "alp", feature = "fastlanes"))]
+pub struct ColumnChunk;
+
+/// Magia del bloque columnar de enteros.
+#[cfg(all(feature = "alp", feature = "fastlanes"))]
+const MAGIC_I64: u8 = 0xCB;
+/// Modo empaquetado (FOR + bit-packing).
+#[cfg(all(feature = "alp", feature = "fastlanes"))]
+const MODE_PACKED: u8 = 0;
+/// Modo crudo (i64 LE exacto).
+#[cfg(all(feature = "alp", feature = "fastlanes"))]
+const MODE_RAW: u8 = 1;
+
+#[cfg(all(feature = "alp", feature = "fastlanes"))]
+impl ColumnChunk {
+    /// Codifica una columna de enteros.
+    ///
+    /// Args:
+    ///     values: Valores de la columna.
+    ///
+    /// Returns:
+    ///     Bloque comprimido que [`Self::decode_i64`] reconstruye exacto.
+    pub fn encode_i64(values: &[i64]) -> Vec<u8> {
+        let count = values.len() as u32;
+        let min = values.iter().copied().min().unwrap_or(0);
+        let max = values.iter().copied().max().unwrap_or(0);
+        let range = (max as i128) - (min as i128);
+        if range > i128::from(u32::MAX) {
+            let mut out = Vec::with_capacity(6 + values.len() * 8);
+            out.push(MAGIC_I64);
+            out.push(MODE_RAW);
+            out.extend_from_slice(&count.to_le_bytes());
+            for value in values {
+                out.extend_from_slice(&value.to_le_bytes());
+            }
+            return out;
+        }
+        let deltas: Vec<u32> = values.iter().map(|value| (*value - min) as u32).collect();
+        let max_delta = deltas.iter().copied().max().unwrap_or(0);
+        let width = FastLanes::bit_width(max_delta);
+        let packed = FastLanes::new().pack(&deltas, width);
+        let mut out = Vec::with_capacity(15 + packed.len());
+        out.push(MAGIC_I64);
+        out.push(MODE_PACKED);
+        out.extend_from_slice(&count.to_le_bytes());
+        out.extend_from_slice(&min.to_le_bytes());
+        out.push(width as u8);
+        out.extend_from_slice(&packed);
+        out
+    }
+
+    /// Decodifica una columna de enteros.
+    ///
+    /// Args:
+    ///     bytes: Bloque producido por [`Self::encode_i64`].
+    ///
+    /// Returns:
+    ///     Valores reconstruidos; vacio si el bloque es invalido o truncado.
+    pub fn decode_i64(bytes: &[u8]) -> Vec<i64> {
+        if bytes.len() < 6 || bytes[0] != MAGIC_I64 {
+            return Vec::new();
+        }
+        let mode = bytes[1];
+        let count = u32::from_le_bytes([bytes[2], bytes[3], bytes[4], bytes[5]]) as usize;
+        match mode {
+            MODE_RAW => {
+                if bytes.len() < 6 + count * 8 {
+                    return Vec::new();
+                }
+                bytes[6..6 + count * 8]
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
+                    .map(|chunk| i64::from_le_bytes(*chunk))
+                    .collect()
+            }
+            MODE_PACKED => {
+                if bytes.len() < 15 {
+                    return Vec::new();
+                }
+                let min = i64::from_le_bytes([
+                    bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12],
+                    bytes[13],
+                ]);
+                let width = u32::from(bytes[14]).min(32);
+                FastLanes::new()
+                    .unpack(&bytes[15..], count, width)
+                    .into_iter()
+                    .map(|delta| min.wrapping_add(i64::from(delta)))
+                    .collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Codifica una columna de flotantes con ALP.
+    ///
+    /// Args:
+    ///     values: Valores de la columna.
+    ///
+    /// Returns:
+    ///     Bloque comprimido (exacto bit a bit).
+    pub fn encode_f64(values: &[f64]) -> Vec<u8> {
+        AlpCompressor::new().encode(values)
+    }
+
+    /// Decodifica una columna de flotantes ALP.
+    ///
+    /// Args:
+    ///     bytes: Bloque producido por [`Self::encode_f64`].
+    ///
+    /// Returns:
+    ///     Valores reconstruidos (vacio si el bloque es invalido).
+    pub fn decode_f64(bytes: &[u8]) -> Vec<f64> {
+        AlpCompressor::new().decode(bytes)
+    }
+
+    /// Ratio de compresion frente a `i64` crudo.
+    ///
+    /// Args:
+    ///     values: Columna original.
+    ///
+    /// Returns:
+    ///     `bytes_crudos / bytes_comprimidos`.
+    pub fn ratio_i64(values: &[i64]) -> f32 {
+        if values.is_empty() {
+            return 1.0;
+        }
+        let raw = (values.len() * 8) as f32;
+        raw / (Self::encode_i64(values).len() as f32).max(1.0)
+    }
 }
 
 #[cfg(test)]
@@ -275,5 +517,63 @@ mod tests {
         assert!((table.avg("a").expect("avg") - 1.5).abs() < 1e-9);
         assert!((table.min("a").expect("min") - 1.0).abs() < 1e-9);
         assert!((table.max("a").expect("max") - 2.0).abs() < 1e-9);
+    }
+}
+
+#[cfg(all(test, feature = "alp", feature = "fastlanes"))]
+mod chunk_tests {
+    use super::*;
+
+    /// Round-trip exacto de una columna de enteros (FOR + bit-packing).
+    #[test]
+    fn int_column_roundtrip() {
+        let values: Vec<i64> = (0..500).map(|index| 1_000 + index * 7).collect();
+        let bytes = ColumnChunk::encode_i64(&values);
+        assert_eq!(ColumnChunk::decode_i64(&bytes), values);
+        assert!(ColumnChunk::ratio_i64(&values) > 3.0);
+    }
+
+    /// Round-trip bit a bit de una columna de flotantes (ALP).
+    #[test]
+    fn float_column_roundtrip() {
+        let values = vec![1.25f64, -4.5, 0.0, -0.0, 1e-9, f64::NAN];
+        let bytes = ColumnChunk::encode_f64(&values);
+        assert_eq!(
+            ColumnChunk::decode_f64(&bytes)
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            values
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// `ColumnarTable` comprime y restaura sus columnas tipadas.
+    #[test]
+    fn table_columns_compress() {
+        let mut table = ColumnarTable::new(vec!["a".to_string(), "b".to_string()]);
+        for index in 0..100 {
+            table
+                .append(vec![
+                    ColumnValue::Int(index * 2),
+                    ColumnValue::Float(index as f64 * 0.25),
+                ])
+                .expect("append");
+        }
+        let ints = table.encode_int_column("a").expect("encode int");
+        assert_eq!(
+            table.decode_int_column(&ints).expect("decode int").len(),
+            100
+        );
+        let floats = table.encode_float_column("b").expect("encode float");
+        let restored = table.decode_float_column(&floats).expect("decode float");
+        assert_eq!(restored.len(), 100);
+        assert!((restored[12] - 3.0).abs() < 1e-9);
+
+        // Errores accionables.
+        assert!(table.encode_int_column("zzz").is_err());
+        assert!(table.encode_float_column("a").is_err());
     }
 }

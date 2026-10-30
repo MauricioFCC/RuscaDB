@@ -24,12 +24,14 @@
 pub mod manifest;
 pub mod migration;
 pub mod mvcc;
+pub mod ssi;
 
 pub use manifest::{CURRENT_SCHEMA_VERSION, Manifest};
 pub use migration::{Migration, PlannedMigration, apply_migrations, plan_migrations};
 pub use mvcc::{
     NO_TX, Snapshot, TxId, TxnManager, Version, dead_versions, gc, is_obsolete, retry_on_conflict,
 };
+pub use ssi::{IsoLevel, SsiTracker};
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
