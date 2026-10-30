@@ -2,7 +2,7 @@
 id: SPEC-0159
 feature: query_result_cache
 status: implemented
-maturity: stub
+maturity: real
 owner: query-team
 appetite_days: 4
 boundaries:

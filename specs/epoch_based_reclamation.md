@@ -2,7 +2,7 @@
 id: SPEC-0146
 feature: epoch_based_reclamation
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

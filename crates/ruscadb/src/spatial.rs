@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-#![allow(dead_code)]
 //! Indice espacial R-tree (SPEC-0114): re-exporta desde `geo` (SPEC-0112).
 //!
 //! El feature `spatial` implica `geo`, por lo que `RTree`, `Point` y `Rect`

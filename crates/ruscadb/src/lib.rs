@@ -268,7 +268,7 @@ pub use query_cache::QueryCache;
 #[cfg(feature = "rabitq")]
 pub use rabitq::RabitqQuantizer;
 #[cfg(feature = "rcu")]
-pub use rcu::RcuDomain;
+pub use rcu::{RcuCell, RcuDomain, RcuGuard};
 #[cfg(feature = "reconciliation")]
 pub use reconciliation::{
     ReconcilableEntry, ReconciliationJob, ReconciliationPolicy, ReconciliationReport,

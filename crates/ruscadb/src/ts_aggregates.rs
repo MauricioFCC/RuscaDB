@@ -1,20 +1,36 @@
-#![allow(missing_docs)]
-#![allow(dead_code)]
 //! Continuous aggregates (SPEC-0145): stub.
 
+/// Agregado continuo por ventana temporal.
 #[derive(Debug, Clone)]
 pub struct ContinuousAggregate {
+    /// Nombre logico del agregado.
     pub name: String,
+    /// Tamano de la ventana en milisegundos (0 = sin agregacion).
     pub window_ms: i64,
 }
 
 impl ContinuousAggregate {
+    /// Crea el agregado.
+    ///
+    /// Args:
+    ///     name: Nombre logico.
+    ///     window_ms: Tamano de ventana en ms.
+    ///
+    /// Returns:
+    ///     Agregado listo para compute.
     pub fn new(name: impl Into<String>, window_ms: i64) -> Self {
         Self {
             name: name.into(),
             window_ms,
         }
     }
+    /// Agrega los puntos por ventana (media).
+    ///
+    /// Args:
+    ///     points: Pares (timestamp_ms, valor) ordenados.
+    ///
+    /// Returns:
+    ///     Pares (inicio_ventana, media).
     pub fn compute(&self, points: &[(i64, f64)]) -> Vec<(i64, f64)> {
         if self.window_ms == 0 || points.is_empty() {
             return points.to_vec();

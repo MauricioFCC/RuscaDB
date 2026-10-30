@@ -1,37 +1,55 @@
-#![allow(missing_docs)]
-#![allow(dead_code)]
-//! Stemming Snowball (SPEC-0144): stub con stemming ingles.
+//! Stemming Snowball (SPEC-0144): stemmer ingles.
+//!
+//! Reglas de sufijos para ingles (subset de Snowball). No es el algoritmo
+//! completo: cubre los sufijos mas frecuentes y es determinista.
 
+/// Stemmer Snowball (ingles).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SnowballStemmer;
 
 impl SnowballStemmer {
+    /// Reduce una palabra a su raiz.
+    ///
+    /// Args:
+    ///     word: Palabra original.
+    ///
+    /// Returns:
+    ///     Raiz en minusculas (la palabra si es corta o no tiene sufijo).
     pub fn stem(word: &str) -> String {
-        let w = word.to_lowercase();
-        if w.len() <= 3 {
-            return w;
+        let lowered = word.to_lowercase();
+        if lowered.len() <= 3 {
+            return lowered;
         }
         for suffix in &["ing", "tion", "ed", "er", "est", "ly", "ment", "ness", "s"] {
-            if w.ends_with(suffix) && w.len() > suffix.len() + 2 {
-                return w[..w.len() - suffix.len()].to_string();
+            if lowered.ends_with(suffix) && lowered.len() > suffix.len() + 2 {
+                return lowered[..lowered.len() - suffix.len()].to_string();
             }
         }
-        w
+        lowered
     }
+
+    /// Tokeniza y aplica stemming.
+    ///
+    /// Args:
+    ///     text: Texto libre.
+    ///
+    /// Returns:
+    ///     Raices no vacias en orden.
     pub fn tokenize(text: &str) -> Vec<String> {
         text.split_whitespace()
-            .map(|w| {
-                let cleaned: String = w.chars().filter(|c| c.is_alphanumeric()).collect();
+            .map(|word| {
+                let cleaned: String = word.chars().filter(|c| c.is_alphanumeric()).collect();
                 Self::stem(&cleaned)
             })
-            .filter(|w| !w.is_empty())
+            .filter(|word| !word.is_empty())
             .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::SnowballStemmer;
+
     #[test] // @spec AC-0144-01
     fn test_ac_0144_01_stem_english() {
         assert_eq!(SnowballStemmer::stem("running"), "runn");

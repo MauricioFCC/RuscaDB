@@ -194,8 +194,11 @@ produccion** (evita el anti-patron "implemented de nombre"):
 
 `async_io`, `branching`, `concurrent_txn`, `cow_btree`, `kms`, `lance_format`,
 `materialized_view`, `onnx`, `otel`, `otel_real`, `pgwire`, `prepared`,
-`query_cache`, `rcu`, `rtree_split`, `simd`, `stemming`, `ts_aggregates`, `vle`,
-`geo`.
+`rtree_split`, `simd`, `stemming`, `ts_aggregates`, `vle`, `geo`.
 
-`ivf_clustering` (SPEC-0147) paso a `maturity: real`: k-means real que reutiliza
-`ivf_pq::kmeans` (sin duplicar), con centroides, asignaciones y `nprobe`.
+Pasaron a `maturity: real` en este ciclo:
+
+- `ivf_clustering` (SPEC-0147): k-means real reutilizando `ivf_pq::kmeans`.
+- `rcu` (SPEC-0146): `RcuDomain` + `RcuCell` segura (snapshot por `Arc`, sin
+  `unsafe`), con retiro y `synchronize`.
+- `query_cache` (SPEC-0159): TTL + capacidad + metricas (hits/misses/evictions).
