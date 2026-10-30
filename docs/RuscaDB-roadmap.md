@@ -973,13 +973,6 @@ SI-4 (buffer pool ≤ budget).
 *Fin de la hoja de ruta. Fuente de verdad de diseño; toda modificación mayor
 requiere ADR y actualización de este documento antes de tocar código.*
 
-## Estado de produccion (actualizado 2026-10-21)
-- Ola 8: 3/3 cerradas (SPEC-0106, SPEC-0107, SPEC-0108).
-- SPEC-0107 hardening: test de regresion de filas afectadas (affected count) + gates T1 verdes.
-- Lineas futuras: code review multi-agente cableado, T2 LLM-judge programado, modelo cross-encoder (opcional), KMS/HSM externo.
-- Gates: cargo test workspace OK, clippy/fmt/doc/architecture/unsafe/ci-config OK, xtask trace/contract OK.
-
-
 ## Estado de produccion (actualizado)
 - Ola 8: 3/3 cerradas (SPEC-0106, SPEC-0107, SPEC-0108). Todas las specs implementadas.
 - SPEC-0107 hardening: test de regresion de filas afectadas (affected count) + gates T1 verdes.
@@ -993,7 +986,9 @@ requiere ADR y actualización de este documento antes de tocar código.*
 - SPEC-0110 (engine columnar opcional: `ColumnarTable`, feature `columnar`): implementado (stub sin Arrow).
 - SPEC-0111 (inferencia ONNX opcional: `OnnxModel`, feature `onnx`): implementado (stub).
 - SPEC-0112 (geoespacial basico: `Point`, feature `geo`): implementado (stub).
-- Features off por defecto; el build por defecto no cambia.
+- Features pure-Rust **on por defecto**; solo las de dependencias externas
+  (`datafusion`, `pgwire-real`, `onnx-real`) quedan off. Ver
+  `docs/RuscaDB-funcionalidades.md` §3.
 
 
 
@@ -1003,12 +998,12 @@ requiere ADR y actualización de este documento antes de tocar código.*
 - SPEC-0122 (ts-retention: `RetentionPolicy`, TTL + downsampling): implementado.
 - SPEC-0123 (fts-scoring: `FuzzyScorer`, BM25 + Levenshtein): implementado.
 - SPEC-0124 (Arrow columnar: `ArrowColumnarTable`, dep opcional `arrow`): implementado.
-- SPEC-0125 (IVF-PQ: `IvfPqIndex`, cuantizacion): implementado.
+- SPEC-0125 (IVF-PQ: `IvfPqIndex`, k-means por subespacio + codebooks + ADC + re-rank): implementado (real).
 - SPEC-0126 (OpenTelemetry: `OtelExporter`, spans JSON): implementado.
 - SPEC-0127 (pgwire real: `PgWireRealServer`, dep opcional `pgwire`): implementado (stub).
-- SPEC-0128 (S3 backup: `S3Backup`, manifiesto JSON): implementado.
+- SPEC-0128 (S3 backup: `S3Backup`, manifiesto + puerto `ObjectStore` + `LocalObjectStore`): implementado (real).
 - SPEC-0129 (time-travel: `TimeTravel`, snapshot por tx_id): implementado.
-- Features off por defecto; el build por defecto no cambia.
+- Features pure-Rust on por defecto; las de dependencias externas off (ver `docs/RuscaDB-funcionalidades.md` §3).
 
 ## Investigacion de frontera (2026-10-24)
 
@@ -1039,7 +1034,7 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 - SPEC-0133 (tests adversariales: RQL, resiliencia, seguridad): implementado.
 - SPEC-0134 (MVCC readers robustecidos: manifest last_committed_tx): implementado.
 - SPEC-0135 (robustez general: clippy 1.99, fmt, gates): implementado.
-- Features off por defecto; el build por defecto no cambia.
+- Features pure-Rust on por defecto; las de dependencias externas off (ver `docs/RuscaDB-funcionalidades.md` §3).
 
 
 ## Ola 12 - Frontier III (SPEC-0130..0145)
@@ -1056,7 +1051,7 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 - SPEC-0139 (KMS/HSM externo: KmsProvider, wrap/unwrap): implementado (stub).
 - SPEC-0140 (Stemming Snowball: SnowballStemmer): implementado (stub).
 - SPEC-0141 (Continuous aggregates: ContinuousAggregate): implementado (stub).
-- Features off por defecto; el build por defecto no cambia.
+- Features pure-Rust on por defecto; las de dependencias externas off (ver `docs/RuscaDB-funcionalidades.md` §3).
 
 
 ## Ola 13 - Frontier III (SPEC-0130..0160)
@@ -1088,7 +1083,7 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 - SPEC-0154 (Time-travel real: TimeTravelReal): implementado (stub).
 - SPEC-0155 (Query cache: QueryCache): implementado (stub).
 - SPEC-0156 (Schema evolution: SchemaEvolution): implementado (stub).
-- Features off por defecto; el build por defecto no cambia.
+- Features pure-Rust on por defecto; las de dependencias externas off (ver `docs/RuscaDB-funcionalidades.md` §3).
 
 
 ## Ola 14 - Frontier IV (SPEC-0161..0180) — madurez: 19 reales, 1 placeholder (ML-KEM diferido)
@@ -1120,3 +1115,14 @@ Implementados como stubs (TDD adversarial + mutation, feature flags pure-Rust on
 - SPEC-0178 (Gorilla TS: GorillaTs): implementado (stub).
 - SPEC-0179 (CRDT sync: CrdtSyncReal): implementado (stub).
 - SPEC-0180 (Post-quantum: MlKemStub): implementado (stub).
+
+## Estado actual (2026-10-30)
+
+- 23 crates, 176 specs (175 `implemented` + 1 `proposed`), 568 AC trazados,
+  66 957 LOC Rust.
+- **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
+  spec, stubs declarados y gaps residuales). Este documento no duplica ese
+  estado para evitar drift.
+- 19 modulos de la Ola 14 son reales y estan cableados; ML-KEM sigue como
+  placeholder (decision en `docs/adr/ADR-0180-post-quantum-deferred.md`).
+- Contratos de dependencia declarados en `architecture.toml` (obligatorio).

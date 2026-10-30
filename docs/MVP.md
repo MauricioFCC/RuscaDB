@@ -116,7 +116,7 @@ cifrado.
 - **Lectura concurrente (SPEC-0109)**: `Database::open_readonly` permite
   varios lectores concurrentes sin lock exclusivo; las escrituras devuelven
   `RuscaError::ReadOnly`.
-- **Capacidades opcionales (feature flags, off por defecto)**: `columnar`
+- **Capacidades por feature flag (pure-Rust on por defecto)**: `columnar`
   (SPEC-0110), `onnx` (SPEC-0111), `geo` (SPEC-0112), `pgwire`
   (SPEC-0113), `spatial` (SPEC-0114), `compression` (SPEC-0115),
   `backup` (SPEC-0116), `fts-advanced` (SPEC-0117), `ts-advanced`
