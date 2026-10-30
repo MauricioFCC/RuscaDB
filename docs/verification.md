@@ -32,8 +32,10 @@ python scripts/check_architecture.py   # hexagonal: 0 ciclos, 0 aristas prohibid
 python scripts/check_core_unsafe.py    # política de unsafe y presupuestos
 
 # 4) Trazabilidad SDD (spec -> test)
+python scripts/check_specs.py   # frontmatter, ids unicos, status/maturity
 cargo xtask trace
 cargo xtask contract   # marcadores @spec y estados de specs (SPEC-0061)
+# indice generado: python scripts/gen_specs_index.py -> docs/specs-index.md
 
 # 5) Config de CI/supply chain (SPEC-0016)
 python scripts/check_ci_config.py
@@ -47,9 +49,10 @@ cargo audit               # RustSec advisories
 de SPEC-0060, OFF por defecto, ADR-013): CI la compila una vez y la amortiza
 con rust-cache; el árbol normal no la incluye (AC-0060-03).
 
-Estado de referencia (actualizado 2026-10-16): **105 specs implementadas, 448
-AC trazados** (`cargo xtask trace`), **754 tests** (`cargo test --workspace --
---list`, sin `--all-features`).
+Estado de referencia (actualizado 2026-10-30): **175 specs (174 implementadas
++ 1 propuesta), 568 AC trazados** (`cargo xtask trace`), **~1087 tests**
+declarados en el workspace (`cargo test --workspace --all-features`).
+Madurez por spec: `docs/specs-index.md` y `docs/RuscaDB-gap-register.md`.
 
 Atajo opcional (mismos comandos, vía pre-commit):
 
