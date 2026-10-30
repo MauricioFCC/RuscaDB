@@ -193,8 +193,7 @@ simplificada. Sus specs llevan `maturity: stub` y **no deben consumirse como
 produccion** (evita el anti-patron "implemented de nombre"):
 
 `async_io`, `branching`, `concurrent_txn`, `cow_btree`, `kms`, `lance_format`,
-`onnx`, `otel`, `otel_real`, `pgwire`,
-`rtree_split`, `simd`, `ts_aggregates`, `vle`, `geo`.
+`onnx`, `otel`, `otel_real`, `pgwire`, `simd`, `vle`, `geo`.
 
 Pasaron a `maturity: real` en este ciclo:
 
@@ -207,6 +206,10 @@ Pasaron a `maturity: real` en este ciclo:
 - `prepared` (SPEC-0148): delega en `PreparedStmtReal` (marcadores, tipos y
   escapado), sin wrapper duplicado.
 - `stemming` (SPEC-0144): Porter (1980) completo (5 fases), base de Snowball.
+- `ts_aggregates` (SPEC-0145): agregacion incremental por bucket (`O(log B)`
+  por punto) con `merge` asociativo y min/max/avg.
+- `rtree_split` (SPEC-0156): R-tree real con split por mediana y consulta
+  con poda por MBR (`O(log n + k)` esperado).
 
 ## 11. Higiene de lints (2026-10-30)
 

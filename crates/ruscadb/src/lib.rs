@@ -238,7 +238,7 @@ pub use learned_index::LearnedIndex;
 #[cfg(feature = "learned-threshold")]
 pub use learned_threshold::LearnedThreshold;
 #[cfg(feature = "materialized-views")]
-pub use materialized_view::MaterializedView;
+pub use materialized_view::{MaterializedView, RefreshDelta};
 #[cfg(feature = "mvcc-gc-real")]
 pub use mvcc_gc_real::{MvccGcReal, Version as MvccVersion};
 #[cfg(feature = "observability")]
@@ -311,7 +311,7 @@ pub use time_travel_real::TimeTravelReal;
 #[cfg(feature = "ts-advanced")]
 pub use ts_advanced::Downsampler;
 #[cfg(feature = "ts-aggregates")]
-pub use ts_aggregates::ContinuousAggregate;
+pub use ts_aggregates::{Bucket, ContinuousAggregate};
 #[cfg(feature = "ts-retention")]
 pub use ts_retention::{RetentionPolicy, TsPoint};
 #[cfg(feature = "vle")]

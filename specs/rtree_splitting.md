@@ -2,7 +2,7 @@
 id: SPEC-0156
 feature: rtree_splitting
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

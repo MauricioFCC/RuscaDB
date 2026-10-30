@@ -144,7 +144,7 @@
 | SPEC-0142 | `cost_based_planner` | implemented | - | `cost_based_planner.md` |
 | SPEC-0143 | `kms_hsm_external` | implemented | stub | `kms_hsm_external.md` |
 | SPEC-0144 | `fts_stemming_snowball` | implemented | real | `stemming_snowball.md` |
-| SPEC-0145 | `ts_continuous_aggregates` | implemented | stub | `ts_continuous_aggregates.md` |
+| SPEC-0145 | `ts_continuous_aggregates` | implemented | real | `ts_continuous_aggregates.md` |
 | SPEC-0146 | `epoch_based_reclamation` | implemented | real | `epoch_based_reclamation.md` |
 | SPEC-0147 | `ivf_clustering` | implemented | real | `ivf_clustering.md` |
 | SPEC-0148 | `prepared_statements` | implemented | real | `prepared_statements.md` |
@@ -155,7 +155,7 @@
 | SPEC-0153 | `join_reordering` | implemented | - | `join_reordering.md` |
 | SPEC-0154 | `zstd_real` | implemented | - | `zstd_real.md` |
 | SPEC-0155 | `otel_real` | implemented | stub | `otel_real.md` |
-| SPEC-0156 | `rtree_splitting` | implemented | stub | `rtree_splitting.md` |
+| SPEC-0156 | `rtree_splitting` | implemented | real | `rtree_splitting.md` |
 | SPEC-0157 | `backup_verification` | implemented | - | `backup_verification.md` |
 | SPEC-0158 | `time_travel_real` | implemented | real | `time_travel_real.md` |
 | SPEC-0159 | `query_result_cache` | implemented | real | `query_result_cache.md` |

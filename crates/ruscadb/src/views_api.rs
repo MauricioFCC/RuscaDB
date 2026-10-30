@@ -11,7 +11,7 @@ use ruscadb_core::{RuscaError, ScalarValue};
 
 use crate::database::Database;
 use crate::executor::Row;
-use crate::materialized_view::MaterializedView;
+use crate::materialized_view::{MaterializedView, RefreshDelta};
 
 impl Database {
     /// Crea (o reemplaza) una vista materializada ejecutando `query`.
@@ -38,6 +38,7 @@ impl Database {
             MaterializedView {
                 name: name.to_string(),
                 query: query.to_string(),
+                fingerprints: MaterializedView::fingerprints_of(&rows),
                 rows,
             },
         );
@@ -57,6 +58,31 @@ impl Database {
     ///     [`RuscaError::InvalidConfig`] si la vista no existe; errores del
     ///     executor al re-ejecutar.
     pub fn refresh_materialized_view(&mut self, name: &str) -> Result<usize, RuscaError> {
+        let (count, _) = self.refresh_internal(name)?;
+        Ok(count)
+    }
+
+    /// Refresca la vista y devuelve el delta (insertadas/borradas/sin cambios).
+    ///
+    /// Args:
+    ///     name: Nombre de la vista.
+    ///
+    /// Returns:
+    ///     [`RefreshDelta`] calculado por merge de fingerprints (`O(n log n)`).
+    ///
+    /// Errors:
+    ///     [`RuscaError::InvalidConfig`] si la vista no existe; errores del
+    ///     executor o de persistencia.
+    pub fn refresh_materialized_view_delta(
+        &mut self,
+        name: &str,
+    ) -> Result<RefreshDelta, RuscaError> {
+        let (_, delta) = self.refresh_internal(name)?;
+        Ok(delta)
+    }
+
+    /// Nucleo del refresh: re-ejecuta, aplica delta y persiste.
+    fn refresh_internal(&mut self, name: &str) -> Result<(usize, RefreshDelta), RuscaError> {
         let query = self
             .materialized_views
             .get(name)
@@ -67,11 +93,12 @@ impl Database {
         let rows = self.execute(&query)?;
         let rows = rows_to_text(&rows);
         let count = rows.len();
-        if let Some(view) = self.materialized_views.get_mut(name) {
-            view.rows = rows;
-        }
+        let delta = match self.materialized_views.get_mut(name) {
+            Some(view) => view.diff(rows),
+            None => RefreshDelta::default(),
+        };
         self.persist_views()?;
-        Ok(count)
+        Ok((count, delta))
     }
 
     /// Filas materializadas de una vista.

@@ -2,7 +2,7 @@
 id: SPEC-0145
 feature: ts_continuous_aggregates
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

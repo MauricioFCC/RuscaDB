@@ -111,3 +111,59 @@ fn materialized_view_is_persistent() {
     );
     assert_eq!(database.materialized_view_names(), vec!["v".to_string()]);
 }
+
+/// El refresh devuelve el delta por fingerprints (sin recalcular filas).
+#[test]
+fn refresh_delta_reports_inserted_and_deleted() {
+    let (_dir, mut database) = open_test_db("mv_delta");
+    database
+        .create_table(
+            "t",
+            vec![ColumnDef {
+                name: "a".to_string(),
+                col_type: ColumnType::Int,
+            }],
+        )
+        .expect("create_table");
+    let mut ids = Vec::new();
+    for value in 1..=3 {
+        ids.push(
+            database
+                .insert(
+                    "t",
+                    ScalarMap::from([("a".to_string(), ScalarValue::Int(value))]),
+                )
+                .expect("insert"),
+        );
+    }
+    database
+        .create_materialized_view("v", "SELECT a FROM t")
+        .expect("view");
+
+    // Sin cambios: no-op.
+    let delta = database
+        .refresh_materialized_view_delta("v")
+        .expect("delta");
+    assert!(delta.is_noop(), "{delta:?}");
+    assert_eq!(delta.unchanged, 3);
+
+    // Insercion: 1 nueva, 3 iguales.
+    database
+        .insert(
+            "t",
+            ScalarMap::from([("a".to_string(), ScalarValue::Int(4))]),
+        )
+        .expect("insert");
+    let delta = database
+        .refresh_materialized_view_delta("v")
+        .expect("delta");
+    assert_eq!((delta.inserted, delta.deleted, delta.unchanged), (1, 0, 3));
+    assert_eq!(delta.changed(), 1);
+
+    // Borrado: 1 eliminada, 3 iguales.
+    database.delete("t", &ids[0]).expect("delete");
+    let delta = database
+        .refresh_materialized_view_delta("v")
+        .expect("delta");
+    assert_eq!((delta.inserted, delta.deleted, delta.unchanged), (0, 1, 3));
+}
