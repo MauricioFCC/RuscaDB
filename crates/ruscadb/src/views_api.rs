@@ -1,9 +1,11 @@
-//! Cableado de vistas materializadas al executor (SPEC-0149).
+//! Cableado de vistas materializadas y cache de resultados al executor.
 //!
-//! `create_materialized_view` ejecuta la consulta y congela el resultado;
-//! `refresh` la vuelve a ejecutar. Las filas se guardan como texto en orden de
-//! columna (claves ordenadas del `Row`), suficiente para servir dashboards y
-//! exportes sin re-ejecutar la consulta en cada lectura.
+//! Vistas (SPEC-0149): `create_materialized_view` ejecuta la consulta y congela
+//! el resultado; `refresh` la vuelve a ejecutar. Se persisten en el sidecar
+//! `<data>.views.json` y se restauran al abrir.
+//!
+//! Cache (SPEC-0159): `execute_cached` guarda el JSON de las filas con TTL y lo
+//! invalida en cada escritura.
 
 use ruscadb_core::{RuscaError, ScalarValue};
 
@@ -22,7 +24,7 @@ impl Database {
     ///     Numero de filas materializadas.
     ///
     /// Errors:
-    ///     Los del executor (tabla/columna inexistente, tipo, etc.).
+    ///     Los del executor y [`RuscaError::Io`] si no se puede persistir.
     pub fn create_materialized_view(
         &mut self,
         name: &str,
@@ -39,6 +41,7 @@ impl Database {
                 rows,
             },
         );
+        self.persist_views()?;
         Ok(count)
     }
 
@@ -67,6 +70,7 @@ impl Database {
         if let Some(view) = self.materialized_views.get_mut(name) {
             view.rows = rows;
         }
+        self.persist_views()?;
         Ok(count)
     }
 
@@ -98,12 +102,45 @@ impl Database {
     ///
     /// Returns:
     ///     `true` si existia.
-    pub fn drop_materialized_view(&mut self, name: &str) -> bool {
-        self.materialized_views.remove(name).is_some()
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla la persistencia.
+    pub fn drop_materialized_view(&mut self, name: &str) -> Result<bool, RuscaError> {
+        let removed = self.materialized_views.remove(name).is_some();
+        if removed {
+            self.persist_views()?;
+        }
+        Ok(removed)
     }
-}
 
-impl Database {
+    /// Restaura las vistas persistidas en `<data>.views.json` (tolerante).
+    ///
+    /// Un sidecar ausente o corrupto deja el mapa vacio: las vistas son datos
+    /// derivados y no deben impedir abrir la base.
+    pub(crate) fn restore_views(&mut self) {
+        let Ok(text) = std::fs::read_to_string(&self.views_path) else {
+            return;
+        };
+        if let Ok(views) =
+            serde_json::from_str::<std::collections::BTreeMap<String, MaterializedView>>(&text)
+        {
+            self.materialized_views = views;
+        }
+    }
+
+    /// Persiste las vistas materializadas en su sidecar JSON.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla la escritura; [`RuscaError::InvalidConfig`]
+    ///     si la serializacion falla.
+    fn persist_views(&self) -> Result<(), RuscaError> {
+        let text = serde_json::to_string(&self.materialized_views).map_err(|error| {
+            RuscaError::InvalidConfig(format!("no se pudieron serializar las vistas: {error}"))
+        })?;
+        std::fs::write(&self.views_path, text)?;
+        Ok(())
+    }
+
     /// Ejecuta una consulta con cache exacto de resultados (SPEC-0159).
     ///
     /// Args:

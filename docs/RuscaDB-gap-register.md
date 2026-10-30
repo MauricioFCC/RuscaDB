@@ -193,8 +193,8 @@ simplificada. Sus specs llevan `maturity: stub` y **no deben consumirse como
 produccion** (evita el anti-patron "implemented de nombre"):
 
 `async_io`, `branching`, `concurrent_txn`, `cow_btree`, `kms`, `lance_format`,
-`onnx`, `otel`, `otel_real`, `pgwire`, `prepared`,
-`rtree_split`, `simd`, `stemming`, `ts_aggregates`, `vle`, `geo`.
+`onnx`, `otel`, `otel_real`, `pgwire`,
+`rtree_split`, `simd`, `ts_aggregates`, `vle`, `geo`.
 
 Pasaron a `maturity: real` en este ciclo:
 
@@ -202,8 +202,11 @@ Pasaron a `maturity: real` en este ciclo:
 - `rcu` (SPEC-0146): `RcuDomain` + `RcuCell` segura (snapshot por `Arc`, sin
   `unsafe`), con retiro y `synchronize`.
 - `query_cache` (SPEC-0159): TTL + capacidad + metricas (hits/misses/evictions).
-- `materialized_view` (SPEC-0149): cableada al executor (`create_materialized_view`,
-  `refresh_materialized_view`, `materialized_view_rows`, `drop_materialized_view`).
+- `materialized_view` (SPEC-0149): cableada al executor y **persistida** en
+  `<data>.views.json` (`create`/`refresh`/`rows`/`drop`).
+- `prepared` (SPEC-0148): delega en `PreparedStmtReal` (marcadores, tipos y
+  escapado), sin wrapper duplicado.
+- `stemming` (SPEC-0144): Porter (1980) completo (5 fases), base de Snowball.
 
 ## 11. Higiene de lints (2026-10-30)
 
@@ -221,5 +224,5 @@ Pasaron a `maturity: real` en este ciclo:
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
 - **`docs/specs-index.md`**: indice generado (175 specs) con
   `scripts/gen_specs_index.py`; fuente unica para ver status y madurez.
-- Estado: 174 `implemented` + 1 `proposed`; madurez declarada 27 `real`,
-  17 `stub`, 1 `placeholder` (el resto sin declarar).
+- Estado: 174 `implemented` + 1 `proposed`; madurez declarada 29 `real`,
+  15 `stub`, 1 `placeholder` (el resto sin declarar).

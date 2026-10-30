@@ -129,8 +129,10 @@ pub struct Database {
     pub(crate) semantic_cache: SemanticCache,
     /// Coste por query acumulado (SPEC-0065).
     pub(crate) cost_report: CostReport,
-    /// Vistas materializadas en memoria (SPEC-0149); se recrean al abrir.
+    /// Vistas materializadas persistidas en `<data>.views.json` (SPEC-0149).
     pub(crate) materialized_views: BTreeMap<String, crate::materialized_view::MaterializedView>,
+    /// Ruta del sidecar de vistas materializadas.
+    pub(crate) views_path: PathBuf,
     /// Cache exacto de resultados RQL (SPEC-0159).
     pub(crate) query_cache: crate::query_cache::QueryCache,
     /// Rol de instancia para RBAC (SPEC-0066): Admin por defecto.
@@ -276,6 +278,7 @@ impl Database {
             semantic_cache: SemanticCache::default(),
             cost_report: CostReport::default(),
             materialized_views: BTreeMap::new(),
+            views_path: config.data_path.with_extension("views.json"),
             query_cache: crate::query_cache::QueryCache::default(),
             role: Role::default(),
             audit_enabled: false,
@@ -289,6 +292,7 @@ impl Database {
             read_only,
         };
         database.restore_registry()?;
+        database.restore_views();
         database.restore_audit()?;
         // SPEC-0106: en cifrado no se precarga el pool (recuperación perezosa,
         // patrón wal-index de SQLite): solo se construye el overlay que apunta

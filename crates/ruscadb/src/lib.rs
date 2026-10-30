@@ -115,6 +115,7 @@ mod planner_cost;
 #[cfg(feature = "post-quantum")]
 mod post_quantum;
 #[cfg(feature = "prepared")]
+#[cfg(feature = "prepared-real")]
 mod prepared;
 #[cfg(feature = "prepared-real")]
 mod prepared_real;
@@ -261,6 +262,7 @@ pub use planner_cost::CostEstimator;
 #[cfg(feature = "post-quantum")]
 pub use post_quantum::MlKemStub;
 #[cfg(feature = "prepared")]
+#[cfg(feature = "prepared-real")]
 pub use prepared::PreparedStatement;
 #[cfg(feature = "prepared-real")]
 pub use prepared_real::{BindError, ParamType, ParamValue, PrepareError, PreparedStmtReal};

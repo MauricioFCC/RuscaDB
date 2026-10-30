@@ -3,7 +3,6 @@ id: SPEC-0149
 feature: materialized_views
 status: implemented
 maturity: real
-maturity: stub
 owner: query-team
 appetite_days: 6
 boundaries:

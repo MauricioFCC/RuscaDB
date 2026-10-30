@@ -5,7 +5,7 @@
 //! consumidor), lo que evita coste oculto.
 
 /// Vista materializada.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MaterializedView {
     /// Nombre de la vista.
     pub name: String,

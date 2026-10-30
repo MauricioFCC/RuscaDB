@@ -143,11 +143,11 @@
 | SPEC-0141 | `sql_standard` | implemented | - | `sql_standard.md` |
 | SPEC-0142 | `cost_based_planner` | implemented | - | `cost_based_planner.md` |
 | SPEC-0143 | `kms_hsm_external` | implemented | stub | `kms_hsm_external.md` |
-| SPEC-0144 | `fts_stemming_snowball` | implemented | stub | `stemming_snowball.md` |
+| SPEC-0144 | `fts_stemming_snowball` | implemented | real | `stemming_snowball.md` |
 | SPEC-0145 | `ts_continuous_aggregates` | implemented | stub | `ts_continuous_aggregates.md` |
 | SPEC-0146 | `epoch_based_reclamation` | implemented | real | `epoch_based_reclamation.md` |
 | SPEC-0147 | `ivf_clustering` | implemented | real | `ivf_clustering.md` |
-| SPEC-0148 | `prepared_statements` | implemented | stub | `prepared_statements.md` |
+| SPEC-0148 | `prepared_statements` | implemented | real | `prepared_statements.md` |
 | SPEC-0149 | `materialized_views` | implemented | real | `materialized_views.md` |
 | SPEC-0150 | `simd_acceleration` | implemented | stub | `simd_acceleration.md` |
 | SPEC-0151 | `async_io` | implemented | stub | `async_io.md` |
