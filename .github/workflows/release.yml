@@ -58,7 +58,7 @@ jobs:
       - name: SBOM (CycloneDX)
         run: cargo cyclonedx --format json --all
       - name: Upload SBOM
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-cyclonedx
           path: "**/bom.json"
@@ -124,7 +124,7 @@ jobs:
           cd dist
           sha256sum "ruscadb-${{ matrix.target }}" > "ruscadb-${{ matrix.target }}.sha256"
           rm "ruscadb-${{ matrix.target }}"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.target }}
           path: dist/*
