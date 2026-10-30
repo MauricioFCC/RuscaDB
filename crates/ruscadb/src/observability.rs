@@ -1,10 +1,8 @@
-#![allow(missing_docs)]
-#![allow(dead_code)]
-//! Observabilidad opcional (SPEC-0119): métricas en memoria.
+//! Observabilidad opcional (SPEC-0119): mÃ©tricas en memoria.
 
 use std::collections::BTreeMap;
 
-/// Registry de métricas en memoria.
+/// Registry de mÃ©tricas en memoria.
 #[derive(Debug, Clone, Default)]
 pub struct MetricsRegistry {
     /// Contadores por nombre.
@@ -12,7 +10,7 @@ pub struct MetricsRegistry {
 }
 
 impl MetricsRegistry {
-    /// Crea un registry vacío.
+    /// Crea un registry vacÃ­o.
     pub fn new() -> Self {
         Self::default()
     }
@@ -32,7 +30,7 @@ impl MetricsRegistry {
         self.counters.get(name).copied().unwrap_or(0)
     }
 
-    /// Exporta las métricas en formato texto Prometheus.
+    /// Exporta las mÃ©tricas en formato texto Prometheus.
     pub fn export(&self) -> String {
         let mut out = String::new();
         for (name, value) in &self.counters {
@@ -42,12 +40,12 @@ impl MetricsRegistry {
         out
     }
 
-    /// Número de métricas registradas.
+    /// NÃºmero de mÃ©tricas registradas.
     pub fn len(&self) -> usize {
         self.counters.len()
     }
 
-    /// Indica si está vacío.
+    /// Indica si estÃ¡ vacÃ­o.
     pub fn is_empty(&self) -> bool {
         self.counters.is_empty()
     }

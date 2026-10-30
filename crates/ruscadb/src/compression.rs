@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 //! Compresion de WAL opcional (SPEC-0115): RLE sin dependencias externas.
 
 /// Compresor RLE (run-length encoding) sin dependencias.

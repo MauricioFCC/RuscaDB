@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-#![allow(dead_code)]
 //! Time-travel (SPEC-0129): lectura historica por tx_id.
 
 /// Helper de time-travel: captura un tx_id para consultas "as of".

@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-#![allow(dead_code)]
 //! Retention policies para time-series (SPEC-0122).
 
 /// Punto de serie temporal (timestamp + valor).
@@ -11,19 +9,19 @@ pub struct TsPoint {
     pub value: f64,
 }
 
-/// Política de retención para series temporales.
+/// PolÃ­tica de retenciÃ³n para series temporales.
 #[derive(Debug, Clone)]
 pub struct RetentionPolicy {
-    /// TTL en milisegundos (puntos más antiguos se eliminan).
+    /// TTL en milisegundos (puntos mÃ¡s antiguos se eliminan).
     pub ttl_ms: i64,
-    /// Tamaño de ventana para downsampling de puntos antiguos (0 = sin downsampling).
+    /// TamaÃ±o de ventana para downsampling de puntos antiguos (0 = sin downsampling).
     pub downsample_window: usize,
-    /// Umbral: puntos más antiguos que este se downsamplen.
+    /// Umbral: puntos mÃ¡s antiguos que este se downsamplen.
     pub downsample_threshold_ms: i64,
 }
 
 impl RetentionPolicy {
-    /// Crea una política de retención.
+    /// Crea una polÃ­tica de retenciÃ³n.
     pub fn new(ttl_ms: i64) -> Self {
         Self {
             ttl_ms,
@@ -39,13 +37,13 @@ impl RetentionPolicy {
         self
     }
 
-    /// Aplica la política: elimina puntos más antiguos que el TTL.
+    /// Aplica la polÃ­tica: elimina puntos mÃ¡s antiguos que el TTL.
     pub fn apply(&self, now: i64, points: &[TsPoint]) -> Vec<TsPoint> {
         let cutoff = now - self.ttl_ms;
         points.iter().filter(|p| p.ts >= cutoff).copied().collect()
     }
 
-    /// Aplica downsampling a puntos antiguos (más antiguos que el threshold).
+    /// Aplica downsampling a puntos antiguos (mÃ¡s antiguos que el threshold).
     pub fn downsample_old(&self, now: i64, points: &[TsPoint]) -> Vec<TsPoint> {
         if self.downsample_window == 0 {
             return points.to_vec();

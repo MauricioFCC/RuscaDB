@@ -202,3 +202,12 @@ Pasaron a `maturity: real` en este ciclo:
 - `rcu` (SPEC-0146): `RcuDomain` + `RcuCell` segura (snapshot por `Arc`, sin
   `unsafe`), con retiro y `synchronize`.
 - `query_cache` (SPEC-0159): TTL + capacidad + metricas (hits/misses/evictions).
+
+## 11. Higiene de lints (2026-10-30)
+
+- `#![allow(missing_docs)]`: **0** modulos en `ruscadb` (todos los items
+  publicos documentados; `clippy -D missing_docs` verde).
+- `#![allow(dead_code)]`: **0** modulos en `ruscadb`.
+- `TODO:`/`FIXME:` reales: **0**.
+- Features declaradas sin uso: **0**.
+- Archivos trackeados >1 MB: **0**.

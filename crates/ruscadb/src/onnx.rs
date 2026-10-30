@@ -1,15 +1,14 @@
-#![allow(missing_docs)]
 //! Inferencia ONNX opcional (SPEC-0111): stub sin dependencias externas.
 //!
-//! La integración real con `ort` queda como trabajo futuro cuando se requiera
-//! inferencia transformer; este módulo valida la API y los tests sin pulls.
+//! La integraciÃ³n real con `ort` queda como trabajo futuro cuando se requiera
+//! inferencia transformer; este mÃ³dulo valida la API y los tests sin pulls.
 
 /// Modelo ONNX (stub): carga y produce un vector.
 #[derive(Debug, Clone)]
 pub struct OnnxModel {
-    /// Ruta del fichero del modelo (no se valida aquí).
+    /// Ruta del fichero del modelo (no se valida aquÃ­).
     path: String,
-    /// Dimensión de salida declarada.
+    /// DimensiÃ³n de salida declarada.
     output_dim: usize,
     /// Pesos del modelo lineal (stub).
     weights: Vec<f32>,
@@ -28,7 +27,7 @@ impl OnnxModel {
         })
     }
 
-    /// Carga un modelo con dimensión de salida explícita.
+    /// Carga un modelo con dimensiÃ³n de salida explÃ­cita.
     pub fn load_with_dim(path: impl Into<String>, output_dim: usize) -> Result<Self, String> {
         Ok(Self {
             path: path.into(),
@@ -38,7 +37,7 @@ impl OnnxModel {
         })
     }
 
-    /// Carga un modelo con pesos y sesgo explícitos (stub para tests).
+    /// Carga un modelo con pesos y sesgo explÃ­citos (stub para tests).
     pub fn load_with_weights(
         path: impl Into<String>,
         output_dim: usize,
@@ -58,7 +57,7 @@ impl OnnxModel {
         &self.path
     }
 
-    /// Dimensión de salida.
+    /// DimensiÃ³n de salida.
     pub fn output_dim(&self) -> usize {
         self.output_dim
     }
@@ -87,7 +86,7 @@ impl OnnxModel {
         Ok(out)
     }
 
-    /// Inferencia con normalización L2 (stub).
+    /// Inferencia con normalizaciÃ³n L2 (stub).
     pub fn infer_normalized(&self, input: &[f32]) -> Result<Vec<f32>, String> {
         let mut out = self.infer(input)?;
         let norm: f32 = out.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -99,7 +98,7 @@ impl OnnxModel {
         Ok(out)
     }
 
-    /// Inferencia lineal con normalización L2.
+    /// Inferencia lineal con normalizaciÃ³n L2.
     pub fn infer_linear_normalized(&self, input: &[f32]) -> Result<Vec<f32>, String> {
         let mut out = self.infer_linear(input)?;
         let norm: f32 = out.iter().map(|x| x * x).sum::<f32>().sqrt();

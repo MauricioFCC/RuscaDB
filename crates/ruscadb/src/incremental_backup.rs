@@ -1,17 +1,15 @@
-#![allow(missing_docs)]
-#![allow(dead_code)]
 //! Backup incremental (SPEC-0120): copia solo ficheros modificados.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-/// Backup incremental basado en timestamp de modificación.
+/// Backup incremental basado en timestamp de modificaciÃ³n.
 #[derive(Debug, Clone)]
 pub struct IncrementalBackup {
     /// Ruta origen de la base.
     source: PathBuf,
-    /// Timestamp del último backup (epoch secs).
+    /// Timestamp del Ãºltimo backup (epoch secs).
     last_backup: Option<u64>,
 }
 
@@ -24,12 +22,12 @@ impl IncrementalBackup {
         }
     }
 
-    /// Establece el timestamp del último backup.
+    /// Establece el timestamp del Ãºltimo backup.
     pub fn set_last_backup(&mut self, ts: u64) {
         self.last_backup = Some(ts);
     }
 
-    /// Copia solo los ficheros modificados desde el último backup.
+    /// Copia solo los ficheros modificados desde el Ãºltimo backup.
     pub fn snapshot(&self, dest: &Path) -> Result<usize, String> {
         fs::create_dir_all(dest)
             .map_err(|e| format!("no se pudo crear el directorio destino: {e}"))?;

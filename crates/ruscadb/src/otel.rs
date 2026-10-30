@@ -1,6 +1,4 @@
-#![allow(missing_docs)]
-#![allow(dead_code)]
-//! OpenTelemetry OTLP exporter (SPEC-0126): serialización JSON de spans.
+//! OpenTelemetry OTLP exporter (SPEC-0126): serializaciÃ³n JSON de spans.
 
 use std::collections::BTreeMap;
 
@@ -11,17 +9,17 @@ pub struct Span {
     pub trace_id: String,
     /// ID de span.
     pub span_id: String,
-    /// Nombre de la operación.
+    /// Nombre de la operaciÃ³n.
     pub name: String,
     /// Timestamp de inicio (ms).
     pub start_ms: u64,
-    /// Duración (ms).
+    /// DuraciÃ³n (ms).
     pub duration_ms: u64,
     /// Atributos.
     pub attributes: BTreeMap<String, String>,
 }
 
-/// Exportador OTLP (stub: serialización JSON).
+/// Exportador OTLP (stub: serializaciÃ³n JSON).
 #[derive(Debug, Clone, Default)]
 pub struct OtelExporter;
 
@@ -46,7 +44,7 @@ impl OtelExporter {
         )
     }
 
-    /// Exporta múltiples spans.
+    /// Exporta mÃºltiples spans.
     pub fn export_spans(&self, spans: &[Span]) -> String {
         let mut out = String::from("[");
         for (i, span) in spans.iter().enumerate() {

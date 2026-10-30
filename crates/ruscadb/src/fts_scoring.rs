@@ -1,8 +1,6 @@
-#![allow(missing_docs)]
-#![allow(dead_code)]
 //! Fuzzy scoring para FTS (SPEC-0123): BM25 + Levenshtein.
 
-/// Scorer fuzzy que combina BM25 con distancia de edición.
+/// Scorer fuzzy que combina BM25 con distancia de ediciÃ³n.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct FuzzyScorer;
 
@@ -10,8 +8,8 @@ impl FuzzyScorer {
     /// Calcula un score fuzzy combinado.
     ///
     /// `bm25_score`: score BM25 del documento.
-    /// `query_term`: término de búsqueda.
-    /// `doc_term`: término del documento.
+    /// `query_term`: tÃ©rmino de bÃºsqueda.
+    /// `doc_term`: tÃ©rmino del documento.
     /// `fuzzy_weight`: peso del componente fuzzy (0.0 a 1.0).
     pub fn score(bm25_score: f64, query_term: &str, doc_term: &str, fuzzy_weight: f64) -> f64 {
         let distance = levenshtein(query_term, doc_term) as f64;

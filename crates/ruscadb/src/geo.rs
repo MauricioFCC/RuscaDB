@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 //! Tipos geoespaciales + indice espacial (SPEC-0112 + SPEC-0114): unificado.
 
 /// Punto en el plano.
@@ -37,7 +36,7 @@ impl Point {
     }
 }
 
-/// Rectángulo axis-aligned.
+/// RectÃ¡ngulo axis-aligned.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
     /// Esquina inferior izquierda.
@@ -47,12 +46,12 @@ pub struct Rect {
 }
 
 impl Rect {
-    /// Crea un rectángulo a partir de dos esquinas.
+    /// Crea un rectÃ¡ngulo a partir de dos esquinas.
     pub fn new(min: Point, max: Point) -> Self {
         Self { min, max }
     }
 
-    /// Indica si un punto está dentro del rectángulo (inclusive).
+    /// Indica si un punto estÃ¡ dentro del rectÃ¡ngulo (inclusive).
     pub fn contains(&self, point: &Point) -> bool {
         point.x >= self.min.x
             && point.x <= self.max.x
@@ -60,12 +59,12 @@ impl Rect {
             && point.y <= self.max.y
     }
 
-    /// Área del rectángulo.
+    /// Ãrea del rectÃ¡ngulo.
     pub fn area(&self) -> f64 {
         (self.max.x - self.min.x).abs() * (self.max.y - self.min.y).abs()
     }
 
-    /// Indica si dos rectángulos se intersectan.
+    /// Indica si dos rectÃ¡ngulos se intersectan.
     pub fn intersects(&self, other: &Self) -> bool {
         self.min.x <= other.max.x
             && self.max.x >= other.min.x
@@ -74,7 +73,7 @@ impl Rect {
     }
 }
 
-/// Árbol R simple (stub lineal) integrado con Point.
+/// Ãrbol R simple (stub lineal) integrado con Point.
 #[derive(Debug, Clone, Default)]
 pub struct RTree {
     /// Puntos insertados.
@@ -82,7 +81,7 @@ pub struct RTree {
 }
 
 impl RTree {
-    /// Crea un R-tree vacío.
+    /// Crea un R-tree vacÃ­o.
     pub fn new() -> Self {
         Self { points: Vec::new() }
     }
@@ -112,7 +111,7 @@ impl RTree {
         self.range_query(&rect)
     }
 
-    /// KNN: los k puntos más cercanos a un punto dado.
+    /// KNN: los k puntos mÃ¡s cercanos a un punto dado.
     pub fn knn(&self, center: &Point, k: usize) -> Vec<Point> {
         let mut sorted: Vec<(f64, Point)> = self
             .points
@@ -123,12 +122,12 @@ impl RTree {
         sorted.into_iter().take(k).map(|(_, p)| p).collect()
     }
 
-    /// Número de puntos.
+    /// NÃºmero de puntos.
     pub fn len(&self) -> usize {
         self.points.len()
     }
 
-    /// Indica si está vacío.
+    /// Indica si estÃ¡ vacÃ­o.
     pub fn is_empty(&self) -> bool {
         self.points.is_empty()
     }

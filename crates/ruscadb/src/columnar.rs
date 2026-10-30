@@ -1,8 +1,7 @@
-#![allow(missing_docs)]
 //! Engine columnar opcional (SPEC-0110): almacenamiento por columnas en memoria.
 //!
-//! Sin dependencias externas. La integración con Arrow/Lance queda como trabajo
-//! futuro (feature `columnar` activa este módulo sin pulls adicionales).
+//! Sin dependencias externas. La integraciÃ³n con Arrow/Lance queda como trabajo
+//! futuro (feature `columnar` activa este mÃ³dulo sin pulls adicionales).
 
 #[cfg(all(feature = "alp", feature = "fastlanes"))]
 use crate::alp_compression::AlpCompressor;
@@ -49,14 +48,14 @@ impl ColumnValue {
 /// Tabla columnar en memoria: un `Vec` por columna.
 #[derive(Debug, Clone)]
 pub struct ColumnarTable {
-    /// Nombres de las columnas en orden de inserción.
+    /// Nombres de las columnas en orden de inserciÃ³n.
     columns: Vec<String>,
     /// Datos por columna (cada entrada es una fila).
     data: Vec<Vec<ColumnValue>>,
 }
 
 impl ColumnarTable {
-    /// Crea una tabla columnar vacía con las columnas dadas.
+    /// Crea una tabla columnar vacÃ­a con las columnas dadas.
     pub fn new(columns: Vec<String>) -> Self {
         let width = columns.len();
         Self {
@@ -65,22 +64,22 @@ impl ColumnarTable {
         }
     }
 
-    /// Número de columnas.
+    /// NÃºmero de columnas.
     pub fn width(&self) -> usize {
         self.columns.len()
     }
 
-    /// Número de filas.
+    /// NÃºmero de filas.
     pub fn len(&self) -> usize {
         self.data.first().map(|c| c.len()).unwrap_or(0)
     }
 
-    /// Indica si la tabla está vacía.
+    /// Indica si la tabla estÃ¡ vacÃ­a.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Añade una fila (debe tener tantos valores como columnas).
+    /// AÃ±ade una fila (debe tener tantos valores como columnas).
     pub fn append(&mut self, row: Vec<ColumnValue>) -> Result<(), String> {
         if row.len() != self.columns.len() {
             return Err(format!(
@@ -95,7 +94,7 @@ impl ColumnarTable {
         Ok(())
     }
 
-    /// Escanea las filas en orden de inserción.
+    /// Escanea las filas en orden de inserciÃ³n.
     pub fn scan(&self) -> Vec<Vec<ColumnValue>> {
         let rows = self.len();
         let mut out = Vec::with_capacity(rows);
@@ -157,7 +156,7 @@ impl ColumnarTable {
         Ok(out)
     }
 
-    /// Filtra filas por comparación (mayor que) en una columna numérica.
+    /// Filtra filas por comparaciÃ³n (mayor que) en una columna numÃ©rica.
     pub fn filter_gt(&self, column: &str, threshold: f64) -> Result<Vec<Vec<ColumnValue>>, String> {
         let idx = self
             .columns
@@ -180,7 +179,7 @@ impl ColumnarTable {
         Ok(out)
     }
 
-    /// Agrega una columna numérica: suma.
+    /// Agrega una columna numÃ©rica: suma.
     pub fn sum(&self, column: &str) -> Result<f64, String> {
         let idx = self
             .columns
@@ -196,7 +195,7 @@ impl ColumnarTable {
         Ok(total)
     }
 
-    /// Agrega una columna numérica: promedio.
+    /// Agrega una columna numÃ©rica: promedio.
     pub fn avg(&self, column: &str) -> Result<f64, String> {
         let s = self.sum(column)?;
         let count = self.len() as f64;
@@ -206,7 +205,7 @@ impl ColumnarTable {
         Ok(s / count)
     }
 
-    /// Agrega una columna numérica: mínimo.
+    /// Agrega una columna numÃ©rica: mÃ­nimo.
     pub fn min(&self, column: &str) -> Result<f64, String> {
         let idx = self
             .columns
@@ -223,7 +222,7 @@ impl ColumnarTable {
             .ok_or_else(|| "sin valores numericos".to_string())
     }
 
-    /// Agrega una columna numérica: máximo.
+    /// Agrega una columna numÃ©rica: mÃ¡ximo.
     pub fn max(&self, column: &str) -> Result<f64, String> {
         let idx = self
             .columns
