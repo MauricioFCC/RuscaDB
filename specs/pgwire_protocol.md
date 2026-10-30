@@ -2,7 +2,7 @@
 id: SPEC-0113
 feature: pgwire_protocol
 status: implemented
-maturity: stub
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:

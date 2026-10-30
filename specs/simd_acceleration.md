@@ -2,7 +2,7 @@
 id: SPEC-0150
 feature: simd_acceleration
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

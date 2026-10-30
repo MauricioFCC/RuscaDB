@@ -2,7 +2,7 @@
 id: SPEC-0137
 feature: single_file_vle
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 6
 boundaries:

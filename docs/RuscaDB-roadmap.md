@@ -1116,13 +1116,30 @@ Implementados como stubs (TDD adversarial + mutation, feature flags pure-Rust on
 - SPEC-0179 (CRDT sync: CrdtSyncReal): implementado (stub).
 - SPEC-0180 (Post-quantum: MlKemStub): implementado (stub).
 
+## Ola 15 - Cierre de stubs (SPEC-0113/0131/0136/0137/0139/0150/0151) - madurez: 7 reales, 0 stubs
+
+Los siete stubs residuales de storage/protocolo pasan a implementacion real
+con tests de aceptacion que verifican comportamiento (no solo la firma):
+
+- SPEC-0113 (pgwire): codec wire v3 big-endian + `handle_query`; el servidor
+  TCP es adapter del consumidor (no se simula).
+- SPEC-0131 (BEGIN CONCURRENT): `ConcurrentTxnManager` sobre `TxnManager`,
+  conflictos first-committer-wins.
+- SPEC-0136 (Lance format): contenedor columnar propio `RLNC1` (no compatible
+  con Lance; ALP/FastLanes viven en modulos separados).
+- SPEC-0137 (single-file VLE): `RUSCVLE1` con checksum FNV-1a y validacion de
+  cotas.
+- SPEC-0139 (COW branching): `BranchManager` sobre treap persistente,
+  `fork_from` `O(1)`.
+- SPEC-0150 (SIMD): acumuladores independientes + Neumaier, sin intrinsics.
+- SPEC-0151 (async I/O): `Future`/`poll_read` en memoria, sin Tokio.
+
 ## Estado actual (2026-10-30)
 
-- 23 crates, 176 specs (175 `implemented` + 1 `proposed`), 568 AC trazados,
-  66 957 LOC Rust.
+- 23 crates, 175 specs (174 `implemented` + 1 `proposed`), 568 AC trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- 19 modulos de la Ola 14 son reales y estan cableados; ML-KEM sigue como
-  placeholder (decision en `docs/adr/ADR-0180-post-quantum-deferred.md`).
+- Madurez declarada: **44 `real`, 0 `stub`, 1 `placeholder`** (ML-KEM, decision
+  en `docs/adr/ADR-0180-post-quantum-deferred.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).

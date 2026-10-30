@@ -9,6 +9,21 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 4 (2026-10-30)**: los 7 ultimos modulos `stub` pasan a `maturity:
+  real` (0 stubs restantes en `check_specs.py`):
+  - **SPEC-0131** `concurrent_txn`: `ConcurrentTxnManager` delega en
+    `TxnManager`; first-committer-wins devuelve `WriteConflict`.
+  - **SPEC-0139** `branching`: `BranchManager` sobre `CowBTree` persistente;
+    `fork_from` `O(1)`, merge por union con prioridad al destino.
+  - **SPEC-0137** `vle`: contenedor single-file `RUSCVLE1` con checksum
+    FNV-1a, validacion de cotas y deteccion de truncamiento/bit-flips.
+  - **SPEC-0151** `async_io`: `Future` + `poll_read` en memoria (sin Tokio).
+  - **SPEC-0150** `simd`: 4 acumuladores + suma compensada de Neumaier; sin
+    intrinsics (auto-vectorizacion, `is_hardware_simd() == false` honesto).
+  - **SPEC-0136** `lance_format`: contenedor columnar propio `RLNC1` con
+    round-trip exacto; no compatible con Lance ni con ALP/FastLanes.
+  - **SPEC-0113** `pgwire`: codec wire v3 con longitudes **big-endian**;
+    `handle_query`; el `TcpListener` queda en el adapter.
 - **SPEC-0076** (Ola 0): lock cross-proceso — `LockGuard` RAII sobre sidecar
   `<data>.lock` con `std::fs::File::try_lock` (MSRV del workspace → 1.89);
   segunda apertura (mismo u otro proceso) devuelve `RuscaError::DatabaseInUse`

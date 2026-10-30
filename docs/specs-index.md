@@ -116,7 +116,7 @@
 | SPEC-0110 | `columnar_engine` | implemented | - | `columnar_engine.md` |
 | SPEC-0111 | `onnx_inference` | implemented | real | `onnx_inference.md` |
 | SPEC-0112 | `geospatial_sync` | implemented | real | `geospatial_sync.md` |
-| SPEC-0113 | `pgwire_protocol` | implemented | stub | `pgwire_protocol.md` |
+| SPEC-0113 | `pgwire_protocol` | implemented | real | `pgwire_protocol.md` |
 | SPEC-0114 | `spatial_index` | implemented | - | `spatial_index.md` |
 | SPEC-0115 | `wal_compression` | implemented | - | `wal_compression.md` |
 | SPEC-0116 | `online_backup` | implemented | - | `online_backup.md` |
@@ -134,11 +134,11 @@
 | SPEC-0128 | `s3_backup` | implemented | real | `s3_backup.md` |
 | SPEC-0129 | `time_travel` | implemented | - | `time_travel.md` |
 | SPEC-0130 | `copy_on_write_btree` | implemented | real | `copy_on_write_btree.md` |
-| SPEC-0131 | `begin_concurrent` | implemented | stub | `begin_concurrent.md` |
-| SPEC-0136 | `lance_format` | implemented | stub | `lance_format.md` |
-| SPEC-0137 | `single_file_vle` | implemented | stub | `single_file_vle.md` |
+| SPEC-0131 | `begin_concurrent` | implemented | real | `begin_concurrent.md` |
+| SPEC-0136 | `lance_format` | implemented | real | `lance_format.md` |
+| SPEC-0137 | `single_file_vle` | implemented | real | `single_file_vle.md` |
 | SPEC-0138 | `sync_replication` | implemented | - | `sync_replication.md` |
-| SPEC-0139 | `cow_branching` | implemented | stub | `cow_branching.md` |
+| SPEC-0139 | `cow_branching` | implemented | real | `cow_branching.md` |
 | SPEC-0140 | `geospatial_projections` | implemented | - | `geospatial_projections.md` |
 | SPEC-0141 | `sql_standard` | implemented | - | `sql_standard.md` |
 | SPEC-0142 | `cost_based_planner` | implemented | - | `cost_based_planner.md` |
@@ -149,8 +149,8 @@
 | SPEC-0147 | `ivf_clustering` | implemented | real | `ivf_clustering.md` |
 | SPEC-0148 | `prepared_statements` | implemented | real | `prepared_statements.md` |
 | SPEC-0149 | `materialized_views` | implemented | real | `materialized_views.md` |
-| SPEC-0150 | `simd_acceleration` | implemented | stub | `simd_acceleration.md` |
-| SPEC-0151 | `async_io` | implemented | stub | `async_io.md` |
+| SPEC-0150 | `simd_acceleration` | implemented | real | `simd_acceleration.md` |
+| SPEC-0151 | `async_io` | implemented | real | `async_io.md` |
 | SPEC-0152 | `fts_proximity` | implemented | - | `fts_proximity.md` |
 | SPEC-0153 | `join_reordering` | implemented | - | `join_reordering.md` |
 | SPEC-0154 | `zstd_real` | implemented | - | `zstd_real.md` |

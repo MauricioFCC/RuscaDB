@@ -2,7 +2,7 @@
 id: SPEC-0139
 feature: cow_branching
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 6
 boundaries:

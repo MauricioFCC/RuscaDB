@@ -188,7 +188,7 @@ pub use backup_verify::BackupVerifier;
 #[cfg(feature = "blockmax-wand")]
 pub use blockmax_wand::{BlockMaxWand, PostingList};
 #[cfg(feature = "branching")]
-pub use branching::Branch;
+pub use branching::{Branch, BranchManager};
 #[cfg(all(feature = "columnar", feature = "alp", feature = "fastlanes"))]
 pub use columnar::ColumnChunk;
 #[cfg(feature = "columnar")]
@@ -253,10 +253,10 @@ pub use otel_real::OtelRealExporter;
 pub use page_checksums::PageChecksum;
 #[cfg(feature = "persistent-hnsw")]
 pub use persistent_hnsw::{HnswNode, PersistentHnsw};
-#[cfg(feature = "pgwire")]
-pub use pgwire::PgWireServer;
 #[cfg(feature = "pgwire-real")]
 pub use pgwire::PgWireServer as PgWireRealServer;
+#[cfg(feature = "pgwire")]
+pub use pgwire::{BackendMessage, FrontendMessage, PgWireServer};
 #[cfg(feature = "cost-planner")]
 pub use planner_cost::CostEstimator;
 #[cfg(feature = "post-quantum")]
@@ -315,7 +315,7 @@ pub use ts_aggregates::{Bucket, ContinuousAggregate};
 #[cfg(feature = "ts-retention")]
 pub use ts_retention::{RetentionPolicy, TsPoint};
 #[cfg(feature = "vle")]
-pub use vle::VleDatabase;
+pub use vle::{VleDatabase, VleRecord};
 #[cfg(feature = "zstd-real")]
 pub use zstd_real::ZstdReal;
 

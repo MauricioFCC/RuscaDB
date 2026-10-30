@@ -175,25 +175,41 @@ Ejecutar el gate de mutacion completo en nightly (objetivo >= 85%) y, cuando el
 consumidor lo requiera, exponer la cuantizacion en el ABI (primer gap upstream
 de la lista).
 
-## 9. Verificacion de gates (2026-10-29)
+## 9. Verificacion de gates (2026-10-30)
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test -p ruscadb --all-features`: OK (211 lib tests + integracion).
+- `cargo test -p ruscadb --all-features`: OK (280 lib tests + integracion).
 - `cargo xtask trace`: 568 AC trazados.
 - `cargo xtask contract`: OK.
 - `scripts/check_architecture.py`: 0 ciclos, 0 aristas prohibidas.
 - `scripts/check_core_unsafe.py`: OK (presupuesto 76).
 - `scripts/check_ci_config.py`: OK.
+- `scripts/check_specs.py`: 175 specs, 44 `real` + 1 `placeholder`.
 
 ## 10. Modulos stub declarados (no cablear aun)
 
-Auditoria 2026-10-30: estos modulos exponen API publica pero su logica es
-simplificada. Sus specs llevan `maturity: stub` y **no deben consumirse como
-produccion** (evita el anti-patron "implemented de nombre"):
+Auditoria 2026-10-30: **0 modulos stub**. Los siete ultimos
+(`async_io`, `branching`, `concurrent_txn`, `lance_format`, `pgwire`, `simd`,
+`vle`) pasaron a `maturity: real` en el ciclo 4 con estas implementaciones y
+limites declarados:
 
-`async_io`, `branching`, `concurrent_txn`, `lance_format`, `pgwire`, `simd`,
-`vle`.
+- `concurrent_txn` (SPEC-0131): `ConcurrentTxnManager` delega en
+  `TxnManager` real; first-committer-wins sobre claves declaradas.
+- `branching` (SPEC-0139): `BranchManager` sobre `CowBTree` persistente;
+  `fork_from` `O(1)`, merge por union con prioridad al destino.
+- `vle` (SPEC-0137): contenedor single-file `RUSCVLE1` con checksum FNV-1a,
+  validacion de cotas y deteccion de truncamiento/corrupcion.
+- `async_io` (SPEC-0151): `Future` + `poll_read` en memoria (sin Tokio); el
+  offload real lo hace el executor del consumidor.
+- `simd` (SPEC-0150): 4 acumuladores independientes + suma compensada de
+  Neumaier; **sin intrinsics** por `forbid(unsafe_code)`
+  (`is_hardware_simd() == false` honesto).
+- `lance_format` (SPEC-0136): contenedor columnar propio `RLNC1` con
+  round-trip exacto; **no es compatible con el formato Lance** (requiere el
+  crate `lance`) y no implementa ALP/FastLanes.
+- `pgwire` (SPEC-0113): codec wire v3 (big-endian) de frontend/backend y
+  `handle_query`; **sin servidor TCP** (el bind queda en el adapter).
 
 Pasaron a `maturity: real` en este ciclo:
 
@@ -236,5 +252,5 @@ Pasaron a `maturity: real` en este ciclo:
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
 - **`docs/specs-index.md`**: indice generado (175 specs) con
   `scripts/gen_specs_index.py`; fuente unica para ver status y madurez.
-- Estado: 174 `implemented` + 1 `proposed`; madurez declarada 37 `real`,
-  7 `stub`, 1 `placeholder` (el resto sin declarar).
+- Estado: 174 `implemented` + 1 `proposed`; madurez declarada **44 `real`,
+  0 `stub`, 1 `placeholder`** (el resto sin declarar).

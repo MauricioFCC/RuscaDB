@@ -2,7 +2,7 @@
 id: SPEC-0136
 feature: lance_format
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 8
 boundaries:

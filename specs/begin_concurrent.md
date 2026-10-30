@@ -2,7 +2,7 @@
 id: SPEC-0131
 feature: begin_concurrent
 status: implemented
-maturity: stub
+maturity: real
 owner: storage-team
 appetite_days: 6
 boundaries:
@@ -14,7 +14,7 @@ fr:
   - { id: FR-0131-02, desc: "snapshot isolation: el lector ve el estado al BEGIN" }
   - { id: FR-0131-03, desc: "row-level conflict detection en commit (first-committer-wins)" }
 nf:
-  - { id: NF-0131-01, desc: "retryable Busy/BusySnapshot errors en todos los SDKs" }
+  - { id: NF-0131-01, desc: "retryable WriteConflict errors en todos los SDKs" }
 acceptance_criteria:
   - id: AC-0131-01
     given: dos writers concurrentes sobre filas disjuntas
@@ -24,7 +24,7 @@ acceptance_criteria:
   - id: AC-0131-02
     given: dos writers sobre la misma fila
     when: ambos hacen commit
-    then: el segundo recibe BusySnapshot (retryable)
+    then: el segundo recibe WriteConflict { key } (retryable)
     test: test_ac_0131_02_same_row_conflict
 exit_criteria:
   - cargo test -p ruscadb --all-features --test begin_concurrent
@@ -53,7 +53,7 @@ exclusivo (SPEC-0076). Esta spec aÃ±ade multi-writer detrÃ¡s de un feature f
 ## Estado del arte
 
 - **SQLRite** (sqlritedb.com): BEGIN CONCURRENT con snapshot isolation,
-  row-level conflict detection at commit, retryable Busy/BusySnapshot.
+  row-level conflict detection at commit, retryable WriteConflict.
 - **rust_sqlite** (joaoh82): multi-handle MVCC con logical clock.
 - **RuscaDB actual**: single-writer exclusivo, MVCC snapshot isolation,
   `TxnManager` con first-committer-wins por clave.
@@ -65,13 +65,13 @@ exclusivo (SPEC-0076). Esta spec aÃ±ade multi-writer detrÃ¡s de un feature f
 2. **BEGIN CONCURRENT**: crea una transacciÃ³n con snapshot aislado. No toma
    lock exclusivo.
 3. **Commit**: detecta conflictos write-write (first-committer-wins). Si hay
-   conflicto, devuelve `BusySnapshot` (retryable).
+   conflicto, devuelve `WriteConflict { key }` (retryable).
 4. **ReconciliaciÃ³n**: el caller reintenta con un nuevo snapshot.
 
 ## Criterios de aceptaciÃ³n
 
 - **AC-0131-01** â€” writers disjuntos: ambos commit con Ã©xito.
-- **AC-0131-02** â€” writers sobre la misma fila: el segundo recibe BusySnapshot.
+- **AC-0131-02** â€” writers sobre la misma fila: el segundo recibe `WriteConflict`.
 
 ## Notas
 

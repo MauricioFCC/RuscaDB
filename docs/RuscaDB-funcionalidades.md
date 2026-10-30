@@ -203,7 +203,7 @@ extendido (RQL)**.
 | `columnar` | SPEC-0110 | Engine columnar en memoria (typed columns, scan, project, filter, aggregates) |
 | `onnx` | SPEC-0111 | Inferencia ONNX (modelo lineal, salida normalizada) |
 | `geo` | SPEC-0112 | Tipos geoespaciales (Point, Rect) con distancia y contención |
-| `pgwire` | SPEC-0113 | Servidor PostgreSQL wire protocol (stub) |
+| `pgwire` | SPEC-0113 | Codec PostgreSQL wire v3 (big-endian): frontend/backend + `handle_query`; sin servidor TCP |
 | `spatial` | SPEC-0114 | Índice espacial R-tree (insert + range query) |
 | `compression` | SPEC-0115 | Compresión RLE (compress/decompress) |
 | `backup` | SPEC-0116 | Backup online (copia de ficheros) |
