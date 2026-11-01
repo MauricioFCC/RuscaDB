@@ -1197,10 +1197,10 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
 
 ## Estado actual (2026-10-30)
 
-- 23 crates, 181 specs (175 `implemented` + 3 `accepted` + 3 `proposed`), 586 AC trazados.
+- 23 crates, 182 specs (176 `implemented` + 3 `accepted` + 3 `proposed`), 590 AC trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- Madurez declarada: **45 `real`, 5 `stub`, 1 `placeholder`** (ML-KEM, decision
+- Madurez declarada: **46 `real`, 5 `stub`, 1 `placeholder`** (ML-KEM, decision
   en `docs/adr/ADR-0180-post-quantum-deferred.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).

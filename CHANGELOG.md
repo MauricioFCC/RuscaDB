@@ -9,6 +9,11 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 10 (2026-11-02)**:
+  - **SPEC-0187**: `CrdtSyncReal::{to_bytes, from_bytes}` (`RCRD1`),
+    `Database::last_tx_id()`, manifiesto `ruscadb::FEATURES` y
+    `contract::{fingerprint, fingerprint_hex}`.
+
 - **Ciclo 9 (2026-11-02)**:
   - Investigación SurrealDB (`docs/research/surrealdb-2026-11-02.md`): RELATE,
     paths de grafo, LET/IF/RETURN, LIVE fuera de alcance.
