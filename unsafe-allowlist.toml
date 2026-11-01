@@ -5,7 +5,7 @@
 # `#![allow(unsafe_code)]` y cuyo conteo de bloques `unsafe` no puede superar
 # este presupuesto. Ningún `unsafe` nuevo entra sin `// SAFETY:` + test.
 #
-# `scripts/check_core_unsafe.py` verifica este archivo y el crate core.
+# `cargo xtask check-unsafe` verifica este archivo y el crate core.
 
 [budget]
 ruscadb-core = 0

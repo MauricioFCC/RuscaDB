@@ -89,6 +89,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/download-artifact@v6
         with:
           pattern: mutants-outcomes-*
@@ -100,7 +102,7 @@ jobs:
             echo "No se descargaron outcomes.json de ningun shard" >&2
             exit 2
           fi
-          python3 scripts/mutation_score.py --threshold 85 "${files[@]}"
+          cargo xtask mutation-score --threshold 85 "${files[@]}"
 
   fuzz:
     name: Fuzz (${{ matrix.target }})

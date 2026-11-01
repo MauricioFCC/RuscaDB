@@ -291,7 +291,7 @@ def check_nightly(errors: list[str]) -> None:
                     "nightly.yml: 'mutation-score' debe depender de 'mutation'"
                 )
             gate_text = str(gate)
-            for token in ("mutation_score.py", "--threshold"):
+            for token in ("cargo xtask mutation-score", "--threshold"):
                 if token not in gate_text:
                     errors.append(
                         f"nightly.yml: 'mutation-score' debe usar {token}"
@@ -327,7 +327,7 @@ def check_nightly(errors: list[str]) -> None:
         errors.append(
             f"nightly.yml: no declara el runner '{NIGHTLY_OS}' (chequeo textual)"
         )
-    if "mutation-score:" not in text or "mutation_score.py" not in text:
+    if "mutation-score:" not in text or "cargo xtask mutation-score" not in text:
         errors.append(
             "nightly.yml: falta el gate agregado 'mutation-score' "
             "(chequeo textual)"
@@ -583,12 +583,12 @@ def check_release_config(errors: list[str]) -> None:
         else:
             for needle, why in [
                 (
-                    "check_commits.py",
-                    "el job 'commits' debe correr scripts/check_commits.py",
+                    "cargo xtask check-commits",
+                    "el job 'commits' debe correr cargo xtask check-commits",
                 ),
                 (
-                    "check_changelog.py",
-                    "el job 'commits' debe correr scripts/check_changelog.py",
+                    "cargo xtask check-changelog",
+                    "el job 'commits' debe correr cargo xtask check-changelog",
                 ),
                 (
                     "pull_request",
@@ -605,7 +605,7 @@ def check_release_config(errors: list[str]) -> None:
         ("tags:", "release.yml debe dispararse en tags"),
         ("contents: write", "release.yml necesita contents: write para publicar"),
         (
-            "check_changelog.py",
+            "cargo xtask check-changelog",
             "release.yml debe validar el CHANGELOG antes de publicar",
         ),
         ("cyclonedx", "release.yml debe generar el SBOM (CycloneDX)"),

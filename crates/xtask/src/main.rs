@@ -15,6 +15,7 @@
 //!
 //! Sin dependencias externas (solo `std`) para mantener el bootstrap liviano.
 
+mod guards;
 mod judge;
 mod red;
 
@@ -31,8 +32,131 @@ fn main() -> ExitCode {
         "contract" => contract_cmd(),
         "judge" => judge_cmd(args.next()),
         "red" => red_cmd(args.next()),
+        "check-architecture" => guard_cmd(guards::check_architecture),
+        "check-unsafe" => guard_cmd(guards::check_unsafe),
+        "check-specs" => guard_cmd(guards::check_specs),
+        "gen-specs-index" => guard_cmd(guards::gen_specs_index),
+        "mutation-score" => mutation_score_cmd(args.collect()),
+        "check-commits" => check_commits_cmd(args.collect()),
+        "check-changelog" => check_changelog_cmd(args.collect()),
         other => {
-            eprintln!("comando desconocido: {other} (disponibles: trace, contract, judge, red)");
+            eprintln!(
+                "comando desconocido: {other} (disponibles: trace, contract, judge, red, \
+                 check-architecture, check-unsafe, check-specs, gen-specs-index, mutation-score, \
+                 check-commits, check-changelog)"
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `check-commits [--range A..B | --file ruta | --message texto]`.
+fn check_commits_cmd(args: Vec<String>) -> ExitCode {
+    match guards::check_commits(&args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(detail) => {
+            eprintln!("[FAIL] {detail}");
+            exit_for(&detail)
+        }
+    }
+}
+
+/// Codigo de salida: 2 para errores de entrada, 1 para incumplimientos.
+fn exit_for(detail: &str) -> ExitCode {
+    let input_error = detail.starts_with("sin mensajes")
+        || detail.starts_with("uso:")
+        || detail.contains("no se pudo leer")
+        || detail.contains("No such file")
+        || detail.contains("argumento desconocido");
+    if input_error {
+        ExitCode::from(2)
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+/// `check-changelog [ruta] [--tag vX.Y.Z] [--notes-out fichero]`.
+fn check_changelog_cmd(args: Vec<String>) -> ExitCode {
+    let mut path = PathBuf::from("CHANGELOG.md");
+    let mut tag = None;
+    let mut notes_out = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--tag" => {
+                index += 1;
+                tag = args.get(index).cloned();
+            }
+            "--notes-out" => {
+                index += 1;
+                notes_out = args.get(index).map(PathBuf::from);
+            }
+            value => path = PathBuf::from(value),
+        }
+        index += 1;
+    }
+    if !path.exists() {
+        eprintln!(
+            "[FAIL] no se pudo leer '{}': fichero inexistente",
+            path.display()
+        );
+        return ExitCode::from(2);
+    }
+    match guards::check_changelog(&path, tag.as_deref(), notes_out.as_deref()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(detail) => {
+            eprintln!("[FAIL] {detail}");
+            exit_for(&detail)
+        }
+    }
+}
+
+/// Ejecuta un guard que solo necesita la raiz del workspace.
+fn guard_cmd(check: fn(&Path) -> Result<(), String>) -> ExitCode {
+    let Some(root) = workspace_root() else {
+        eprintln!("[FAIL] xtask: no se pudo determinar la raiz del workspace");
+        return ExitCode::from(2);
+    };
+    match check(&root) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(detail) => {
+            eprintln!("[FAIL] {detail}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `mutation-score [--threshold N] [--allow-empty] <outcomes.json...>`.
+fn mutation_score_cmd(args: Vec<String>) -> ExitCode {
+    let mut threshold = 85.0_f64;
+    let mut allow_empty = false;
+    let mut paths = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--threshold" => {
+                index += 1;
+                let Some(value) = args.get(index).and_then(|value| value.parse().ok()) else {
+                    eprintln!(
+                        "uso: cargo xtask mutation-score [--threshold N] [--allow-empty] <json...>"
+                    );
+                    return ExitCode::from(2);
+                };
+                threshold = value;
+            }
+            "--allow-empty" => allow_empty = true,
+            value => paths.push(PathBuf::from(value)),
+        }
+        index += 1;
+    }
+    if paths.is_empty() {
+        eprintln!("uso: cargo xtask mutation-score [--threshold N] [--allow-empty] <json...>");
+        return ExitCode::from(2);
+    }
+    match guards::mutation_score(&paths, threshold, allow_empty) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(detail) => {
+            eprintln!("[FAIL] {detail}");
             ExitCode::FAILURE
         }
     }

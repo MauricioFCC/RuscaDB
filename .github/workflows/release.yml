@@ -44,10 +44,10 @@ jobs:
           ref="${{ inputs.tag != '' && inputs.tag || github.ref_name }}"
           echo "value=$ref" >> "$GITHUB_OUTPUT"
       - name: CHANGELOG enlazado con el tag
-        run: python scripts/check_changelog.py CHANGELOG.md --tag "${{ steps.tag.outputs.value }}"
+        run: cargo xtask check-changelog CHANGELOG.md --tag "${{ steps.tag.outputs.value }}"
       - name: Guards de arquitectura y config de CI
         run: |
-          python scripts/check_architecture.py
+          cargo xtask check-architecture
           python scripts/check_ci_config.py
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -155,7 +155,7 @@ jobs:
           sha256sum ruscadb-* > SHA256SUMS || true
           cat SHA256SUMS
       - name: Extract release notes from CHANGELOG
-        run: python scripts/check_changelog.py CHANGELOG.md --tag "${{ needs.gate.outputs.tag }}" --notes-out release-notes.md
+        run: cargo xtask check-changelog CHANGELOG.md --tag "${{ needs.gate.outputs.tag }}" --notes-out release-notes.md
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

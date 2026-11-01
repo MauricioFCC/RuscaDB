@@ -83,16 +83,16 @@ jobs:
         with:
           python-version: "3.12"
       - name: hexagonal + dependency cycles
-        run: python scripts/check_architecture.py
+        run: cargo xtask check-architecture
       - name: unsafe policy
-        run: python scripts/check_core_unsafe.py
+        run: cargo xtask check-unsafe
       # D1 (retrospectiva 5): la consistencia de esta propia config de CI
       # se declara gate T1 en AGENTS.md/verification.md; debe correr en CI,
       # no solo local. Valida ci.yml/nightly.yml/mutants.toml/deny.toml.
       - name: CI config consistency
         run: python scripts/check_ci_config.py
       - name: SDD spec frontmatter consistency
-        run: python scripts/check_specs.py
+        run: cargo xtask check-specs
       - name: SDD traceability (spec -> test)
         run: cargo xtask trace
       # D2 (retrospectiva 5): contrato bidireccional spec <-> test
@@ -131,9 +131,9 @@ jobs:
       - name: Fetch base branch
         run: git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
       - name: Conventional Commits
-        run: python scripts/check_commits.py --range origin/${{ github.base_ref }}..HEAD
+        run: cargo xtask check-commits --range origin/${{ github.base_ref }}..HEAD
       - name: CHANGELOG (Unreleased documentado)
-        run: python scripts/check_changelog.py CHANGELOG.md
+        run: cargo xtask check-changelog CHANGELOG.md
 
   # Gate RED-first (SPEC-0094): un spec en curso (`status: planned`/`draft`)
   # tocado por el PR debe tener sus tests en rojo. Solo PR (necesita el diff).

@@ -15,8 +15,8 @@
 - [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - [ ] `cargo test --workspace --all-features`
 - [ ] `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features`
-- [ ] `python scripts/check_architecture.py`
-- [ ] `python scripts/check_core_unsafe.py`
+- [ ] `cargo xtask check-architecture`
+- [ ] `cargo xtask check-unsafe`
 - [ ] `cargo xtask trace`
 - [ ] Mutation score ≥ 70% en los crates tocados
 

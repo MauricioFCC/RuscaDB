@@ -1,13 +1,13 @@
 //! Tests de aceptación de SPEC-0089 (automatización de releases/tags y
 //! validación de CHANGELOG/commits).
 //!
-//! Invocan `scripts/check_commits.py` y `scripts/check_changelog.py` con
+//! Invocan `cargo xtask check-commits` y `cargo xtask check-changelog` con
 //! entradas temporales y asientan los códigos de salida 0/1/2, además de
 //! comprobar el cableado en `.github/workflows/{ci,release}.yml` y en
 //! `scripts/check_ci_config.py`.
 //!
-//! Intérprete: `python` con fallback a `python3`; sin intérprete el test falla
-//! ruidosamente (nunca verde silencioso).
+//! Invoca el binario `xtask` compilado (`CARGO_BIN_EXE_xtask`); sin el el
+//! test falla ruidosamente (nunca verde silencioso).
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -17,38 +17,12 @@ fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
 
-/// Devuelve el intérprete de Python disponible (`python` o `python3`).
-///
-/// Panics:
-///     Si ningún intérprete está en PATH: sin Python no se puede verificar la
-///     spec AC-0089 (los validadores son Python), así que el fallo es ruidoso.
-fn python_interpreter() -> String {
-    for candidate in ["python", "python3"] {
-        if let Ok(output) = Command::new(candidate).arg("--version").output()
-            && output.status.success()
-        {
-            return candidate.to_string();
-        }
-    }
-    panic!(
-        "WHAT: falta un intérprete de Python para los tests de SPEC-0089. \
-         WHY: scripts/check_commits.py y check_changelog.py son Python. \
-         WHERE: instala Python 3 y asegúralo en PATH ('python' o 'python3'); \
-         test en crates/xtask/tests/release_automation.rs."
-    );
-}
-
-/// Ejecuta un script de `scripts/` con los argumentos dados.
-fn run_script(script: &str, args: &[&str]) -> Output {
-    let path = workspace_root().join("scripts").join(script);
-    let mut command = Command::new(python_interpreter());
-    command.arg(path);
-    for arg in args {
-        command.arg(arg);
-    }
-    command
+/// Ejecuta el binario `xtask` con los argumentos dados.
+fn run_xtask(args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(args)
         .output()
-        .unwrap_or_else(|e| panic!("no se pudo ejecutar {script}: {e}"))
+        .unwrap_or_else(|error| panic!("no se pudo ejecutar xtask: {error}"))
 }
 
 /// Concatena stdout y stderr de una salida (para asertar el mensaje).
@@ -81,7 +55,7 @@ fn test_ac_0089_01_commit_lint_accepts_and_rejects() {
         "feat(db): soporte KNN\ndocs: aclarar la guía de API\nMerge branch 'main'\n",
     )
     .expect("escribir valid.txt");
-    let output = run_script("check_commits.py", &["--file", valid.to_str().unwrap()]);
+    let output = run_xtask(&["check-commits", "--file", valid.to_str().unwrap()]);
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -92,7 +66,7 @@ fn test_ac_0089_01_commit_lint_accepts_and_rejects() {
     let invalid = dir.join("invalid.txt");
     std::fs::write(&invalid, "wip: no permitido\nfeat(db): esto sí\n")
         .expect("escribir invalid.txt");
-    let output = run_script("check_commits.py", &["--file", invalid.to_str().unwrap()]);
+    let output = run_xtask(&["check-commits", "--file", invalid.to_str().unwrap()]);
     let text = combined(&output);
     assert_eq!(
         output.status.code(),
@@ -106,7 +80,7 @@ fn test_ac_0089_01_commit_lint_accepts_and_rejects() {
 
     let empty = dir.join("empty.txt");
     std::fs::write(&empty, "").expect("escribir empty.txt");
-    let output = run_script("check_commits.py", &["--file", empty.to_str().unwrap()]);
+    let output = run_xtask(&["check-commits", "--file", empty.to_str().unwrap()]);
     assert_eq!(
         output.status.code(),
         Some(2),
@@ -125,7 +99,7 @@ fn test_ac_0089_02_changelog_gate_enforces_version() {
     let changelog = workspace_root().join("CHANGELOG.md");
     let changelog_arg = changelog.to_str().unwrap();
 
-    let output = run_script("check_changelog.py", &[changelog_arg]);
+    let output = run_xtask(&["check-changelog", changelog_arg]);
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -133,7 +107,7 @@ fn test_ac_0089_02_changelog_gate_enforces_version() {
         combined(&output)
     );
 
-    let output = run_script("check_changelog.py", &[changelog_arg, "--tag", "v0.1.0"]);
+    let output = run_xtask(&["check-changelog", changelog_arg, "--tag", "v0.1.0"]);
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -141,7 +115,7 @@ fn test_ac_0089_02_changelog_gate_enforces_version() {
         combined(&output)
     );
 
-    let output = run_script("check_changelog.py", &[changelog_arg, "--tag", "v9.9.9"]);
+    let output = run_xtask(&["check-changelog", changelog_arg, "--tag", "v9.9.9"]);
     let text = combined(&output);
     assert_eq!(
         output.status.code(),
@@ -154,7 +128,7 @@ fn test_ac_0089_02_changelog_gate_enforces_version() {
     );
 
     let missing = workspace_root().join("no-existe-changelog.md");
-    let output = run_script("check_changelog.py", &[missing.to_str().unwrap()]);
+    let output = run_xtask(&["check-changelog", missing.to_str().unwrap()]);
     assert_eq!(
         output.status.code(),
         Some(2),
@@ -175,7 +149,11 @@ fn test_ac_0089_03_release_wiring_in_ci_and_workflow() {
         ci.contains("commits:"),
         "ci.yml debe declarar el job 'commits'"
     );
-    for needle in ["check_commits.py", "check_changelog.py", "pull_request"] {
+    for needle in [
+        "cargo xtask check-commits",
+        "cargo xtask check-changelog",
+        "pull_request",
+    ] {
         assert!(
             ci.contains(needle),
             "ci.yml: el job 'commits' debe cablear '{needle}'"
@@ -184,7 +162,12 @@ fn test_ac_0089_03_release_wiring_in_ci_and_workflow() {
 
     let release = std::fs::read_to_string(workspace_root().join(".github/workflows/release.yml"))
         .expect("no se pudo leer release.yml");
-    for needle in ["tags:", "contents: write", "check_changelog.py", "v*"] {
+    for needle in [
+        "tags:",
+        "contents: write",
+        "cargo xtask check-changelog",
+        "v*",
+    ] {
         assert!(release.contains(needle), "release.yml sin '{needle}'");
     }
 

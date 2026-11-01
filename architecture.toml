@@ -1,7 +1,7 @@
 # Contratos de dependencia declarados (equivalente Rust a `tach.toml`).
 #
 # Cada crate declara las aristas internas que PUEDE usar. El gate
-# `scripts/check_architecture.py` lee este archivo como fuente de verdad: una
+# `cargo xtask check-architecture` lee este archivo como fuente de verdad: una
 # arista nueva sin declarar bloquea el merge (revision explicita).
 #
 # Regla hexagonal: las flechas apuntan a `ruscadb-core`; un adapter no depende

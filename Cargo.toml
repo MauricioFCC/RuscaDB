@@ -2,7 +2,7 @@
 #
 # Base de datos embebida, multi-modelo y multimodal. Core en Rust.
 # Arquitectura hexagonal: las dependencias apuntan SIEMPRE hacia `ruscadb-core`.
-# El guard `scripts/check_architecture.py` verifica el grafo en CI (T1).
+# El guard `cargo xtask check-architecture` verifica el grafo en CI (T1).
 
 [workspace]
 resolver = "2"
