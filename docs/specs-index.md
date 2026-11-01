@@ -187,3 +187,4 @@
 | SPEC-0185 | `surreal_graph_relations` | proposed | stub | `surreal_graph_relations.md` |
 | SPEC-0186 | `surreal_session_expressions` | proposed | stub | `surreal_session_expressions.md` |
 | SPEC-0187 | `operability_api` | implemented | real | `operability_api.md` |
+| SPEC-0188 | `doctor_metrics` | implemented | real | `doctor_metrics.md` |

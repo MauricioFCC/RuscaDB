@@ -9,6 +9,11 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 11 (2026-11-02)**:
+  - **SPEC-0188**: `Database::doctor() -> DoctorReport` y CLI
+    `ruscadb doctor --db <ruta> --json`; `Database::metrics()` con queries,
+    filas, cache hits/misses y bytes de WAL.
+
 - **Ciclo 10 (2026-11-02)**:
   - **SPEC-0187**: `CrdtSyncReal::{to_bytes, from_bytes}` (`RCRD1`),
     `Database::last_tx_id()`, manifiesto `ruscadb::FEATURES` y

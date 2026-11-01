@@ -109,6 +109,10 @@ pub struct Database {
     pub(crate) registry: ModelRegistry,
     /// Último LSN confirmado (checkpoint en memoria).
     last_lsn: Lsn,
+    /// Queries ejecutadas (P2.5).
+    pub(crate) query_count: u64,
+    /// Filas devueltas acumuladas (P2.5).
+    pub(crate) rows_returned: u64,
     /// Overlay WAL en modo cifrado (SPEC-0106): `page_id -> (lsn, offset)`.
     ///
     /// Apunta al commit record que contiene la última imagen confirmada de
@@ -275,6 +279,8 @@ impl Database {
             active_tx: None,
             registry: ModelRegistry::new(),
             last_lsn: 0,
+            query_count: 0,
+            rows_returned: 0,
             wal_overlay: HashMap::new(),
             blobs,
             shadow_enabled: false,

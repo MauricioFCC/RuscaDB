@@ -235,6 +235,8 @@ impl Database {
     ///     rows_returned: Filas devueltas (o servidas por caché).
     ///     nanos: Nanosegundos de la ejecución.
     pub(crate) fn note_execution(&mut self, rows_returned: usize, nanos: u64) {
+        self.query_count = self.query_count.saturating_add(1);
+        self.rows_returned = self.rows_returned.saturating_add(rows_returned as u64);
         self.cost_report.queries += 1;
         self.cost_report.rows_returned += rows_returned as u64;
         self.cost_report.nanos += nanos;
@@ -380,6 +382,18 @@ pub(crate) fn query_signature(query: &str) -> Option<String> {
     masked.push_str("[?]");
     masked.push_str(&tail[end + 1..]);
     Some(masked.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+impl SemanticCache {
+    /// Hits del cache semantico.
+    pub(crate) fn hits(&self) -> u64 {
+        self.hits
+    }
+
+    /// Misses del cache semantico.
+    pub(crate) fn misses(&self) -> u64 {
+        self.misses
+    }
 }
 
 #[cfg(test)]

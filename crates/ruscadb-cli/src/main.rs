@@ -98,10 +98,57 @@ fn run(args: &[String]) -> Result<(), CliError> {
         "script" => run_script(&args[1..]),
         "table" => run_table(&args[1..]),
         "mcp" => run_mcp(&args[1..]),
+        "doctor" => run_doctor(&args[1..]),
         other => Err(CliError::Usage(format!(
             "subcomando desconocido '{other}'. Usa 'ruscadb help' para ver la lista"
         ))),
     }
+}
+
+/// `doctor --db <ruta> [--json]`: diagnostico de integridad y estado.
+fn run_doctor(args: &[String]) -> Result<(), CliError> {
+    let options = parse_options(args, true)?;
+    let mut database = open_database(&options.db)?;
+    let report = database
+        .doctor()
+        .map_err(|error| CliError::Runtime(format!("doctor: {error}")))?;
+    if options.json {
+        let features: Vec<String> = report
+            .features
+            .iter()
+            .map(|feature| format!("\"{feature}\""))
+            .collect();
+        println!(
+            "{{\"schema_version\":{},\"integrity_ok\":{},\"wal_ok\":{},\"heap_ok\":{},\"vector_ok\":{},\"last_tx_id\":{},\"features\":[{}],\"details\":[{}]}}",
+            report.schema_version,
+            report.integrity_ok,
+            report.wal_ok,
+            report.heap_ok,
+            report.vector_ok,
+            report.last_tx_id,
+            features.join(","),
+            report
+                .details
+                .iter()
+                .map(|detail| format!("\"{}\"", detail.replace('\\', "\\\\").replace('"', "\\\"")))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+    } else {
+        println!(
+            "schema_version={} integridad={} wal={} heap={} vector={} last_tx_id={}",
+            report.schema_version,
+            report.integrity_ok,
+            report.wal_ok,
+            report.heap_ok,
+            report.vector_ok,
+            report.last_tx_id
+        );
+        for detail in &report.details {
+            println!("  - {detail}");
+        }
+    }
+    Ok(())
 }
 
 /// Ejecuta una sentencia RQL suelta.
