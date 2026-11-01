@@ -43,7 +43,7 @@ exit_criteria:
   - cargo test -p ruscadb-mcp --all-features
   - cargo test -p ruscadb-crypto
   - cargo clippy --workspace --all-targets --all-features -- -D warnings
-  - python scripts/check_architecture.py
+  - cargo xtask check-architecture
   - cargo xtask trace / contract verdes
 rollback:
   - retirar session/auth y el keystore: el servidor vuelve al comportamiento sin auth (SPEC-0068/0075)

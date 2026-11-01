@@ -6,11 +6,11 @@ owner: release-team
 appetite_days: 2
 boundaries:
   crates: [xtask]
-  files: [scripts/check_commits.py, scripts/check_changelog.py, .github/workflows/release.yml, .github/workflows/ci.yml, scripts/check_ci_config.py, docs/verification.md, CHANGELOG.md]
+  files: [cargo xtask check-commits, cargo xtask check-changelog, .github/workflows/release.yml, .github/workflows/ci.yml, scripts/check_ci_config.py, docs/verification.md, CHANGELOG.md]
   out_of_scope: [publicacion en crates.io/registries, firma de artefactos/attestations, changelog autogenerado desde git log, releases de bindings por lenguaje, auto-merge de Dependabot]
 fr:
-  - { id: FR-0089-01, desc: "scripts/check_commits.py valida Conventional Commits en el rango de un PR (stdlib, sin dependencias)" }
-  - { id: FR-0089-02, desc: "scripts/check_changelog.py exige una seccion versionada en CHANGELOG.md para el tag que se libera y un [Unreleased] con contenido" }
+  - { id: FR-0089-01, desc: "cargo xtask check-commits valida Conventional Commits en el rango de un PR (stdlib, sin dependencias)" }
+  - { id: FR-0089-02, desc: "cargo xtask check-changelog exige una seccion versionada en CHANGELOG.md para el tag que se libera y un [Unreleased] con contenido" }
   - { id: FR-0089-03, desc: "release.yml publica un GitHub Release al empujar un tag v* (notas del CHANGELOG + SBOM); ci.yml gana un job commits (solo PR) que corre ambos validadores" }
 nf:
   - { id: NF-0089-01, desc: "solo stdlib de Python (consistente con SPEC-0061/SPEC-0079); sin dependencias nuevas" }
@@ -19,12 +19,12 @@ nf:
 acceptance_criteria:
   - id: AC-0089-01
     given: un rango con mensajes Conventional Commits validos y otro con un mensaje invalido
-    when: se ejecuta check_commits.py sobre cada rango
+    when: se ejecuta cargo xtask check-commits sobre cada rango
     then: exit 0 en el valido y exit 1 nombrando el commit infractor en el invalido
     test: test_ac_0089_01_commit_lint_accepts_and_rejects
   - id: AC-0089-02
     given: el CHANGELOG.md y un tag vX.Y.Z
-    when: se ejecuta check_changelog.py con ese tag
+    when: se ejecuta cargo xtask check-changelog con ese tag
     then: exit 0 si existe [X.Y.Z] con contenido; exit 1 si falta; exit 2 si el fichero no existe
     test: test_ac_0089_02_changelog_gate_enforces_version
   - id: AC-0089-03
@@ -34,8 +34,8 @@ acceptance_criteria:
     test: test_ac_0089_03_release_wiring_in_ci_and_workflow
 exit_criteria:
   - cargo test -p xtask --test release_automation
-  - python scripts/check_commits.py --message "feat(db): example"  (run local real)
-  - python scripts/check_changelog.py CHANGELOG.md --tag v0.1.0
+  - cargo xtask check-commits --message "feat(db): example"  (run local real)
+  - cargo xtask check-changelog CHANGELOG.md --tag v0.1.0
   - cargo clippy --workspace --all-targets --all-features -- -D warnings
   - python scripts/check_ci_config.py
 rollback:
@@ -62,11 +62,11 @@ es el recomendado por la guia de hardening de GitHub Actions.
 
 ## Superficie
 
-- `scripts/check_commits.py`: valida `type(scope): descripcion` en un rango de
+- `cargo xtask check-commits`: valida `type(scope): descripcion` en un rango de
   git (`--range`), en un fichero de mensajes (`--file`) o en uno suelto
   (`--message`). Ignora merge/revert de git; fallo ruidoso (exit 2) si no hay
   commits que revisar.
-- `scripts/check_changelog.py`: exige `[Unreleased]` con contenido y, con
+- `cargo xtask check-changelog`: exige `[Unreleased]` con contenido y, con
   `--tag vX.Y.Z`, la seccion `[X.Y.Z]` con contenido.
 - `.github/workflows/ci.yml` (job `commits`, solo PR): corre ambos scripts
   contra el rango `origin/<base>..HEAD`.

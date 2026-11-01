@@ -39,8 +39,8 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo doc --workspace --no-deps --all-features
-python scripts/check_architecture.py
-python scripts/check_core_unsafe.py
+cargo xtask check-architecture
+cargo xtask check-unsafe
 python scripts/check_ci_config.py
 cargo xtask trace
 ```
@@ -53,8 +53,8 @@ Qué protege cada comando:
 | `cargo clippy ... -D warnings` | Lints del workspace (incl. `undocumented_unsafe_blocks`). |
 | `cargo test --workspace --all-features` | Tests unitarios, de integración y doctests. |
 | `cargo doc --workspace --no-deps --all-features` | Referencia de API sin warnings de rustdoc. |
-| `python scripts/check_architecture.py` | Hexagonal: el grafo de dependencias apunta a `ruscadb-core`; sin ciclos. |
-| `python scripts/check_core_unsafe.py` | Presupuesto de `unsafe` (`unsafe-allowlist.toml`). |
+| `cargo xtask check-architecture` | Hexagonal: el grafo de dependencias apunta a `ruscadb-core`; sin ciclos. |
+| `cargo xtask check-unsafe` | Presupuesto de `unsafe` (`unsafe-allowlist.toml`). |
 | `python scripts/check_ci_config.py` | Consistencia de la configuración de CI. |
 | `cargo xtask trace` | Trazabilidad *spec → test* (cada AC tiene su test). |
 

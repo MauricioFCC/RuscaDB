@@ -28,9 +28,9 @@ testing** (`specs/<feature>.md` antes del código).
 
 - Las flechas de dependencia apuntan **siempre hacia `ruscadb-core`**.
 - Un adapter **no** depende de otro adapter; la composición vive en la fachada.
-- Guard obligatorio: `python scripts/check_architecture.py` (0 ciclos, 0 aristas prohibidas).
+- Guard obligatorio: `cargo xtask check-architecture` (0 ciclos, 0 aristas prohibidas).
 - `unsafe` solo en `ruscadb-ffi` (presupuesto en `unsafe-allowlist.toml`); todo
-  bloque con `// SAFETY:`. `python scripts/check_core_unsafe.py`.
+  bloque con `// SAFETY:`. `cargo xtask check-unsafe`.
 
 ## Gate T1 (antes de commit)
 
@@ -39,10 +39,10 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo doc --workspace --no-deps --all-features   # RUSTDOCFLAGS=-D warnings
-python scripts/check_architecture.py
-python scripts/check_core_unsafe.py
+cargo xtask check-architecture
+cargo xtask check-unsafe
 python scripts/check_ci_config.py
-python scripts/check_specs.py
+cargo xtask check-specs
 cargo xtask trace
 cargo xtask contract
 ```

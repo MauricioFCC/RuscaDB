@@ -63,8 +63,8 @@ exit_criteria:
   - cargo clippy --workspace --all-targets --all-features -- -D warnings
   - cargo test --workspace --all-features
   - cargo doc --workspace --no-deps --all-features (RUSTDOCFLAGS=-D warnings)
-  - python scripts/check_architecture.py
-  - python scripts/check_core_unsafe.py
+  - cargo xtask check-architecture
+  - cargo xtask check-unsafe
   - cargo xtask trace / contract verdes
   - cargo mutants -p ruscadb --in-diff MS_diff >= 70%
 rollback:

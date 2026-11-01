@@ -28,14 +28,14 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features --locked
 
 # 3) Guardrails de arquitectura y unsafe
-python scripts/check_architecture.py   # hexagonal: 0 ciclos, 0 aristas prohibidas
-python scripts/check_core_unsafe.py    # política de unsafe y presupuestos
+cargo xtask check-architecture   # hexagonal: 0 ciclos, 0 aristas prohibidas
+cargo xtask check-unsafe    # política de unsafe y presupuestos
 
 # 4) Trazabilidad SDD (spec -> test)
-python scripts/check_specs.py   # frontmatter, ids unicos, status/maturity
+cargo xtask check-specs   # frontmatter, ids unicos, status/maturity
 cargo xtask trace
 cargo xtask contract   # marcadores @spec y estados de specs (SPEC-0061)
-# indice generado: python scripts/gen_specs_index.py -> docs/specs-index.md
+# indice generado: cargo xtask gen-specs-index -> docs/specs-index.md
 
 # 5) Config de CI/supply chain (SPEC-0016)
 python scripts/check_ci_config.py
@@ -90,9 +90,9 @@ push/PR. Ver la sección T3.
 
 Dos jobs adicionales en `ci.yml`:
 
-- **`commits`** (solo `pull_request`): corre `scripts/check_commits.py
+- **`commits`** (solo `pull_request`): corre `cargo xtask check-commits
   --range origin/<base>..HEAD` (Conventional Commits) y
-  `scripts/check_changelog.py CHANGELOG.md` (sección `[Unreleased]`
+  `cargo xtask check-changelog CHANGELOG.md` (sección `[Unreleased]`
   documentada). Falla ruidoso (exit 2) si no hay commits que revisar.
 - **`msrv`**: compila con la toolchain del piso (`rust-version` = 1.89) y
   `cargo check --workspace --all-features --locked`, para que el MSRV no sea
@@ -107,8 +107,8 @@ en el job de publicación.
 
 ```bash
 # Local: los mismos validadores que CI
-python scripts/check_commits.py --range origin/main..HEAD
-python scripts/check_changelog.py CHANGELOG.md --tag v0.1.0 --notes-out notas.md
+cargo xtask check-commits --range origin/main..HEAD
+cargo xtask check-changelog CHANGELOG.md --tag v0.1.0 --notes-out notas.md
 python scripts/check_ci_config.py
 ```
 
@@ -443,8 +443,8 @@ el parseo de T1/T2/T3.
 | `nightly.yml` (`test-macos`) | SPEC-0046/AC-02 | idem |
 | `ci.yml` (`mutation-diff`) | SPEC-0061/T2m | `scripts/mutation_diff_gate.py` (MS_diff ≥ 70 %) |
 | `ci.yml` (`coverage`) | SPEC-0061 | `scripts/coverage_gate.py` (core ≥ 80/70) |
-| `ci.yml` (`commits`) | SPEC-0089/AC-03 | `scripts/check_commits.py` + `scripts/check_changelog.py` |
-| `release.yml` (tags `v*`) | SPEC-0089/AC-03 | `scripts/check_changelog.py --tag` + SBOM |
+| `ci.yml` (`commits`) | SPEC-0089/AC-03 | `cargo xtask check-commits` + `cargo xtask check-changelog` |
+| `release.yml` (tags `v*`) | SPEC-0089/AC-03 | `cargo xtask check-changelog --tag` + SBOM |
 | `ci.yml` (`msrv`) | SPEC-0090/AC-01 | `scripts/check_ci_config.py` (`rust-version`) |
 | `ruscadb` (`Database::update`) | SPEC-0091/AC-01 | `cargo test -p ruscadb --test row_update_api` |
 | `ruscadb-mcp` (`update`/`delete`) | SPEC-0091/AC-02..04 | `cargo test -p ruscadb-mcp --test mcp_write_tools_advanced` |

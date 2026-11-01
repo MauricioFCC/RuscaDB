@@ -130,6 +130,6 @@ Cada release publica el `.tar.gz`, el checksum `.sha256` y el agregado
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
-python scripts/check_architecture.py
+cargo xtask check-architecture
 cargo xtask trace
 ```

@@ -84,7 +84,7 @@ versión AEAD moderna: el tag Poly1305 sustituye al HMAC separado):
 - **Arquitectura**: `ruscadb-crypto` es hoja pura (sin E/S), misma categoría
   de confianza que `ruscadb-core`; se añaden las aristas
   `wal → crypto`, `multimodal → crypto`, `fachada → crypto` en
-  `scripts/check_architecture.py` (ya aplicado en el setup).
+  `cargo xtask check-architecture` (ya aplicado en el setup).
 
 ## Criterios de aceptación
 

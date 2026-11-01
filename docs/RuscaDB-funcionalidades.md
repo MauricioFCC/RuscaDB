@@ -19,7 +19,7 @@ extendido (RQL)**.
   en la fachada `ruscadb`.
 - **23 crates** en el workspace (dominio, storage, WAL, query, índices, crypto,
   txn, bindings, MCP, CLI, xtask).
-- Guard de arquitectura: `scripts/check_architecture.py` (0 ciclos, 0 aristas
+- Guard de arquitectura: `cargo xtask check-architecture` (0 ciclos, 0 aristas
   prohibidas).
 - `unsafe` solo en `ruscadb-ffi`, presupuestado en `unsafe-allowlist.toml`.
 

@@ -9,6 +9,20 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 6 (2026-11-01)**:
+  - **SPEC-0182** `CASE` dentro de agregados (`SUM/AVG/MIN/MAX(CASE ...)`) y
+    literales booleanos en `WHERE` (`= TRUE/FALSE`, columna desnuda,
+    `IS [NOT] TRUE/FALSE`).
+  - **P1.1** `ColumnarTable::{write_rcol1, read_rcol1}` (round-trip `RCOL1`/ALP).
+  - **P1.3** `Database::insert_with_vector` / `insert_with_embedding`: asocia un
+    embedding a una fila relacional; `KNN` lo resuelve sobre `Record.vector`.
+  - **P1.2** `Database::with_isolation(IsoLevel)`: `ReadCommitted` refresca por
+    lectura; `Snapshot` fija el snapshot en `begin`; `Serializable` activa SSI.
+  - **Refactor** `executor.rs` en 7 submodulos cohesivos (max. 630 lineas).
+  - **Tooling** los guards de arquitectura, unsafe, specs, indice, mutacion,
+    commits y changelog pasan a `cargo xtask` (Rust); se retiran los scripts
+    Python equivalentes.
+
 - **Ciclo 5 (2026-10-30)**:
   - **SPEC-0181** `knn_modes`: `KNN ... USING AUTO|QUANTIZED|FILTERED|EXACT` en
     RQL y `ruscadb_search_quantized` / `ruscadb_search_filtered` en la C-ABI
@@ -16,7 +30,7 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   - **SPEC-0110** `columnar` en disco: contenedor `RCOL1` con **ALP** en
     flotantes, FOR + bit-packing en enteros, etiquetado para texto/NULL/bool y
     escritura atomica; validacion de magia/version/cotas/truncamiento.
-  - **Mutacion T3**: `scripts/mutation_score.py` agrega los shards y el job
+  - **Mutacion T3**: `cargo xtask mutation-score` agrega los shards y el job
     `mutation-score` de nightly **falla** si el score global < 85 %.
 - **Changed**: `post-quantum` sale de `default` (el placeholder ML-KEM solo se
   compila con la feature explicita o `--all-features`), alineado con SPEC-0180.
@@ -238,8 +252,8 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
   proptest versionada.
 
 - **SPEC-0089** (Ola 5): automatización de releases y validación de
-  CHANGELOG/commits — `scripts/check_commits.py` (Conventional Commits sobre
-  rangos/ficheros) y `scripts/check_changelog.py` (`[Unreleased]` + sección
+  CHANGELOG/commits — `cargo xtask check-commits` (Conventional Commits sobre
+  rangos/ficheros) y `cargo xtask check-changelog` (`[Unreleased]` + sección
   versionada del tag, con `--notes-out`); job `commits` (solo PR) en `ci.yml`
   y `release.yml` que publica el GitHub Release al empujar un tag `v*` (notas
   del CHANGELOG + SBOM CycloneDX; `contents: write` solo al publicar).

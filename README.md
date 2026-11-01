@@ -184,7 +184,7 @@ facade and filters by MVCC snapshot visibility.
 
 Hexagonal (ports & adapters). **Dependency arrows always point toward
 `ruscadb-core`**; an adapter never depends on another adapter — composition lives
-in the `ruscadb` facade. The guard `scripts/check_architecture.py` enforces
+in the `ruscadb` facade. The guard `cargo xtask check-architecture` enforces
 0 cycles and 0 forbidden edges.
 
 ```mermaid
@@ -232,8 +232,8 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
-python scripts/check_architecture.py
-python scripts/check_core_unsafe.py
+cargo xtask check-architecture
+cargo xtask check-unsafe
 python scripts/check_ci_config.py
 cargo xtask trace
 ```

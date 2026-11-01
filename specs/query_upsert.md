@@ -73,8 +73,8 @@ exit_criteria:
   - cargo clippy --workspace --all-targets --all-features -- -D warnings
   - cargo test --workspace --all-features
   - cargo doc --workspace --no-deps --all-features (RUSTDOCFLAGS=-D warnings)
-  - python scripts/check_architecture.py
-  - python scripts/check_core_unsafe.py
+  - cargo xtask check-architecture
+  - cargo xtask check-unsafe
   - python scripts/check_ci_config.py
   - cargo xtask trace / contract verdes
   - cargo mutants --in-diff (-p ruscadb y -p ruscadb-query) MS_diff >= 70%

@@ -139,7 +139,7 @@ El resto de modulos nuevos anade tests de rama en este ciclo (NULL/3VL, float
 no finito, horizonte MVCC, listas disjuntas/vacias, mascara corta, magic
 incorrecta, serializacion determinista).
 
-**Gate T3 (nightly)**: `scripts/mutation_score.py` agrega los 8 shards y
+**Gate T3 (nightly)**: `cargo xtask mutation-score` agrega los 8 shards y
 **falla** si el score global < 85 % (job `mutation-score` de `nightly.yml`,
 bloqueante). Verificado localmente contra el run parcial de `segmented_wal`:
 `85,71 %` (12 caught, 2 missed) -> exit 0; un fixture 1/3 -> exit 1.
@@ -189,15 +189,15 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test -p ruscadb --all-features`: OK (284 lib tests + integracion; 646 en total).
-- `cargo test --workspace --all-features --exclude ruscadb`: OK (68 suites, 496 tests).
-- `cargo xtask trace`: 575 AC trazados.
+- `cargo test -p ruscadb --all-features`: OK (285 lib tests + integracion; 652 en total).
+- `cargo test --workspace --all-features --exclude ruscadb`: OK (68 suites, 497 tests).
+- `cargo xtask trace`: 580 AC trazados.
 - `cargo xtask contract`: OK.
-- `scripts/check_architecture.py`: 0 ciclos, 0 aristas prohibidas.
-- `scripts/check_core_unsafe.py`: OK (presupuesto 76).
+- `cargo xtask check-architecture`: 0 ciclos, 0 aristas prohibidas.
+- `cargo xtask check-unsafe`: OK (presupuesto 93).
 - `scripts/check_ci_config.py`: OK (incluye el gate `mutation-score`).
-- `scripts/check_specs.py`: 176 specs, 45 `real` + 1 `placeholder`.
-- `scripts/mutation_score.py`: 85,71 % sobre el run parcial de `segmented_wal`
+- `cargo xtask check-specs`: 177 specs, 46 `real` + 1 `placeholder`.
+- `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
 
 ## 10. Modulos stub declarados (no cablear aun)
@@ -264,10 +264,10 @@ Pasaron a `maturity: real` en este ciclo:
 
 ## 12. Refactor de specs (2026-10-30)
 
-- **`scripts/check_specs.py`**: valida frontmatter (id unico, feature, status),
+- **`cargo xtask check-specs`**: valida frontmatter (id unico, feature, status),
   `status`/`maturity` permitidos, ACs declarados con el prefijo correcto y
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
-- **`docs/specs-index.md`**: indice generado (176 specs) con
-  `scripts/gen_specs_index.py`; fuente unica para ver status y madurez.
-- Estado: 175 `implemented` + 1 `proposed`; madurez declarada **45 `real`,
+- **`docs/specs-index.md`**: indice generado (177 specs) con
+  `cargo xtask gen-specs-index`; fuente unica para ver status y madurez.
+- Estado: 176 `implemented` + 1 `proposed`; madurez declarada **46 `real`,
   0 `stub`, 1 `placeholder`** (el resto sin declarar).

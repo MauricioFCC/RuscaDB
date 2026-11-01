@@ -117,7 +117,7 @@ El `unsafe` es el riesgo número uno de una DB in-process. La política es
   `#![forbid(unsafe_code)]`.
 - El **presupuesto de bloques `unsafe` por crate** vive versionado en
   [`unsafe-allowlist.toml`](unsafe-allowlist.toml) y lo verifica
-  `scripts/check_core_unsafe.py` en el gate T1. Ningún `unsafe` nuevo entra sin
+  `cargo xtask check-unsafe` en el gate T1. Ningún `unsafe` nuevo entra sin
   ampliar el presupuesto en un PR revisado.
 - **Cada bloque `unsafe` lleva un comentario `// SAFETY:`** que justifica por qué
   las precondiciones se cumplen. Los lints

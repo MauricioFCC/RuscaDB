@@ -42,7 +42,7 @@ exit_criteria:
   - cargo run --example quickstart / vector_search / graph_traverse (run local)
   - cargo build --examples -p ruscadb && cargo test -p ruscadb --test examples_smoke
   - cargo clippy --workspace --all-targets --all-features -- -D warnings
-  - python scripts/check_architecture.py
+  - cargo xtask check-architecture
   - cargo xtask trace / contract verdes
 rollback:
   - borrar crates/ruscadb/examples/, tests/examples_smoke.rs y docs/api_guide.md (sin estado persistido: los ejemplos solo escriben en temporales)

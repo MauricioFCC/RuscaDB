@@ -923,7 +923,7 @@ completo + commit + CI verde antes de abrir la siguiente.
 | F6 — Hardening / Release (cifrado, MVP, CI, differential) | ✅ | SPEC-0011, SPEC-0013, SPEC-0030, SPEC-0031, SPEC-0042, SPEC-0045, SPEC-0059, SPEC-0062, SPEC-0066 |
 | Aceptadas pendientes (spec escrita, sin implementar) | ✅ | Ninguna: SPEC-0060/0061/0062 cerraron el ciclo. |
 | **Roadmap a producción — Olas 0–4 (SPEC-0076..0088)** | ✅ 13/13 | Olas 0–4 cerradas (2026-10-13): SPEC-0076 (lock cross-proceso), 0077 (migración forward-only), 0078 (API stability + semver CI), 0079 (cobertura multi-scope core/txn/wal), 0084 (ops docs + SECURITY), 0080 (spans tracing + metrics OFF), 0085 (free-list persistente + GC de derivados), 0086 (catálogo sin techo 64 KiB, formato v2 overflow), 0081 (group commit greedy-pipelined + FsyncPolicy + crash-harness), 0082 (gates SLO Mann-Whitney/bootstrap/A-A + slo.yml), 0083 (embeddings estáticos model2vec-rs + enmienda ADR-016), 0087 (examples ejecutables + `docs/api_guide.md`, smoke por subproceso), 0088 (session/auth MCP `-32001` + keystore KMS-lite con rotación). **386 AC trazados**. |
-| **Ola 5 — flujos P0 (SPEC-0089..0090)** | ✅ 2/2 | Cierra 2026-10-14: SPEC-0089 (automatización de releases/tags + validación CHANGELOG/commits: `check_commits.py`/`check_changelog.py`, job `commits` en PR, `release.yml` con SBOM) y SPEC-0090 (job `msrv` 1.89 en CI). |
+| **Ola 5 — flujos P0 (SPEC-0089..0090)** | ✅ 2/2 | Cierra 2026-10-14: SPEC-0089 (automatización de releases/tags + validación CHANGELOG/commits: `cargo xtask check-commits`/`cargo xtask check-changelog`, job `commits` en PR, `release.yml` con SBOM) y SPEC-0090 (job `msrv` 1.89 en CI). |
 | **Ola 6 — escritura MCP + caché persistente + BRDA + RED-first + MVP doc (SPEC-0091..0095)** | ✅ 5/5 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` + tools MCP `update`/`delete` read_write-only con RBAC delegado); SPEC-0092 (reporte de ramas BRDA por crate + artefacto JSON en CI); SPEC-0093 (sidecar `<data>.cache.json`: restauración best-effort, invalidación por mutación y omisión en bases cifradas); SPEC-0094 (`cargo xtask red` + job PR `red-first` con `scripts/red_first_gate.py`); SPEC-0095 (`docs/MVP.md` coherente con las Olas 0–6 + guard de contenido). |
 | **Ola 7 — cierre de límites del MVP (SPEC-0096…0105)** | ✅ 10/10 | 2026-10-14/16: SPEC-0096 (paginación `LIMIT/OFFSET`), SPEC-0097 (`SELECT DISTINCT`), SPEC-0098 (gate de mutación robusto; MS_diff 100 %), SPEC-0099 (`LEFT [OUTER] JOIN`), SPEC-0100 (provider LLM del harness: llama.cpp local / OpenAI prod), SPEC-0101 (compactación de índices derivados tras `reap`), SPEC-0102 (`RETURNING` en DML), SPEC-0103 (`RIGHT`/`FULL`/`CROSS JOIN`), SPEC-0104 (varios índices secundarios por tabla; catálogo v3/v4 con lectura v1/v2) y SPEC-0105 (`rollback` en modo cifrado: replay del WAL con la clave de apertura, sin tocar disco; límite retirado de `docs/MVP.md`). **448 AC trazados**. Pendiente: JOIN con `WHERE`/`ORDER BY`, KMS/HSM externo (Ola 8); `MERGE` SQL:2003 fuera de alcance. |
 | **Ola 8 — cierre de límites del MVP (SPEC-0106…0108)** | ✅ 3/3 | 2026-10-17/21: SPEC-0106 (pool acotado en modo cifrado: overlay `page_id → (lsn, offset)` + materialización perezosa desde commit records; `rollback` sin `replay()`; límite del pool retirado de `docs/MVP.md`, sustituido por «WAL sin checkpoint en cifrado») y **SPEC-0107** (`INSERT … ON CONFLICT (cols) DO NOTHING | DO UPDATE SET col = literal | excluded.col` con `RETURNING`; ambigüedad atómica; sin keywords nuevos). **464 AC trazados**. SPEC-0108 (`JOIN` con `WHERE`/`ORDER BY`) cerrado. Ola 8 completa. |
@@ -1146,12 +1146,26 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
 - **Politica**: `post-quantum` sale de `default` (el placeholder ML-KEM solo se
   compila con `--all-features` o la feature explicita).
 
+
+## Ola 17 - Expresiones RQL, APIs P1 y guards en Rust (SPEC-0182)
+
+- **P0**: `SUM/AVG/MIN/MAX(CASE ...)` y literales booleanos (`TRUE/FALSE`),
+  columna booleana desnuda e `IS [NOT] TRUE|FALSE` (SPEC-0182).
+- **P1**: `ColumnarTable::{write_rcol1, read_rcol1}`,
+  `Database::with_isolation(IsoLevel)` (`ReadCommitted`/`Snapshot`/`Serializable`) e
+  `insert_with_vector`/`insert_with_embedding` (KNN sobre filas relacionales).
+- **Refactor**: `executor.rs` (1836 lineas) dividido en `executor/{mod,budget,plan,
+  execute,knn,eval,rows,aggregate}.rs`; `cargo xtask` asume los guards
+  `check-architecture`, `check-unsafe`, `check-specs`, `gen-specs-index`,
+  `mutation-score`, `check-commits` y `check-changelog` (Rust, sin Python de
+  produccion). Python queda solo para coverage/SLO/LLM/CI-YAML.
+
 ## Estado actual (2026-10-30)
 
-- 23 crates, 176 specs (175 `implemented` + 1 `proposed`), 568 AC trazados.
+- 23 crates, 177 specs (176 `implemented` + 1 `proposed`), 579 AC trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- Madurez declarada: **45 `real`, 0 `stub`, 1 `placeholder`** (ML-KEM, decision
+- Madurez declarada: **46 `real`, 0 `stub`, 1 `placeholder`** (ML-KEM, decision
   en `docs/adr/ADR-0180-post-quantum-deferred.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).
