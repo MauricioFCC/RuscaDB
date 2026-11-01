@@ -702,6 +702,14 @@ impl Database {
         self.txn.is_ssi_enabled()
     }
 
+    /// Ultima transaccion asignada (para time-travel).
+    ///
+    /// Returns:
+    ///     `tx_id` que puede pasarse a [`Self::snapshot_at`].
+    pub fn last_tx_id(&self) -> u64 {
+        self.txn.snapshot().tx_id
+    }
+
     /// Toma un snapshot de visibilidad con el estado transaccional actual.
     ///
     /// Returns:

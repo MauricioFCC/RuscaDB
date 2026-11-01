@@ -186,3 +186,4 @@
 | SPEC-0184 | `prepared_api_error_codes` | implemented | real | `prepared_api_error_codes.md` |
 | SPEC-0185 | `surreal_graph_relations` | proposed | stub | `surreal_graph_relations.md` |
 | SPEC-0186 | `surreal_session_expressions` | proposed | stub | `surreal_session_expressions.md` |
+| SPEC-0187 | `operability_api` | implemented | real | `operability_api.md` |

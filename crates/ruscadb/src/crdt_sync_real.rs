@@ -182,6 +182,85 @@ impl CrdtSyncReal {
         }
     }
 
+    /// Serializa la replica a bytes portables (`RCRD1`).
+    ///
+    /// Returns:
+    ///     Estado completo (actor, reloj, valor y stamp) con cabecera.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let snapshot = self.export();
+        let mut out = Vec::new();
+        out.extend_from_slice(b"RCRD1");
+        write_text(&mut out, &snapshot.actor);
+        out.extend_from_slice(&(snapshot.clock.len() as u32).to_le_bytes());
+        for (actor, counter) in &snapshot.clock {
+            write_text(&mut out, actor);
+            out.extend_from_slice(&counter.to_le_bytes());
+        }
+        match snapshot.value {
+            Some(value) => {
+                out.push(1);
+                out.extend_from_slice(&value.to_le_bytes());
+            }
+            None => out.push(0),
+        }
+        match snapshot.stamp {
+            Some((counter, actor)) => {
+                out.push(1);
+                out.extend_from_slice(&counter.to_le_bytes());
+                write_text(&mut out, &actor);
+            }
+            None => out.push(0),
+        }
+        out
+    }
+
+    /// Reconstruye una replica desde [`Self::to_bytes`].
+    ///
+    /// Args:
+    ///     bytes: Buffer `RCRD1`.
+    ///
+    /// Returns:
+    ///     Replica restaurada.
+    ///
+    /// Errors:
+    ///     Texto accionable si la magia/version o una cota no cuadran.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() < 5 || &bytes[0..5] != b"RCRD1" {
+            return Err("CRDT: magia invalida o truncado".to_string());
+        }
+        let mut cursor = 5usize;
+        let actor = read_text(bytes, &mut cursor)?;
+        let clock_len = read_u32(bytes, &mut cursor)? as usize;
+        let mut clock = BTreeMap::new();
+        for _ in 0..clock_len {
+            let name = read_text(bytes, &mut cursor)?;
+            let counter = read_u64(bytes, &mut cursor)?;
+            clock.insert(name, counter);
+        }
+        let value = match read_u8(bytes, &mut cursor)? {
+            0 => None,
+            1 => Some(read_u64(bytes, &mut cursor)? as i64),
+            other => return Err(format!("CRDT: flag de valor {other} invalido")),
+        };
+        let stamp = match read_u8(bytes, &mut cursor)? {
+            0 => None,
+            1 => Some((
+                read_u64(bytes, &mut cursor)?,
+                read_text(bytes, &mut cursor)?,
+            )),
+            other => return Err(format!("CRDT: flag de stamp {other} invalido")),
+        };
+        if cursor != bytes.len() {
+            return Err("CRDT: bytes sobrantes".to_string());
+        }
+        Ok(Self::restore(CrdtSnapshot {
+            actor,
+            clock,
+            value,
+            stamp,
+        }))
+    }
+
     /// Serializa el estado a JSON estable.
     ///
     /// Returns:
@@ -260,6 +339,47 @@ impl CrdtSyncReal {
     pub fn state_size(&self) -> (usize, u64) {
         (self.clock.len(), self.clock.values().sum())
     }
+}
+
+fn write_text(out: &mut Vec<u8>, text: &str) {
+    out.extend_from_slice(&(text.len() as u32).to_le_bytes());
+    out.extend_from_slice(text.as_bytes());
+}
+
+fn read_u8(bytes: &[u8], cursor: &mut usize) -> Result<u8, String> {
+    let value = *bytes
+        .get(*cursor)
+        .ok_or_else(|| "CRDT: byte truncado".to_string())?;
+    *cursor += 1;
+    Ok(value)
+}
+
+fn read_u32(bytes: &[u8], cursor: &mut usize) -> Result<u32, String> {
+    let end = cursor.saturating_add(4);
+    let raw = bytes
+        .get(*cursor..end)
+        .ok_or_else(|| "CRDT: u32 truncado".to_string())?;
+    *cursor = end;
+    Ok(u32::from_le_bytes(raw.try_into().unwrap_or([0; 4])))
+}
+
+fn read_u64(bytes: &[u8], cursor: &mut usize) -> Result<u64, String> {
+    let end = cursor.saturating_add(8);
+    let raw = bytes
+        .get(*cursor..end)
+        .ok_or_else(|| "CRDT: u64 truncado".to_string())?;
+    *cursor = end;
+    Ok(u64::from_le_bytes(raw.try_into().unwrap_or([0; 8])))
+}
+
+fn read_text(bytes: &[u8], cursor: &mut usize) -> Result<String, String> {
+    let len = read_u32(bytes, cursor)? as usize;
+    let end = cursor.saturating_add(len);
+    let raw = bytes
+        .get(*cursor..end)
+        .ok_or_else(|| "CRDT: texto truncado".to_string())?;
+    *cursor = end;
+    String::from_utf8(raw.to_vec()).map_err(|_| "CRDT: UTF-8 invalido".to_string())
 }
 
 #[cfg(test)]

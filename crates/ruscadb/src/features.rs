@@ -1,0 +1,87 @@
+//! Manifiesto de features machine-readable (SPEC-0187, P2.2).
+//!
+//! Fuente unica para consumidores/agentes: debe coincidir con `[features]` de
+//! `crates/ruscadb/Cargo.toml` (el test lo verifica).
+
+/// Features publicas declaradas por la crate `ruscadb`.
+pub const FEATURES: &[&str] = &[
+    "metrics",
+    "columnar",
+    "onnx",
+    "geo",
+    "pgwire",
+    "spatial",
+    "compression",
+    "zstd-compression",
+    "zstd-real",
+    "ts-retention",
+    "fts-scoring",
+    "arrow-columnar",
+    "ivf-pq",
+    "ivf-clustering",
+    "otel",
+    "pgwire-real",
+    "s3-backup",
+    "time-travel",
+    "cow-btree",
+    "begin-concurrent",
+    "lance-format",
+    "vle",
+    "sync",
+    "branching",
+    "geo-proj",
+    "sql-std",
+    "cost-planner",
+    "kms",
+    "stemming",
+    "ts-aggregates",
+    "rql-expr",
+    "rql-subqueries",
+    "rql-cte",
+    "rql-set-ops",
+    "rql-window-funcs",
+    "prepared-real",
+    "page-checksums",
+    "segmented-wal",
+    "mvcc-gc-real",
+    "ssi",
+    "rabitq",
+    "acorn",
+    "persistent-hnsw",
+    "learned-index",
+    "alp",
+    "fastlanes",
+    "blockmax-wand",
+    "gorilla-ts",
+    "crdt-sync",
+    "heat",
+    "learned-threshold",
+    "reconciliation",
+    "post-quantum",
+    "rcu",
+    "prepared",
+    "materialized-views",
+    "simd",
+    "async-io",
+    "fts-proximity",
+    "join-reorder",
+    "otel-real",
+    "rtree-split",
+    "backup-verify",
+    "time-travel-real",
+    "query-cache",
+    "schema-evolution",
+    "backup",
+    "fts-advanced",
+    "ts-advanced",
+    "observability",
+    "incremental-backup",
+];
+
+/// Devuelve el manifiesto de features.
+///
+/// Returns:
+///     Slice estatico con los nombres de feature.
+pub const fn features() -> &'static [&'static str] {
+    FEATURES
+}
