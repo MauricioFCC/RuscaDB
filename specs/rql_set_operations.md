@@ -84,3 +84,12 @@ comparacion de resultados. RuscaDB no las soporta.
 - Tests: `test_ac_0164_01..04` + multiplicidades.
 - Invariantes: semantica de bolsa SQL (`INTERSECT` = min, `EXCEPT` = max(0, a-b));
   orden de la entrada izquierda preservado.
+
+## Estado de implementacion (2026-11-02)
+
+- **Cableado real**: `SELECT ... UNION|INTERSECT|EXCEPT [ALL] SELECT ...` en
+  `Statement::SetOp`; el executor combina filas con clave canonica y
+  `BTreeSet` (`O((n+m)·k·log(n+m))`), preservando orden de la izquierda.
+- Evidencia SQL: `crates/ruscadb/tests/spec_0164_set_ops.rs`.
+- `INTERSECT ALL`/`EXCEPT ALL` multiset quedan fuera de alcance (se comportan
+  como sus variantes sin `ALL`).

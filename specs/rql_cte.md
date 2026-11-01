@@ -1,8 +1,8 @@
 ---
 id: SPEC-0163
 feature: rql_cte
-status: implemented
-maturity: real
+status: accepted
+maturity: stub
 owner: query-team
 appetite_days: 7
 boundaries:
@@ -77,3 +77,10 @@ jerarquias). RuscaDB no los soporta.
 - Tests: `test_ac_0163_01..02` + `fixed_point` historico.
 - Invariantes: `UNION ALL` conserva multiplicidades; `UNION` deduplica; un paso
   que reemite una fila marca `hit_cycle`; `max_iterations` evita no terminar.
+
+## Gap de wiring (auditoria 2026-11-02)
+
+**SPEC-0163 CTE**: `RqlCte` existe como helper (incluye punto fijo), pero no hay `WITH` en el parser ni resolucion de tablas virtuales en el executor.
+
+Mientras no se cablee, esta spec se declara `accepted`/`stub` para no
+sobredeclarar madurez; el helper sigue disponible como API auxiliar.

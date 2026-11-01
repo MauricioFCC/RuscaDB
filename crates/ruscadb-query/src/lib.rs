@@ -19,7 +19,7 @@ pub mod provider;
 pub use ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Delete, Explain, Expr,
     HavingCondition, Insert, JoinClause, JoinKind, KnnClause, KnnMode, OnConflict, OrderBy,
-    Projection, Select, Statement, TraverseClause, Update,
+    Projection, Select, SetOpKind, Statement, TraverseClause, Update,
 };
 pub use limits::{
     COMPLEXITY_BUDGET, DEFAULT_TIMEOUT_MILLIS, FULL_SCAN_WARN_THRESHOLD, IMPLICIT_LIMIT,
@@ -37,11 +37,11 @@ mod tests {
     use ruscadb_core::RuscaError;
 
     /// Palabras reservadas de RQL: no pueden usarse como identificadores.
-    const RESERVED_IDENTIFIERS: [&str; 37] = [
+    const RESERVED_IDENTIFIERS: [&str; 43] = [
         "select", "from", "where", "and", "or", "not", "null", "limit", "knn", "traverse", "depth",
         "explain", "match", "order", "by", "asc", "desc", "group", "count", "sum", "avg", "min",
         "max", "as", "insert", "into", "values", "update", "set", "delete", "join", "on", "case",
-        "when", "then", "else", "end",
+        "when", "then", "else", "end", "in", "between", "like", "ilike", "coalesce", "nullif",
     ];
 
     /// Estrategia de identificadores que evita las palabras reservadas.

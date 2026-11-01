@@ -19,6 +19,26 @@ pub enum Keyword {
     Not,
     /// `NULL`
     Null,
+    /// `IN`
+    In,
+    /// `BETWEEN`
+    Between,
+    /// `LIKE`
+    Like,
+    /// `ILIKE`
+    ILike,
+    /// `COALESCE`
+    Coalesce,
+    /// `NULLIF`
+    Nullif,
+    /// `UNION`
+    Union,
+    /// `INTERSECT`
+    Intersect,
+    /// `EXCEPT`
+    Except,
+    /// `ALL`
+    All,
     /// `LIMIT`
     Limit,
     /// `KNN`
@@ -112,6 +132,16 @@ impl Keyword {
             Self::Or => "OR",
             Self::Not => "NOT",
             Self::Null => "NULL",
+            Self::In => "IN",
+            Self::Between => "BETWEEN",
+            Self::Like => "LIKE",
+            Self::ILike => "ILIKE",
+            Self::Coalesce => "COALESCE",
+            Self::Nullif => "NULLIF",
+            Self::Union => "UNION",
+            Self::Intersect => "INTERSECT",
+            Self::Except => "EXCEPT",
+            Self::All => "ALL",
             Self::Limit => "LIMIT",
             Self::Knn => "KNN",
             Self::Traverse => "TRAVERSE",
@@ -171,6 +201,16 @@ impl Keyword {
             "or" => Some(Self::Or),
             "not" => Some(Self::Not),
             "null" => Some(Self::Null),
+            "in" => Some(Self::In),
+            "between" => Some(Self::Between),
+            "like" => Some(Self::Like),
+            "ilike" => Some(Self::ILike),
+            "coalesce" => Some(Self::Coalesce),
+            "nullif" => Some(Self::Nullif),
+            "union" => Some(Self::Union),
+            "intersect" => Some(Self::Intersect),
+            "except" => Some(Self::Except),
+            "all" => Some(Self::All),
             "limit" => Some(Self::Limit),
             "knn" => Some(Self::Knn),
             "traverse" => Some(Self::Traverse),

@@ -434,7 +434,23 @@ pub(crate) fn infer_expr_type(
         | Expr::Or(_, _)
         | Expr::Not(_)
         | Expr::IsNull { .. }
+        | Expr::InList { .. }
+        | Expr::Between { .. }
+        | Expr::Like { .. }
         | Expr::Match { .. } => Ok(ColumnType::Bool),
+        Expr::Coalesce(items) => {
+            let mut result = None;
+            for item in items {
+                if matches!(item, Expr::Null) {
+                    continue;
+                }
+                result = Some(unify_types(result, infer_expr_type(table, item)?)?);
+            }
+            result.ok_or_else(|| RuscaError::TypeMismatch {
+                message: "COALESCE sin argumentos no tiene tipo".to_string(),
+            })
+        }
+        Expr::Nullif(left, _) => infer_expr_type(table, left),
         Expr::DocExtract { .. } | Expr::DocContains { .. } => Ok(ColumnType::Text),
         Expr::Case {
             branches,

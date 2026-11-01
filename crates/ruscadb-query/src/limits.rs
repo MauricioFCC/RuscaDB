@@ -72,6 +72,20 @@ pub fn expr_depth(expression: &Expr) -> usize {
         }
         Expr::Not(inner) => 1 + expr_depth(inner),
         Expr::IsNull { expr, .. } => 1 + expr_depth(expr),
+        Expr::InList { expr, list, .. } => {
+            1 + list
+                .iter()
+                .map(expr_depth)
+                .max()
+                .unwrap_or(1)
+                .max(expr_depth(expr))
+        }
+        Expr::Between {
+            expr, low, high, ..
+        } => 1 + expr_depth(expr).max(expr_depth(low)).max(expr_depth(high)),
+        Expr::Like { expr, pattern, .. } => 1 + expr_depth(expr).max(expr_depth(pattern)),
+        Expr::Coalesce(items) => 1 + items.iter().map(expr_depth).max().unwrap_or(1),
+        Expr::Nullif(left, right) => 1 + expr_depth(left).max(expr_depth(right)),
         Expr::Case {
             operand,
             branches,
@@ -140,6 +154,21 @@ fn expr_cost(expression: &Expr) -> u64 {
             .saturating_add(expr_cost(right)),
         Expr::Not(inner) => 1u64.saturating_add(expr_cost(inner)),
         Expr::IsNull { expr, .. } => 1u64.saturating_add(expr_cost(expr)),
+        Expr::InList { expr, list, .. } => {
+            let mut cost = expr_cost(expr);
+            for item in list {
+                cost = cost.saturating_add(expr_cost(item));
+            }
+            cost
+        }
+        Expr::Between {
+            expr, low, high, ..
+        } => expr_cost(expr)
+            .saturating_add(expr_cost(low))
+            .saturating_add(expr_cost(high)),
+        Expr::Like { expr, pattern, .. } => expr_cost(expr).saturating_add(expr_cost(pattern)),
+        Expr::Coalesce(items) => items.iter().map(expr_cost).sum(),
+        Expr::Nullif(left, right) => expr_cost(left).saturating_add(expr_cost(right)),
         Expr::Case {
             operand,
             branches,

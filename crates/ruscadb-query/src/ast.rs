@@ -156,6 +156,41 @@ pub enum Expr {
         /// `true` para `IS NOT NULL`.
         negated: bool,
     },
+    /// `expr [NOT] IN (v1, v2, ...)`.
+    InList {
+        /// Expresión comparada.
+        expr: Box<Expr>,
+        /// Lista de candidatos.
+        list: Vec<Expr>,
+        /// `true` para `NOT IN`.
+        negated: bool,
+    },
+    /// `expr [NOT] BETWEEN low AND high`.
+    Between {
+        /// Expresión evaluada.
+        expr: Box<Expr>,
+        /// Cota inferior inclusiva.
+        low: Box<Expr>,
+        /// Cota superior inclusiva.
+        high: Box<Expr>,
+        /// `true` para `NOT BETWEEN`.
+        negated: bool,
+    },
+    /// `expr [NOT] LIKE pattern` (`ILIKE` ignora mayúsculas).
+    Like {
+        /// Expresión evaluada.
+        expr: Box<Expr>,
+        /// Patrón con `%` y `_`.
+        pattern: Box<Expr>,
+        /// `true` para `ILIKE`.
+        case_insensitive: bool,
+        /// `true` para `NOT LIKE`.
+        negated: bool,
+    },
+    /// `COALESCE(a, b, ...)`.
+    Coalesce(Vec<Expr>),
+    /// `NULLIF(a, b)`.
+    Nullif(Box<Expr>, Box<Expr>),
     /// Búsqueda full-text `MATCH(columna, 'texto')` dentro del `WHERE`.
     Match {
         /// Columna de texto indexada.
@@ -436,6 +471,39 @@ pub enum Statement {
     Update(Update),
     /// `DELETE FROM ... [WHERE ...]` (SPEC-0043).
     Delete(Delete),
+    /// Operacion de conjuntos `SELECT ... UNION|INTERSECT|EXCEPT [ALL] SELECT ...`.
+    SetOp {
+        /// Lado izquierdo.
+        left: Box<Statement>,
+        /// Operador.
+        op: SetOpKind,
+        /// Lado derecho.
+        right: Box<Statement>,
+        /// `true` para `ALL` (conserva duplicados).
+        all: bool,
+    },
+}
+
+/// Operador de conjuntos de RQL (SPEC-0164).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SetOpKind {
+    /// `UNION`.
+    Union,
+    /// `INTERSECT`.
+    Intersect,
+    /// `EXCEPT`.
+    Except,
+}
+
+impl SetOpKind {
+    /// Texto SQL del operador.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Union => "UNION",
+            Self::Intersect => "INTERSECT",
+            Self::Except => "EXCEPT",
+        }
+    }
 }
 
 impl fmt::Display for Projection {
@@ -505,6 +573,56 @@ impl fmt::Display for Expr {
                     if *negated { "NOT " } else { "" }
                 )
             }
+            Self::InList {
+                expr,
+                list,
+                negated,
+            } => {
+                write!(
+                    formatter,
+                    "{expr} {}IN (",
+                    if *negated { "NOT " } else { "" }
+                )?;
+                for (index, item) in list.iter().enumerate() {
+                    if index > 0 {
+                        write!(formatter, ", ")?;
+                    }
+                    write!(formatter, "{item}")?;
+                }
+                write!(formatter, ")")
+            }
+            Self::Between {
+                expr,
+                low,
+                high,
+                negated,
+            } => write!(
+                formatter,
+                "{expr} {}BETWEEN {low} AND {high}",
+                if *negated { "NOT " } else { "" }
+            ),
+            Self::Like {
+                expr,
+                pattern,
+                case_insensitive,
+                negated,
+            } => write!(
+                formatter,
+                "{expr} {}{} {pattern}",
+                if *negated { "NOT " } else { "" },
+                if *case_insensitive { "ILIKE" } else { "LIKE" }
+            ),
+            Self::Coalesce(items) => {
+                write!(formatter, "COALESCE(")?;
+                for (index, item) in items.iter().enumerate() {
+                    if index > 0 {
+                        write!(formatter, ", ")?;
+                    }
+                    write!(formatter, "{item}")?;
+                }
+                write!(formatter, ")")
+            }
+            Self::Nullif(left, right) => write!(formatter, "NULLIF({left}, {right})"),
             Self::Match { column, query } => write!(formatter, "MATCH({column}, '{query}')"),
             Self::DocExtract { column, path } => {
                 write!(formatter, "{column} -> '{}'", path.join("."))
@@ -814,6 +932,17 @@ impl fmt::Display for Statement {
             Self::Insert(insert) => write!(formatter, "{insert}"),
             Self::Update(update) => write!(formatter, "{update}"),
             Self::Delete(delete) => write!(formatter, "{delete}"),
+            Self::SetOp {
+                left,
+                op,
+                right,
+                all,
+            } => write!(
+                formatter,
+                "{left} {}{} {right}",
+                op.as_str(),
+                if *all { " ALL" } else { "" }
+            ),
         }
     }
 }

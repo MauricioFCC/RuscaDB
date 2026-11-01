@@ -372,11 +372,64 @@ impl Database {
         query: &str,
         snapshot: &Snapshot,
     ) -> Result<Vec<Row>, RuscaError> {
-        match parse_statement(query)? {
+        let statement = parse_statement(query)?;
+        self.execute_statement(statement, snapshot)
+    }
+
+    /// Ejecuta una sentencia ya parseada (incluye set ops recursivas).
+    fn execute_statement(
+        &mut self,
+        statement: Statement,
+        snapshot: &Snapshot,
+    ) -> Result<Vec<Row>, RuscaError> {
+        match statement {
             Statement::Select(select) => execute_select_at(self, &select, snapshot),
             Statement::Insert(insert) => self.execute_insert(&insert),
             Statement::Update(update) => self.execute_update(&update, snapshot),
             Statement::Delete(delete) => self.execute_delete(&delete, snapshot),
+            Statement::SetOp {
+                left,
+                op,
+                right,
+                all,
+            } => {
+                let left_rows = self.execute_statement(*left, snapshot)?;
+                let right_rows = self.execute_statement(*right, snapshot)?;
+                let right_keys: std::collections::BTreeSet<Vec<u8>> =
+                    right_rows.iter().map(crate::executor::row_key).collect();
+                let mut rows = match op {
+                    ruscadb_query::SetOpKind::Union => {
+                        let mut rows = left_rows;
+                        rows.extend(right_rows);
+                        if !all {
+                            crate::executor::dedup_rows(&mut rows);
+                        }
+                        rows
+                    }
+                    ruscadb_query::SetOpKind::Intersect => {
+                        let mut rows: Vec<Row> = left_rows
+                            .into_iter()
+                            .filter(|row| right_keys.contains(&crate::executor::row_key(row)))
+                            .collect();
+                        if !all {
+                            crate::executor::dedup_rows(&mut rows);
+                        }
+                        rows
+                    }
+                    ruscadb_query::SetOpKind::Except => {
+                        let mut rows: Vec<Row> = left_rows
+                            .into_iter()
+                            .filter(|row| !right_keys.contains(&crate::executor::row_key(row)))
+                            .collect();
+                        if !all {
+                            crate::executor::dedup_rows(&mut rows);
+                        }
+                        rows
+                    }
+                };
+                rows.shrink_to_fit();
+                Ok(rows)
+            }
             Statement::Explain(_) => Err(RuscaError::ParseError {
                 message:
                     "EXPLAIN no es una sentencia ejecutable; inspecciónala con parse_statement"
@@ -420,7 +473,10 @@ impl Database {
                     position: 0,
                 });
             }
-            Statement::Insert(_) | Statement::Update(_) | Statement::Delete(_) => {
+            Statement::Insert(_)
+            | Statement::Update(_)
+            | Statement::Delete(_)
+            | Statement::SetOp { .. } => {
                 return Err(RuscaError::ParseError {
                     message: "EXPLAIN solo admite SELECT".to_string(),
                     position: 0,

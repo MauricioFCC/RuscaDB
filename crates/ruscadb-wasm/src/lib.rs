@@ -201,6 +201,18 @@ fn statement_json(statement: &Statement) -> Value {
             "table": &delete.table,
             "filter": delete.filter.as_ref().map(expr_json),
         }),
+        Statement::SetOp {
+            left,
+            op,
+            right,
+            all,
+        } => json!({
+            "kind": "set_op",
+            "op": op.as_str(),
+            "all": all,
+            "left": statement_json(left),
+            "right": statement_json(right),
+        }),
     }
 }
 
@@ -286,6 +298,49 @@ fn expr_json(expr: &Expr) -> Value {
             "right": expr_json(right),
         }),
         Expr::Not(inner) => json!({ "kind": "not", "expr": expr_json(inner) }),
+        Expr::InList {
+            expr,
+            list,
+            negated,
+        } => json!({
+            "kind": "in_list",
+            "expr": expr_json(expr),
+            "list": list.iter().map(expr_json).collect::<Vec<_>>(),
+            "negated": negated,
+        }),
+        Expr::Between {
+            expr,
+            low,
+            high,
+            negated,
+        } => json!({
+            "kind": "between",
+            "expr": expr_json(expr),
+            "low": expr_json(low),
+            "high": expr_json(high),
+            "negated": negated,
+        }),
+        Expr::Like {
+            expr,
+            pattern,
+            case_insensitive,
+            negated,
+        } => json!({
+            "kind": "like",
+            "expr": expr_json(expr),
+            "pattern": expr_json(pattern),
+            "case_insensitive": case_insensitive,
+            "negated": negated,
+        }),
+        Expr::Coalesce(items) => json!({
+            "kind": "coalesce",
+            "items": items.iter().map(expr_json).collect::<Vec<_>>(),
+        }),
+        Expr::Nullif(left, right) => json!({
+            "kind": "nullif",
+            "left": expr_json(left),
+            "right": expr_json(right),
+        }),
         Expr::IsNull { expr, negated } => json!({
             "kind": "is_null",
             "expr": expr_json(expr),

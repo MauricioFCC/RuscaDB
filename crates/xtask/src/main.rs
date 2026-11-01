@@ -39,11 +39,12 @@ fn main() -> ExitCode {
         "mutation-score" => mutation_score_cmd(args.collect()),
         "check-commits" => check_commits_cmd(args.collect()),
         "check-changelog" => check_changelog_cmd(args.collect()),
+        "audit" => guard_cmd(guards::audit),
         other => {
             eprintln!(
                 "comando desconocido: {other} (disponibles: trace, contract, judge, red, \
                  check-architecture, check-unsafe, check-specs, gen-specs-index, mutation-score, \
-                 check-commits, check-changelog)"
+                 check-commits, check-changelog, audit)"
             );
             ExitCode::FAILURE
         }

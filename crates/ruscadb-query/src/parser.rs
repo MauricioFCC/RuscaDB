@@ -3,7 +3,7 @@
 use crate::ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Delete, Explain, Expr,
     HavingCondition, Insert, JoinClause, JoinKind, KnnClause, KnnMode, OnConflict, OrderBy,
-    Projection, Select, Statement, TraverseClause, Update,
+    Projection, Select, SetOpKind, Statement, TraverseClause, Update,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use crate::limits::check_depth;
@@ -58,9 +58,13 @@ pub fn parse(input: &str) -> Result<Select, RuscaError> {
             "EXPLAIN no es un SELECT; usa parse_statement",
             0,
         )),
-        Statement::Insert(_) | Statement::Update(_) | Statement::Delete(_) => Err(
-            crate::lexer::parse_error("la sentencia DML no es un SELECT; usa parse_statement", 0),
-        ),
+        Statement::Insert(_)
+        | Statement::Update(_)
+        | Statement::Delete(_)
+        | Statement::SetOp { .. } => Err(crate::lexer::parse_error(
+            "la sentencia no es un SELECT simple; usa parse_statement",
+            0,
+        )),
     }
 }
 
@@ -228,8 +232,32 @@ impl Parser {
             Some(Token::Keyword(Keyword::Insert)) => Ok(Statement::Insert(self.parse_insert()?)),
             Some(Token::Keyword(Keyword::Update)) => Ok(Statement::Update(self.parse_update()?)),
             Some(Token::Keyword(Keyword::Delete)) => Ok(Statement::Delete(self.parse_delete()?)),
-            _ => Ok(Statement::Select(self.parse_select()?)),
+            _ => self.parse_set_statement(),
         }
+    }
+
+    /// Parsea `SELECT ... [UNION|INTERSECT|EXCEPT [ALL] SELECT ...]*`
+    /// (asociativo por la izquierda; `INTERSECT` no tiene precedencia extra).
+    fn parse_set_statement(&mut self) -> Result<Statement, RuscaError> {
+        let mut left = Statement::Select(self.parse_select()?);
+        loop {
+            let op = match self.peek() {
+                Some(Token::Keyword(Keyword::Union)) => SetOpKind::Union,
+                Some(Token::Keyword(Keyword::Intersect)) => SetOpKind::Intersect,
+                Some(Token::Keyword(Keyword::Except)) => SetOpKind::Except,
+                _ => break,
+            };
+            self.advance();
+            let all = self.match_keyword(Keyword::All);
+            let right = Statement::Select(self.parse_select()?);
+            left = Statement::SetOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+                all,
+            };
+        }
+        Ok(left)
     }
 
     /// Parsea `INSERT INTO <tabla> (<cols>) VALUES (<fila>)[, ...]`.
@@ -734,8 +762,13 @@ impl Parser {
         let (column, expr) = if self.peek() == Some(&Token::Star) {
             self.advance();
             (None, None)
-        } else if self.peek() == Some(&Token::Keyword(Keyword::Case)) {
-            (None, Some(self.parse_case()?))
+        } else if matches!(
+            self.peek(),
+            Some(Token::Keyword(
+                Keyword::Case | Keyword::Coalesce | Keyword::Nullif
+            ))
+        ) {
+            (None, Some(self.parse_expr()?))
         } else {
             (Some(self.expect_ident()?), None)
         };
@@ -965,6 +998,45 @@ impl Parser {
         if self.peek() == Some(&Token::AtGt) {
             return self.parse_doc_contains(left);
         }
+        let negated = self.match_keyword(Keyword::Not);
+        if self.match_keyword(Keyword::In) {
+            let list = self.parse_call_list()?;
+            return Ok(Expr::InList {
+                expr: Box::new(left),
+                list,
+                negated,
+            });
+        }
+        if self.match_keyword(Keyword::Between) {
+            let low = self.parse_expr()?;
+            self.expect_keyword(Keyword::And)?;
+            let high = self.parse_expr()?;
+            return Ok(Expr::Between {
+                expr: Box::new(left),
+                low: Box::new(low),
+                high: Box::new(high),
+                negated,
+            });
+        }
+        let like_kind = if self.match_keyword(Keyword::Like) {
+            Some(false)
+        } else if self.match_keyword(Keyword::ILike) {
+            Some(true)
+        } else {
+            None
+        };
+        if let Some(case_insensitive) = like_kind {
+            let pattern = self.parse_expr()?;
+            return Ok(Expr::Like {
+                expr: Box::new(left),
+                pattern: Box::new(pattern),
+                case_insensitive,
+                negated,
+            });
+        }
+        if negated {
+            return Err(self.error(format!("{EXPECTED_PREFIX}IN, BETWEEN o LIKE tras NOT")));
+        }
         if self.match_word("is") {
             let negated = self.match_keyword(Keyword::Not);
             return match self.peek().cloned() {
@@ -1029,6 +1101,24 @@ impl Parser {
     fn parse_expr(&mut self) -> Result<Expr, RuscaError> {
         let expr = match self.peek().cloned() {
             Some(Token::Keyword(Keyword::Case)) => return self.parse_case(),
+            Some(Token::Keyword(Keyword::Coalesce)) => {
+                self.advance();
+                return self.parse_call_list().map(Expr::Coalesce);
+            }
+            Some(Token::Keyword(Keyword::Nullif)) => {
+                self.advance();
+                let mut items = self.parse_call_list()?;
+                if items.len() != 2 {
+                    return Err(self.error("NULLIF exige exactamente 2 argumentos"));
+                }
+                let Some(right) = items.pop() else {
+                    return Err(self.error("NULLIF exige exactamente 2 argumentos"));
+                };
+                let Some(left) = items.pop() else {
+                    return Err(self.error("NULLIF exige exactamente 2 argumentos"));
+                };
+                return Ok(Expr::Nullif(Box::new(left), Box::new(right)));
+            }
             Some(Token::Ident(name)) => Expr::Column(name),
             Some(Token::Int(value)) => Expr::Int(value),
             Some(Token::Float(value)) => Expr::Float(value),
@@ -1114,6 +1204,32 @@ impl Parser {
             self.match_keyword(Keyword::Asc);
         }
         Ok(OrderBy { column, desc })
+    }
+
+    /// Parsea `(expr, expr, ...)` para `COALESCE`/`NULLIF`/`IN`.
+    fn parse_call_list(&mut self) -> Result<Vec<Expr>, RuscaError> {
+        self.expect_token(
+            &Token::LParen,
+            &format!("{EXPECTED_PREFIX}'(' para la lista de expresiones"),
+        )?;
+        let mut items = Vec::new();
+        if self.peek() == Some(&Token::RParen) {
+            self.advance();
+            return Ok(items);
+        }
+        loop {
+            items.push(self.parse_expr()?);
+            if self.peek() == Some(&Token::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        self.expect_token(
+            &Token::RParen,
+            &format!("{EXPECTED_PREFIX}')' para cerrar la lista"),
+        )?;
+        Ok(items)
     }
 
     /// Parsea el vector `[v1, v2, ...]` de `KNN` (puede ser vacío).

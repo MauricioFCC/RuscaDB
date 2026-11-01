@@ -16,6 +16,11 @@ pub(crate) fn expr_literal(expression: &Expr) -> Option<ScalarValue> {
         | Expr::Or(_, _)
         | Expr::Not(_)
         | Expr::IsNull { .. }
+        | Expr::InList { .. }
+        | Expr::Between { .. }
+        | Expr::Like { .. }
+        | Expr::Coalesce(_)
+        | Expr::Nullif(_, _)
         | Expr::Case { .. }
         | Expr::Match { .. }
         | Expr::DocExtract { .. }
@@ -128,6 +133,34 @@ pub(crate) fn validate_filter_columns(
         }
         Expr::Not(inner) => validate_filter_columns(table, inner),
         Expr::IsNull { expr, .. } => validate_filter_columns(table, expr),
+        Expr::InList { expr, list, .. } => {
+            validate_filter_columns(table, expr)?;
+            for item in list {
+                validate_filter_columns(table, item)?;
+            }
+            Ok(())
+        }
+        Expr::Between {
+            expr, low, high, ..
+        } => {
+            validate_filter_columns(table, expr)?;
+            validate_filter_columns(table, low)?;
+            validate_filter_columns(table, high)
+        }
+        Expr::Like { expr, pattern, .. } => {
+            validate_filter_columns(table, expr)?;
+            validate_filter_columns(table, pattern)
+        }
+        Expr::Coalesce(items) => {
+            for item in items {
+                validate_filter_columns(table, item)?;
+            }
+            Ok(())
+        }
+        Expr::Nullif(left, right) => {
+            validate_filter_columns(table, left)?;
+            validate_filter_columns(table, right)
+        }
         Expr::Case {
             operand,
             branches,
@@ -187,6 +220,73 @@ pub(crate) fn eval_truth(expression: &Expr, record: &Record) -> Result<Truth, Ru
         } else {
             Truth::False
         }),
+        Expr::InList {
+            expr,
+            list,
+            negated,
+        } => {
+            let value = eval_operand(expr, record)?;
+            let mut unknown = value == ScalarValue::Null;
+            let mut found = false;
+            for item in list {
+                let candidate = eval_operand(item, record)?;
+                match compare_values(CompareOp::Eq, &value, &candidate)? {
+                    Truth::True => {
+                        found = true;
+                        break;
+                    }
+                    Truth::Unknown => unknown = true,
+                    Truth::False => {}
+                }
+            }
+            let truth = if found {
+                Truth::True
+            } else if unknown {
+                Truth::Unknown
+            } else {
+                Truth::False
+            };
+            Ok(if *negated { truth.negate() } else { truth })
+        }
+        Expr::Between {
+            expr,
+            low,
+            high,
+            negated,
+        } => {
+            let value = eval_operand(expr, record)?;
+            let lower = eval_operand(low, record)?;
+            let upper = eval_operand(high, record)?;
+            let truth = compare_values(CompareOp::GtEq, &value, &lower)?.and(compare_values(
+                CompareOp::LtEq,
+                &value,
+                &upper,
+            )?);
+            Ok(if *negated { truth.negate() } else { truth })
+        }
+        Expr::Like {
+            expr,
+            pattern,
+            case_insensitive,
+            negated,
+        } => {
+            let value = eval_operand(expr, record)?;
+            let pattern = eval_operand(pattern, record)?;
+            if value == ScalarValue::Null || pattern == ScalarValue::Null {
+                return Ok(Truth::Unknown);
+            }
+            let (ScalarValue::Text(value), ScalarValue::Text(pattern)) = (&value, &pattern) else {
+                return Err(RuscaError::TypeMismatch {
+                    message: "LIKE exige operandos TEXT".to_string(),
+                });
+            };
+            let matched = like_match(value, pattern, *case_insensitive);
+            let truth = if matched { Truth::True } else { Truth::False };
+            Ok(if *negated { truth.negate() } else { truth })
+        }
+        Expr::Coalesce(_) | Expr::Nullif(_, _) => {
+            scalar_truth(&eval_scalar(expression, &record.scalars)?)
+        }
         Expr::Bool(flag) => Ok(if *flag { Truth::True } else { Truth::False }),
         Expr::Case { .. } => scalar_truth(&eval_scalar(expression, &record.scalars)?),
         Expr::Column(name) => match record.scalars.get(name) {
@@ -231,9 +331,14 @@ pub(crate) fn eval_operand(expression: &Expr, record: &Record) -> Result<ScalarV
             let second = eval_operand(right, record)?;
             Ok(truth_scalar(compare_values(*op, &first, &second)?))
         }
-        Expr::And(_, _) | Expr::Or(_, _) | Expr::Not(_) | Expr::IsNull { .. } => {
-            Ok(truth_scalar(eval_truth(expression, record)?))
-        }
+        Expr::And(_, _)
+        | Expr::Or(_, _)
+        | Expr::Not(_)
+        | Expr::IsNull { .. }
+        | Expr::InList { .. }
+        | Expr::Between { .. }
+        | Expr::Like { .. } => Ok(truth_scalar(eval_truth(expression, record)?)),
+        Expr::Coalesce(_) | Expr::Nullif(_, _) => eval_scalar(expression, &record.scalars),
         Expr::Match { .. } | Expr::DocContains { .. } => Err(RuscaError::TypeMismatch {
             message: "MATCH/@> no pueden anidarse como operando".to_string(),
         }),
@@ -293,6 +398,93 @@ pub(crate) fn eval_scalar(
             let is_null = eval_scalar(expr, scalars)? == ScalarValue::Null;
             Ok(ScalarValue::Bool(is_null != *negated))
         }
+        Expr::InList {
+            expr,
+            list,
+            negated,
+        } => {
+            let value = eval_scalar(expr, scalars)?;
+            let mut unknown = value == ScalarValue::Null;
+            let mut found = false;
+            for item in list {
+                let candidate = eval_scalar(item, scalars)?;
+                match compare_values(CompareOp::Eq, &value, &candidate)? {
+                    Truth::True => {
+                        found = true;
+                        break;
+                    }
+                    Truth::Unknown => unknown = true,
+                    Truth::False => {}
+                }
+            }
+            let truth = if found {
+                Truth::True
+            } else if unknown {
+                Truth::Unknown
+            } else {
+                Truth::False
+            };
+            Ok(truth_scalar(if *negated { truth.negate() } else { truth }))
+        }
+        Expr::Between {
+            expr,
+            low,
+            high,
+            negated,
+        } => {
+            let value = eval_scalar(expr, scalars)?;
+            let lower = eval_scalar(low, scalars)?;
+            let upper = eval_scalar(high, scalars)?;
+            let truth = compare_values(CompareOp::GtEq, &value, &lower)?.and(compare_values(
+                CompareOp::LtEq,
+                &value,
+                &upper,
+            )?);
+            Ok(truth_scalar(if *negated { truth.negate() } else { truth }))
+        }
+        Expr::Like {
+            expr,
+            pattern,
+            case_insensitive,
+            negated,
+        } => {
+            let value = eval_scalar(expr, scalars)?;
+            let pattern = eval_scalar(pattern, scalars)?;
+            if value == ScalarValue::Null || pattern == ScalarValue::Null {
+                return Ok(ScalarValue::Null);
+            }
+            let (ScalarValue::Text(value), ScalarValue::Text(pattern)) = (&value, &pattern) else {
+                return Err(RuscaError::TypeMismatch {
+                    message: "LIKE exige operandos TEXT".to_string(),
+                });
+            };
+            let matched = like_match(value, pattern, *case_insensitive);
+            let truth = if matched { Truth::True } else { Truth::False };
+            Ok(truth_scalar(if *negated { truth.negate() } else { truth }))
+        }
+        Expr::Coalesce(items) => {
+            for item in items {
+                let value = eval_scalar(item, scalars)?;
+                if value != ScalarValue::Null {
+                    return Ok(value);
+                }
+            }
+            Ok(ScalarValue::Null)
+        }
+        Expr::Nullif(left, right) => {
+            let first = eval_scalar(left, scalars)?;
+            if first == ScalarValue::Null {
+                return Ok(ScalarValue::Null);
+            }
+            let second = eval_scalar(right, scalars)?;
+            if second != ScalarValue::Null
+                && compare_values(CompareOp::Eq, &first, &second)? == Truth::True
+            {
+                Ok(ScalarValue::Null)
+            } else {
+                Ok(first)
+            }
+        }
         Expr::Case { .. } => eval_case(expression, scalars),
         Expr::Match { .. } | Expr::DocExtract { .. } | Expr::DocContains { .. } => {
             Err(RuscaError::TypeMismatch {
@@ -339,6 +531,37 @@ pub(crate) fn eval_case(expression: &Expr, scalars: &ScalarMap) -> Result<Scalar
         None => Ok(ScalarValue::Null),
     }
 }
+/// Coincidencia `LIKE` con `%` (cualquier secuencia) y `_` (un caracter).
+///
+/// Programacion dinamica `O(m·n)` en tiempo y memoria, con texto/patron en
+/// `Vec<char>` para Unicode. `case_insensitive` usa minúsculas Unicode.
+fn like_match(text: &str, pattern: &str, case_insensitive: bool) -> bool {
+    let (text, pattern) = if case_insensitive {
+        (text.to_lowercase(), pattern.to_lowercase())
+    } else {
+        (text.to_string(), pattern.to_string())
+    };
+    let text: Vec<char> = text.chars().collect();
+    let pattern: Vec<char> = pattern.chars().collect();
+    let mut dp = vec![vec![false; text.len() + 1]; pattern.len() + 1];
+    dp[0][0] = true;
+    for row in 1..=pattern.len() {
+        if pattern[row - 1] == '%' {
+            dp[row][0] = dp[row - 1][0];
+        }
+    }
+    for row in 1..=pattern.len() {
+        for column in 1..=text.len() {
+            dp[row][column] = match pattern[row - 1] {
+                '%' => dp[row - 1][column] || dp[row][column - 1],
+                '_' => dp[row - 1][column - 1],
+                expected => dp[row - 1][column - 1] && expected == text[column - 1],
+            };
+        }
+    }
+    dp[pattern.len()][text.len()]
+}
+
 /// Compara dos valores (`NULL` excluye la fila; `Int↔Float` con coerción).
 pub(crate) fn compare_values(
     operation: CompareOp,

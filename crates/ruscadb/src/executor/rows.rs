@@ -24,7 +24,7 @@ pub(crate) fn dedup_rows(rows: &mut Vec<Row>) {
 ///
 /// Returns:
 ///     Clave única para igualdad de filas.
-fn row_key(row: &Row) -> Vec<u8> {
+pub(crate) fn row_key(row: &Row) -> Vec<u8> {
     let mut key = Vec::with_capacity(row.len() * 16);
     for (name, value) in row {
         key.extend_from_slice(&(name.len() as u32).to_le_bytes());

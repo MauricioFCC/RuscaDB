@@ -1,8 +1,8 @@
 ---
 id: SPEC-0165
 feature: rql_window_functions
-status: implemented
-maturity: real
+status: accepted
+maturity: stub
 owner: query-team
 appetite_days: 8
 boundaries:
@@ -82,3 +82,10 @@ parser ni el executor. Esta spec implementa window functions completas.
 - Tests: `test_ac_0165_01..03` + marco movil, marco vacio y NULL.
 - Invariantes: agregados ignoran NULL y devuelven NULL con marco vacio;
   `RANK` deja huecos y `DENSE_RANK` no.
+
+## Gap de wiring (auditoria 2026-11-02)
+
+**SPEC-0165 Window functions**: `RqlWindowFuncs` existe como helper, pero no hay `OVER (PARTITION BY ... ORDER BY ...)` ni expresiones en la proyeccion; el executor solo proyecta columnas y agregados.
+
+Mientras no se cablee, esta spec se declara `accepted`/`stub` para no
+sobredeclarar madurez; el helper sigue disponible como API auxiliar.

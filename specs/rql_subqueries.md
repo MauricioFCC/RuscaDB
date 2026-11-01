@@ -1,8 +1,8 @@
 ---
 id: SPEC-0162
 feature: rql_subqueries
-status: implemented
-maturity: real
+status: accepted
+maturity: stub
 owner: query-team
 appetite_days: 7
 boundaries:
@@ -92,3 +92,10 @@ dependientes. Es el bloqueante principal para compatibilidad con SQL.
 - Tests: `test_ac_0162_01..04` + `IN` trivaluado con NULL y limite de filas.
 - Invariantes: escalar con >1 fila devuelve `SubqueryError::MultipleRows`;
   `IN` devuelve NULL si no hay match pero hay NULL.
+
+## Gap de wiring (auditoria 2026-11-02)
+
+**SPEC-0162 Subqueries**: `RqlSubquery` existe como helper, pero el parser no acepta `(SELECT ...)` ni `IN (SELECT ...)`; falta cablear `Expr::ScalarSubquery`/`InSubquery` y la evaluacion por fila.
+
+Mientras no se cablee, esta spec se declara `accepted`/`stub` para no
+sobredeclarar madurez; el helper sigue disponible como API auxiliar.

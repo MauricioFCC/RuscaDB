@@ -455,6 +455,86 @@ fn has_content(body: &str) -> bool {
         .any(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#'))
 }
 
+/// Auditoria reproducible de specs vs codigo (`cargo xtask audit`).
+///
+/// Comprueba: ACs declarados con test existente, specs implementadas con ACs,
+/// madurez declarada y marcadores reales de `todo!`/`unimplemented!`.
+pub fn audit(root: &Path) -> Result<(), String> {
+    let mut missing = Vec::new();
+    let mut ac_total = 0usize;
+    let mut status: BTreeMap<String, usize> = BTreeMap::new();
+    let mut maturity: BTreeMap<String, usize> = BTreeMap::new();
+
+    let mut rust = String::new();
+    let mut files = Vec::new();
+    collect_rs(&root.join("crates"), &mut files)?;
+    for file in files {
+        rust.push_str(&fs::read_to_string(&file).unwrap_or_default());
+        rust.push('\n');
+    }
+
+    let mut entries: Vec<_> = fs::read_dir(root.join("specs"))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let file = entry.file_name().to_string_lossy().into_owned();
+        if !file.ends_with(".md") || file.starts_with('_') {
+            continue;
+        }
+        let text = fs::read_to_string(entry.path()).map_err(|e| e.to_string())?;
+        let Some(header) = frontmatter(&text) else {
+            continue;
+        };
+        let spec_status = field(&header, "status");
+        *status.entry(spec_status.clone()).or_default() += 1;
+        *maturity.entry(field(&header, "maturity")).or_default() += 1;
+        let acs = declared_acs(&header);
+        ac_total += acs.len();
+        for test in declared_tests(&header) {
+            if !rust.contains(&format!("fn {test}")) {
+                missing.push(format!("{file}: test '{test}' no existe"));
+            }
+        }
+        if spec_status == "implemented" && acs.is_empty() {
+            missing.push(format!("{file}: implemented sin ACs"));
+        }
+    }
+
+    let real_markers = ["todo!(", "unimplemented!("];
+    for (index, line) in rust.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") || line.contains('"') {
+            continue;
+        }
+        if real_markers.iter().any(|marker| line.contains(marker)) {
+            missing.push(format!(
+                "codigo: marcador sin implementar en linea {}",
+                index + 1
+            ));
+        }
+    }
+
+    println!("[audit] {ac_total} ACs; status={status:?}; maturity={maturity:?}");
+    if missing.is_empty() {
+        println!("[OK] audit: 0 ACs sin test, 0 todo!/unimplemented!");
+        Ok(())
+    } else {
+        Err(missing.join("\n  - "))
+    }
+}
+
+fn declared_tests(header: &str) -> Vec<String> {
+    header
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("test:")?;
+            Some(rest.trim().to_string())
+        })
+        .collect()
+}
+
 fn parse_architecture(path: &Path) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut declared = BTreeMap::new();

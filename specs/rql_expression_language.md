@@ -8,7 +8,7 @@ appetite_days: 6
 boundaries:
   crates: [ruscadb, ruscadb-core, ruscadb-query]
   files: [crates/ruscadb-query/src/ast.rs, crates/ruscadb-query/src/lexer.rs, crates/ruscadb-query/src/parser.rs, crates/ruscadb/src/executor.rs]
-  out_of_scope: [full SQL-92 compliance, window functions, subqueries]
+  out_of_scope: [full SQL-92 compliance, window functions, subqueries, CAST, CONCAT]
 fr:
   - { id: FR-0161-01, desc: "OR logico, NOT, IN, BETWEEN, LIKE, IS NULL en Expr" }
   - { id: FR-0161-02, desc: "CASE WHEN ... THEN ... ELSE ... END" }
@@ -107,3 +107,12 @@ el parser para cubrir el nucleo de SQL-92 expresiones.
 - Tests: `test_ac_0161_01..05` + columna inexistente, division por cero y profundidad.
 - Invariantes: logica trivaluada SQL (NULL propaga); `AND`/`OR` con cortocircuito;
   profundidad maxima acotada (`max_depth`).
+
+## Estado de implementacion (2026-11-02)
+
+- **Cableado real en parser/executor**: `OR`, `NOT`, `IN`/`NOT IN`, `BETWEEN`/
+  `NOT BETWEEN`, `LIKE`/`ILIKE`/`NOT LIKE` (DP `O(m·n)`), `COALESCE`, `NULLIF`,
+  `IS [NOT] NULL`, `NULL` literal y `CASE` (simple y buscado).
+- Evidencia SQL: `crates/ruscadb/tests/spec_0161_expressions.rs` (ejecuta RQL
+  sobre tablas reales, incluye 3VL con `NULL`).
+- `CAST` y `CONCAT (||)` quedan **fuera de alcance** (documentado arriba).
