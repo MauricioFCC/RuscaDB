@@ -1,0 +1,24 @@
+{
+  "cases": [
+    {
+      "name": "filter_gte",
+      "sql": "SELECT * FROM t WHERE x >= 2",
+      "expect": [{ "x": 2 }, { "x": 3 }]
+    },
+    {
+      "name": "in_list",
+      "sql": "SELECT x FROM t WHERE x IN (1, 3)",
+      "expect": [{ "x": 1 }, { "x": 3 }]
+    },
+    {
+      "name": "distinct",
+      "sql": "SELECT DISTINCT x FROM t",
+      "expect": [{ "x": 1 }, { "x": 2 }, { "x": 3 }]
+    },
+    {
+      "name": "count",
+      "sql": "SELECT COUNT(*) FROM t",
+      "expect": [{ "count": 3 }]
+    }
+  ]
+}
