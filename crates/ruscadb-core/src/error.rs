@@ -212,3 +212,43 @@ pub enum RuscaError {
         millis: u64,
     },
 }
+
+impl RuscaError {
+    /// Codigo estable para clientes/agentes (SPEC-0184).
+    ///
+    /// Es un identificador estable entre versiones menores; el texto del
+    /// `Display` puede cambiar. Los consumidores deben comparar este codigo y
+    /// no parsear la prosa.
+    ///
+    /// Returns:
+    ///     Codigo en `UPPER_SNAKE_CASE`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidId(_) => "INVALID_ID",
+            Self::DimensionMismatch { .. } => "DIMENSION_MISMATCH",
+            Self::Io(_) => "IO_ERROR",
+            Self::WalCorrupt(_) => "WAL_CORRUPT",
+            Self::CorruptManifest(_) => "MANIFEST_CORRUPT",
+            Self::DatabaseInUse { .. } => "DATABASE_IN_USE",
+            Self::ReadOnly { .. } => "READ_ONLY",
+            Self::SchemaVersionTooNew { .. } => "SCHEMA_TOO_NEW",
+            Self::MigrationFailed { .. } => "MIGRATION_FAILED",
+            Self::WalRecoveryFailed(_) => "WAL_RECOVERY_FAILED",
+            Self::BufferPoolFull { .. } => "BUFFER_POOL_FULL",
+            Self::PageOutOfRange { .. } => "PAGE_OUT_OF_RANGE",
+            Self::PageNotInPool { .. } => "PAGE_NOT_IN_POOL",
+            Self::InvalidConfig(_) => "INVALID_CONFIG",
+            Self::PermissionDenied { .. } => "PERMISSION_DENIED",
+            Self::ParseError { .. } => "RQL_PARSE",
+            Self::TableNotFound { .. } => "TABLE_NOT_FOUND",
+            Self::ColumnNotFound { .. } => "COLUMN_NOT_FOUND",
+            Self::TypeMismatch { .. } => "TYPE_MISMATCH",
+            Self::MissingTextColumn { .. } => "MISSING_TEXT_COLUMN",
+            Self::MissingVector { .. } => "MISSING_VECTOR",
+            Self::MissingGraph { .. } => "MISSING_GRAPH",
+            Self::WriteConflict { .. } => "WRITE_CONFLICT",
+            Self::ResourceLimit { .. } => "RESOURCE_LIMIT",
+            Self::QueryTimeout { .. } => "QUERY_TIMEOUT",
+        }
+    }
+}

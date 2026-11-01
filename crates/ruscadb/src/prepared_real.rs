@@ -17,6 +17,8 @@ pub enum ParamType {
     Text,
     /// Booleano.
     Bool,
+    /// Sin tipo declarado (acepta cualquier valor no NULL).
+    Any,
 }
 
 /// Valor ligado a un parametro.
@@ -160,6 +162,32 @@ pub struct PreparedStmtReal {
 }
 
 impl PreparedStmtReal {
+    /// Crea una sentencia preparada sin tipos declarados (`Any` por posicion).
+    ///
+    /// Args:
+    ///     query: Texto de la consulta.
+    ///
+    /// Returns:
+    ///     Sentencia lista para `bind_values` con cualquier tipo.
+    ///
+    /// Errors:
+    ///     [`PrepareError`] si la consulta esta vacia o los marcadores no son
+    ///     contiguos.
+    pub fn prepare_any(query: impl Into<String>) -> Result<Self, PrepareError> {
+        let query = query.into();
+        if query.trim().is_empty() {
+            return Err(PrepareError::EmptyQuery);
+        }
+        let (found, highest) = Self::scan_markers(&query)?;
+        if found != highest {
+            return Err(PrepareError::NonContiguous(found + 1));
+        }
+        Ok(Self {
+            query,
+            params: vec![ParamType::Any; highest],
+        })
+    }
+
     /// Crea una sentencia preparada simple (todos los parametros `Int`).
     ///
     /// Args:
@@ -267,6 +295,7 @@ impl PreparedStmtReal {
         for (index, (value, declared)) in values.iter().zip(&self.params).enumerate() {
             let position = index + 1;
             if let Some(kind) = value.kind()
+                && *declared != ParamType::Any
                 && kind != *declared
             {
                 return Err(BindError::TypeMismatch {

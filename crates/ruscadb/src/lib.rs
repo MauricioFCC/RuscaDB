@@ -118,6 +118,8 @@ mod post_quantum;
 #[cfg(feature = "prepared-real")]
 mod prepared;
 #[cfg(feature = "prepared-real")]
+mod prepared_api;
+#[cfg(feature = "prepared-real")]
 mod prepared_real;
 #[cfg(feature = "query-cache")]
 mod query_cache;
@@ -265,6 +267,8 @@ pub use post_quantum::MlKemStub;
 #[cfg(feature = "prepared-real")]
 pub use prepared::PreparedStatement;
 #[cfg(feature = "prepared-real")]
+#[cfg(feature = "prepared-real")]
+pub use prepared_api::PreparedHandle;
 pub use prepared_real::{BindError, ParamType, ParamValue, PrepareError, PreparedStmtReal};
 #[cfg(feature = "query-cache")]
 pub use query_cache::QueryCache;

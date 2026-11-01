@@ -297,7 +297,10 @@ pub(crate) fn group_satisfies_having(
         let Ok(literal) = having_literal_value(&condition.literal) else {
             return false;
         };
-        compare_values(condition.op, &value, &literal).unwrap_or(false)
+        matches!(
+            compare_values(condition.op, &value, &literal),
+            Ok(Truth::True)
+        )
     })
 }
 /// Valor escalar de un literal del `HAVING` (el parser solo admite Int/Float/Text).
@@ -424,10 +427,14 @@ pub(crate) fn infer_expr_type(
         Expr::Column(name) => table.column_type(name),
         Expr::Int(_) => Ok(ColumnType::Int),
         Expr::Float(_) => Ok(ColumnType::Float),
-        Expr::Text(_) => Ok(ColumnType::Text),
-        Expr::Bool(_) | Expr::Compare { .. } | Expr::And(_, _) | Expr::Match { .. } => {
-            Ok(ColumnType::Bool)
-        }
+        Expr::Text(_) | Expr::Null => Ok(ColumnType::Text),
+        Expr::Bool(_)
+        | Expr::Compare { .. }
+        | Expr::And(_, _)
+        | Expr::Or(_, _)
+        | Expr::Not(_)
+        | Expr::IsNull { .. }
+        | Expr::Match { .. } => Ok(ColumnType::Bool),
         Expr::DocExtract { .. } | Expr::DocContains { .. } => Ok(ColumnType::Text),
         Expr::Case {
             branches,
@@ -436,9 +443,14 @@ pub(crate) fn infer_expr_type(
         } => {
             let mut result: Option<ColumnType> = None;
             for (_, value) in branches {
+                if matches!(value, Expr::Null) {
+                    continue;
+                }
                 result = Some(unify_types(result, infer_expr_type(table, value)?)?);
             }
-            if let Some(otherwise) = otherwise {
+            if let Some(otherwise) = otherwise
+                && !matches!(otherwise.as_ref(), Expr::Null)
+            {
                 result = Some(unify_types(result, infer_expr_type(table, otherwise)?)?);
             }
             result.ok_or_else(|| RuscaError::TypeMismatch {

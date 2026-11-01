@@ -869,14 +869,32 @@ impl Parser {
         })
     }
 
-    /// Parsea el filtro `WHERE` (predicados unidos por `AND`, asociativo izq.).
+    /// Parsea el filtro `WHERE` con precedencia SQL: `NOT` > `AND` > `OR`.
     fn parse_filter(&mut self) -> Result<Expr, RuscaError> {
-        let mut expr = self.parse_predicate()?;
+        let mut expr = self.parse_and()?;
+        while self.match_keyword(Keyword::Or) {
+            let right = self.parse_and()?;
+            expr = Expr::Or(Box::new(expr), Box::new(right));
+        }
+        Ok(expr)
+    }
+
+    /// Parsea una conjuncion `AND` (asociativa por la izquierda).
+    fn parse_and(&mut self) -> Result<Expr, RuscaError> {
+        let mut expr = self.parse_not()?;
         while self.match_keyword(Keyword::And) {
-            let right = self.parse_predicate()?;
+            let right = self.parse_not()?;
             expr = Expr::And(Box::new(expr), Box::new(right));
         }
         Ok(expr)
+    }
+
+    /// Parsea `NOT <predicado>` (prefijo, asociativo a la derecha).
+    fn parse_not(&mut self) -> Result<Expr, RuscaError> {
+        if self.match_keyword(Keyword::Not) {
+            return Ok(Expr::Not(Box::new(self.parse_not()?)));
+        }
+        self.parse_predicate()
     }
 
     /// Parsea un predicado: `MATCH(...)` o una comparación escalar.
@@ -886,6 +904,15 @@ impl Parser {
         }
         if matches!(self.peek(), Some(Token::Bool(_))) {
             return self.parse_expr();
+        }
+        if self.peek() == Some(&Token::LParen) {
+            self.advance();
+            let inner = self.parse_filter()?;
+            self.expect_token(
+                &Token::RParen,
+                &format!("{EXPECTED_PREFIX}')' para cerrar el predicado"),
+            )?;
+            return Ok(inner);
         }
         // `WHERE col` sobre una columna booleana: identificador seguido del
         // final del predicado (AND/GROUP/ORDER/LIMIT/OFFSET o fin de consulta).
@@ -939,26 +966,30 @@ impl Parser {
             return self.parse_doc_contains(left);
         }
         if self.match_word("is") {
-            let negated = self.match_word("not");
-            let expected = match self.peek().cloned() {
-                Some(Token::Bool(flag)) => {
+            let negated = self.match_keyword(Keyword::Not);
+            return match self.peek().cloned() {
+                Some(Token::Bool(expected)) => {
                     self.advance();
-                    flag
+                    let op = if negated {
+                        CompareOp::NotEq
+                    } else {
+                        CompareOp::Eq
+                    };
+                    Ok(Expr::Compare {
+                        left: Box::new(left),
+                        op,
+                        right: Box::new(Expr::Bool(expected)),
+                    })
                 }
-                _ => {
-                    return Err(self.error(format!("{EXPECTED_PREFIX}TRUE o FALSE tras IS")));
+                Some(Token::Keyword(Keyword::Null)) => {
+                    self.advance();
+                    Ok(Expr::IsNull {
+                        expr: Box::new(left),
+                        negated,
+                    })
                 }
+                _ => Err(self.error(format!("{EXPECTED_PREFIX}TRUE, FALSE o NULL tras IS"))),
             };
-            let op = if negated {
-                CompareOp::NotEq
-            } else {
-                CompareOp::Eq
-            };
-            return Ok(Expr::Compare {
-                left: Box::new(left),
-                op,
-                right: Box::new(Expr::Bool(expected)),
-            });
         }
         let op = self.parse_compare_op()?;
         let right = self.parse_expr()?;
@@ -1003,6 +1034,7 @@ impl Parser {
             Some(Token::Float(value)) => Expr::Float(value),
             Some(Token::Text(value)) => Expr::Text(value),
             Some(Token::Bool(value)) => Expr::Bool(value),
+            Some(Token::Keyword(Keyword::Null)) => Expr::Null,
             _ => return Err(self.error(format!("{EXPECTED_PREFIX}una columna o un literal"))),
         };
         self.advance();

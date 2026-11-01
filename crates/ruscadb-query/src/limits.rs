@@ -61,12 +61,17 @@ pub fn expr_depth(expression: &Expr) -> usize {
         | Expr::Int(_)
         | Expr::Float(_)
         | Expr::Text(_)
+        | Expr::Null
         | Expr::Bool(_)
         | Expr::Match { .. }
         | Expr::DocExtract { .. }
         | Expr::DocContains { .. } => 1,
         Expr::Compare { left, right, .. } => 1 + expr_depth(left).max(expr_depth(right)),
-        Expr::And(left, right) => 1 + expr_depth(left).max(expr_depth(right)),
+        Expr::And(left, right) | Expr::Or(left, right) => {
+            1 + expr_depth(left).max(expr_depth(right))
+        }
+        Expr::Not(inner) => 1 + expr_depth(inner),
+        Expr::IsNull { expr, .. } => 1 + expr_depth(expr),
         Expr::Case {
             operand,
             branches,
@@ -121,13 +126,20 @@ pub fn check_depth(select: &Select) -> Result<(), String> {
 /// Coste de una expresión en unidades abstractas (saturante).
 fn expr_cost(expression: &Expr) -> u64 {
     match expression {
-        Expr::Column(_) | Expr::Int(_) | Expr::Float(_) | Expr::Text(_) | Expr::Bool(_) => 1,
+        Expr::Column(_)
+        | Expr::Int(_)
+        | Expr::Float(_)
+        | Expr::Text(_)
+        | Expr::Null
+        | Expr::Bool(_) => 1,
         Expr::Compare { left, right, .. } => COST_COMPARISON
             .saturating_add(expr_cost(left))
             .saturating_add(expr_cost(right)),
-        Expr::And(left, right) => 1u64
+        Expr::And(left, right) | Expr::Or(left, right) => 1u64
             .saturating_add(expr_cost(left))
             .saturating_add(expr_cost(right)),
+        Expr::Not(inner) => 1u64.saturating_add(expr_cost(inner)),
+        Expr::IsNull { expr, .. } => 1u64.saturating_add(expr_cost(expr)),
         Expr::Case {
             operand,
             branches,

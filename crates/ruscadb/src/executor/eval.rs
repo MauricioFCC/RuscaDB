@@ -8,10 +8,14 @@ pub(crate) fn expr_literal(expression: &Expr) -> Option<ScalarValue> {
         Expr::Int(number) => Some(ScalarValue::Int(*number)),
         Expr::Float(number) => Some(ScalarValue::Float(*number)),
         Expr::Text(text) => Some(ScalarValue::Text(text.clone())),
+        Expr::Null => Some(ScalarValue::Null),
         Expr::Bool(flag) => Some(ScalarValue::Bool(*flag)),
         Expr::Column(_)
         | Expr::Compare { .. }
         | Expr::And(_, _)
+        | Expr::Or(_, _)
+        | Expr::Not(_)
+        | Expr::IsNull { .. }
         | Expr::Case { .. }
         | Expr::Match { .. }
         | Expr::DocExtract { .. }
@@ -43,7 +47,68 @@ pub(crate) fn keeps_row(
         return Ok(true);
     };
     validate_filter_columns(table, expression)?;
-    eval_predicate(expression, record)
+    Ok(eval_truth(expression, record)? == Truth::True)
+}
+
+/// Valor de verdad SQL de tres valores (Kleene).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Truth {
+    /// Verdadero.
+    True,
+    /// Falso.
+    False,
+    /// `NULL`/desconocido.
+    Unknown,
+}
+
+impl Truth {
+    /// Negacion Kleene.
+    pub(crate) fn negate(self) -> Self {
+        match self {
+            Self::True => Self::False,
+            Self::False => Self::True,
+            Self::Unknown => Self::Unknown,
+        }
+    }
+
+    /// Conjuncion Kleene.
+    pub(crate) fn and(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::False, _) | (_, Self::False) => Self::False,
+            (Self::True, Self::True) => Self::True,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Disyuncion Kleene.
+    pub(crate) fn or(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::True, _) | (_, Self::True) => Self::True,
+            (Self::False, Self::False) => Self::False,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+/// Convierte un escalar a verdad SQL (`NULL` -> Unknown).
+fn scalar_truth(value: &ScalarValue) -> Result<Truth, RuscaError> {
+    match value {
+        ScalarValue::Bool(true) => Ok(Truth::True),
+        ScalarValue::Bool(false) => Ok(Truth::False),
+        ScalarValue::Null => Ok(Truth::Unknown),
+        other => Err(RuscaError::TypeMismatch {
+            message: format!("se esperaba BOOL, se obtuvo {other:?}"),
+        }),
+    }
+}
+
+/// Convierte verdad SQL a escalar (`Unknown` -> `NULL`).
+fn truth_scalar(truth: Truth) -> ScalarValue {
+    match truth {
+        Truth::True => ScalarValue::Bool(true),
+        Truth::False => ScalarValue::Bool(false),
+        Truth::Unknown => ScalarValue::Null,
+    }
 }
 /// Comprueba que cada columna del filtro exista en el esquema.
 pub(crate) fn validate_filter_columns(
@@ -52,15 +117,17 @@ pub(crate) fn validate_filter_columns(
 ) -> Result<(), RuscaError> {
     match expression {
         Expr::Column(name) => table.column_type(name).map(|_| ()),
-        Expr::Int(_) | Expr::Float(_) | Expr::Text(_) | Expr::Bool(_) => Ok(()),
+        Expr::Int(_) | Expr::Float(_) | Expr::Text(_) | Expr::Null | Expr::Bool(_) => Ok(()),
         Expr::Compare { left, right, .. } => {
             validate_filter_columns(table, left)?;
             validate_filter_columns(table, right)
         }
-        Expr::And(left, right) => {
+        Expr::And(left, right) | Expr::Or(left, right) => {
             validate_filter_columns(table, left)?;
             validate_filter_columns(table, right)
         }
+        Expr::Not(inner) => validate_filter_columns(table, inner),
+        Expr::IsNull { expr, .. } => validate_filter_columns(table, expr),
         Expr::Case {
             operand,
             branches,
@@ -84,34 +151,52 @@ pub(crate) fn validate_filter_columns(
         Expr::Match { .. } | Expr::DocExtract { .. } | Expr::DocContains { .. } => Ok(()),
     }
 }
-/// Evalúa un predicado sobre el registro (escalares + documento).
-pub(crate) fn eval_predicate(expression: &Expr, record: &Record) -> Result<bool, RuscaError> {
+/// Evalúa un predicado con lógica SQL de tres valores.
+pub(crate) fn eval_truth(expression: &Expr, record: &Record) -> Result<Truth, RuscaError> {
     match expression {
         Expr::And(left, right) => {
-            Ok(eval_predicate(left, record)? && eval_predicate(right, record)?)
+            let first = eval_truth(left, record)?;
+            if first == Truth::False {
+                return Ok(Truth::False);
+            }
+            Ok(first.and(eval_truth(right, record)?))
+        }
+        Expr::Or(left, right) => {
+            let first = eval_truth(left, record)?;
+            if first == Truth::True {
+                return Ok(Truth::True);
+            }
+            Ok(first.or(eval_truth(right, record)?))
+        }
+        Expr::Not(inner) => Ok(eval_truth(inner, record)?.negate()),
+        Expr::IsNull { expr, negated } => {
+            let is_null = eval_operand(expr, record)? == ScalarValue::Null;
+            Ok(if is_null != *negated {
+                Truth::True
+            } else {
+                Truth::False
+            })
         }
         Expr::Compare { left, op, right } => {
             let first = eval_operand(left, record)?;
             let second = eval_operand(right, record)?;
             compare_values(*op, &first, &second)
         }
-        Expr::DocContains { json, .. } => doc_contains(record, json),
-        Expr::Bool(flag) => Ok(*flag),
-        Expr::Case { .. } => match eval_scalar(expression, &record.scalars)? {
-            ScalarValue::Bool(flag) => Ok(flag),
-            other => Err(RuscaError::TypeMismatch {
-                message: format!("CASE en WHERE debe producir BOOL, se obtuvo {other:?}"),
-            }),
-        },
+        Expr::DocContains { json, .. } => Ok(if doc_contains(record, json)? {
+            Truth::True
+        } else {
+            Truth::False
+        }),
+        Expr::Bool(flag) => Ok(if *flag { Truth::True } else { Truth::False }),
+        Expr::Case { .. } => scalar_truth(&eval_scalar(expression, &record.scalars)?),
         Expr::Column(name) => match record.scalars.get(name) {
-            Some(ScalarValue::Bool(flag)) => Ok(*flag),
-            Some(ScalarValue::Null) | None => Ok(false),
-            Some(other) => Err(RuscaError::TypeMismatch {
-                message: format!("la columna '{name}' debe ser BOOL en WHERE, es {other:?}"),
-            }),
+            Some(value) => scalar_truth(value),
+            None => Ok(Truth::Unknown),
         },
+        Expr::Null => Ok(Truth::Unknown),
         Expr::Int(_) | Expr::Float(_) | Expr::Text(_) => Err(RuscaError::TypeMismatch {
-            message: "el filtro WHERE debe ser una comparación, un booleano o AND".to_string(),
+            message: "el filtro WHERE debe ser una comparación, un booleano o AND/OR/NOT"
+                .to_string(),
         }),
         Expr::DocExtract { .. } => Err(RuscaError::TypeMismatch {
             message: "la extracción documental '->' debe usarse dentro de una comparación"
@@ -123,6 +208,7 @@ pub(crate) fn eval_predicate(expression: &Expr, record: &Record) -> Result<bool,
         }),
     }
 }
+
 /// Evalúa un operando (columna o extracción documental → valor; ausente → `NULL`).
 pub(crate) fn eval_operand(expression: &Expr, record: &Record) -> Result<ScalarValue, RuscaError> {
     match expression {
@@ -137,16 +223,17 @@ pub(crate) fn eval_operand(expression: &Expr, record: &Record) -> Result<ScalarV
         Expr::Int(number) => Ok(ScalarValue::Int(*number)),
         Expr::Float(number) => Ok(ScalarValue::Float(*number)),
         Expr::Text(text) => Ok(ScalarValue::Text(text.clone())),
+        Expr::Null => Ok(ScalarValue::Null),
         Expr::Bool(flag) => Ok(ScalarValue::Bool(*flag)),
         Expr::Case { .. } => eval_scalar(expression, &record.scalars),
         Expr::Compare { left, op, right } => {
             let first = eval_operand(left, record)?;
             let second = eval_operand(right, record)?;
-            Ok(ScalarValue::Bool(compare_values(*op, &first, &second)?))
+            Ok(truth_scalar(compare_values(*op, &first, &second)?))
         }
-        Expr::And(left, right) => Ok(ScalarValue::Bool(
-            eval_predicate(left, record)? && eval_predicate(right, record)?,
-        )),
+        Expr::And(_, _) | Expr::Or(_, _) | Expr::Not(_) | Expr::IsNull { .. } => {
+            Ok(truth_scalar(eval_truth(expression, record)?))
+        }
         Expr::Match { .. } | Expr::DocContains { .. } => Err(RuscaError::TypeMismatch {
             message: "MATCH/@> no pueden anidarse como operando".to_string(),
         }),
@@ -176,16 +263,35 @@ pub(crate) fn eval_scalar(
         Expr::Int(number) => Ok(ScalarValue::Int(*number)),
         Expr::Float(number) => Ok(ScalarValue::Float(*number)),
         Expr::Text(text) => Ok(ScalarValue::Text(text.clone())),
+        Expr::Null => Ok(ScalarValue::Null),
         Expr::Bool(flag) => Ok(ScalarValue::Bool(*flag)),
         Expr::Compare { left, op, right } => {
             let first = eval_scalar(left, scalars)?;
             let second = eval_scalar(right, scalars)?;
-            Ok(ScalarValue::Bool(compare_values(*op, &first, &second)?))
+            Ok(truth_scalar(compare_values(*op, &first, &second)?))
         }
         Expr::And(left, right) => {
-            let first = eval_scalar_bool(left, scalars)?;
-            let second = eval_scalar_bool(right, scalars)?;
-            Ok(ScalarValue::Bool(first && second))
+            let first = scalar_truth(&eval_scalar(left, scalars)?)?;
+            if first == Truth::False {
+                return Ok(ScalarValue::Bool(false));
+            }
+            let second = scalar_truth(&eval_scalar(right, scalars)?)?;
+            Ok(truth_scalar(first.and(second)))
+        }
+        Expr::Or(left, right) => {
+            let first = scalar_truth(&eval_scalar(left, scalars)?)?;
+            if first == Truth::True {
+                return Ok(ScalarValue::Bool(true));
+            }
+            let second = scalar_truth(&eval_scalar(right, scalars)?)?;
+            Ok(truth_scalar(first.or(second)))
+        }
+        Expr::Not(inner) => Ok(truth_scalar(
+            scalar_truth(&eval_scalar(inner, scalars)?)?.negate(),
+        )),
+        Expr::IsNull { expr, negated } => {
+            let is_null = eval_scalar(expr, scalars)? == ScalarValue::Null;
+            Ok(ScalarValue::Bool(is_null != *negated))
         }
         Expr::Case { .. } => eval_case(expression, scalars),
         Expr::Match { .. } | Expr::DocExtract { .. } | Expr::DocContains { .. } => {
@@ -195,15 +301,10 @@ pub(crate) fn eval_scalar(
         }
     }
 }
+
 /// Evalúa una subexpresión exigiendo resultado booleano.
 pub(crate) fn eval_scalar_bool(expression: &Expr, scalars: &ScalarMap) -> Result<bool, RuscaError> {
-    match eval_scalar(expression, scalars)? {
-        ScalarValue::Bool(flag) => Ok(flag),
-        ScalarValue::Null => Ok(false),
-        other => Err(RuscaError::TypeMismatch {
-            message: format!("se esperaba BOOL en CASE, se obtuvo {other:?}"),
-        }),
-    }
+    Ok(scalar_truth(&eval_scalar(expression, scalars)?)? == Truth::True)
 }
 /// Evalúa `CASE` (simple o buscado) sobre las columnas de una fila.
 pub(crate) fn eval_case(expression: &Expr, scalars: &ScalarMap) -> Result<ScalarValue, RuscaError> {
@@ -225,7 +326,7 @@ pub(crate) fn eval_case(expression: &Expr, scalars: &ScalarMap) -> Result<Scalar
         let matched = match &operand_value {
             Some(operand_value) => {
                 let candidate = eval_scalar(condition, scalars)?;
-                compare_values(CompareOp::Eq, operand_value, &candidate)?
+                compare_values(CompareOp::Eq, operand_value, &candidate)? == Truth::True
             }
             None => eval_scalar_bool(condition, scalars)?,
         };
@@ -243,19 +344,20 @@ pub(crate) fn compare_values(
     operation: CompareOp,
     left: &ScalarValue,
     right: &ScalarValue,
-) -> Result<bool, RuscaError> {
+) -> Result<Truth, RuscaError> {
     if *left == ScalarValue::Null || *right == ScalarValue::Null {
-        return Ok(false);
+        return Ok(Truth::Unknown);
     }
     let ordering = order_values(left, right)?;
-    Ok(match operation {
+    let truth = match operation {
         CompareOp::Eq => ordering == Ordering::Equal,
         CompareOp::NotEq => ordering != Ordering::Equal,
         CompareOp::Lt => ordering == Ordering::Less,
         CompareOp::LtEq => ordering != Ordering::Greater,
         CompareOp::Gt => ordering == Ordering::Greater,
         CompareOp::GtEq => ordering != Ordering::Less,
-    })
+    };
+    Ok(if truth { Truth::True } else { Truth::False })
 }
 /// Ordena dos valores no nulos del mismo dominio.
 pub(crate) fn order_values(
@@ -283,4 +385,39 @@ pub(crate) fn order_values(
 /// Compara flotantes (`NaN` nunca iguala: excluye la fila).
 pub(crate) fn compare_floats(first: f64, second: f64) -> Ordering {
     first.partial_cmp(&second).unwrap_or(Ordering::Less)
+}
+
+#[cfg(test)]
+mod truth_tests {
+    use super::Truth;
+
+    /// Tablas de Kleene completas (matan mutantes de AND/OR/NOT).
+    #[test]
+    fn kleene_truth_tables_are_exact() {
+        use Truth::{False, True, Unknown};
+        let values = [True, False, Unknown];
+
+        let and_expected = [
+            [True, False, Unknown],
+            [False, False, False],
+            [Unknown, False, Unknown],
+        ];
+        let or_expected = [
+            [True, True, True],
+            [True, False, Unknown],
+            [True, Unknown, Unknown],
+        ];
+        for (row, left) in values.iter().enumerate() {
+            for (column, right) in values.iter().enumerate() {
+                assert_eq!(left.and(*right), and_expected[row][column], "AND");
+                assert_eq!(left.or(*right), or_expected[row][column], "OR");
+            }
+            let negated = match left {
+                True => False,
+                False => True,
+                Unknown => Unknown,
+            };
+            assert_eq!(left.negate(), negated, "NOT");
+        }
+    }
 }

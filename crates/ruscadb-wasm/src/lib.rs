@@ -251,6 +251,7 @@ fn expr_json(expr: &Expr) -> Value {
         Expr::Int(value) => json!({ "kind": "int", "value": value }),
         Expr::Float(value) => json!({ "kind": "float", "value": value }),
         Expr::Text(text) => json!({ "kind": "text", "value": text }),
+        Expr::Null => json!({ "kind": "null" }),
         Expr::Bool(flag) => json!({ "kind": "bool", "value": flag }),
         Expr::Case {
             operand,
@@ -278,6 +279,17 @@ fn expr_json(expr: &Expr) -> Value {
             "kind": "and",
             "left": expr_json(left),
             "right": expr_json(right),
+        }),
+        Expr::Or(left, right) => json!({
+            "kind": "or",
+            "left": expr_json(left),
+            "right": expr_json(right),
+        }),
+        Expr::Not(inner) => json!({ "kind": "not", "expr": expr_json(inner) }),
+        Expr::IsNull { expr, negated } => json!({
+            "kind": "is_null",
+            "expr": expr_json(expr),
+            "negated": negated,
         }),
         Expr::Match { column, query } => {
             json!({ "kind": "match", "column": column, "query": query })

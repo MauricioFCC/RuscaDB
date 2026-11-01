@@ -116,6 +116,8 @@ pub enum Expr {
     Float(f64),
     /// Literal de texto.
     Text(String),
+    /// Valor SQL NULL.
+    Null,
     /// Literal booleano (`TRUE`/`FALSE`).
     Bool(bool),
     /// Expresión condicional `CASE [operando] WHEN ... THEN ... [ELSE ...] END`.
@@ -143,6 +145,17 @@ pub enum Expr {
     },
     /// Conjunción lógica.
     And(Box<Expr>, Box<Expr>),
+    /// Disyunción lógica.
+    Or(Box<Expr>, Box<Expr>),
+    /// Negación lógica.
+    Not(Box<Expr>),
+    /// Prueba de `NULL` (`IS [NOT] NULL`).
+    IsNull {
+        /// Expresión evaluada.
+        expr: Box<Expr>,
+        /// `true` para `IS NOT NULL`.
+        negated: bool,
+    },
     /// Búsqueda full-text `MATCH(columna, 'texto')` dentro del `WHERE`.
     Match {
         /// Columna de texto indexada.
@@ -460,6 +473,7 @@ impl fmt::Display for Expr {
             Self::Int(value) => write!(formatter, "{value}"),
             Self::Float(value) => write_float(formatter, *value),
             Self::Text(text) => write!(formatter, "'{text}'"),
+            Self::Null => write!(formatter, "NULL"),
             Self::Bool(flag) => write!(formatter, "{}", if *flag { "TRUE" } else { "FALSE" }),
             Self::Case {
                 operand,
@@ -482,6 +496,15 @@ impl fmt::Display for Expr {
                 write!(formatter, "{left} {} {right}", op.as_str())
             }
             Self::And(left, right) => write!(formatter, "{left} AND {right}"),
+            Self::Or(left, right) => write!(formatter, "{left} OR {right}"),
+            Self::Not(inner) => write!(formatter, "NOT {inner}"),
+            Self::IsNull { expr, negated } => {
+                write!(
+                    formatter,
+                    "{expr} IS {}NULL",
+                    if *negated { "NOT " } else { "" }
+                )
+            }
             Self::Match { column, query } => write!(formatter, "MATCH({column}, '{query}')"),
             Self::DocExtract { column, path } => {
                 write!(formatter, "{column} -> '{}'", path.join("."))

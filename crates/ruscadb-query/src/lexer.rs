@@ -13,6 +13,12 @@ pub enum Keyword {
     Where,
     /// `AND`
     And,
+    /// `OR`
+    Or,
+    /// `NOT`
+    Not,
+    /// `NULL`
+    Null,
     /// `LIMIT`
     Limit,
     /// `KNN`
@@ -103,6 +109,9 @@ impl Keyword {
             Self::From => "FROM",
             Self::Where => "WHERE",
             Self::And => "AND",
+            Self::Or => "OR",
+            Self::Not => "NOT",
+            Self::Null => "NULL",
             Self::Limit => "LIMIT",
             Self::Knn => "KNN",
             Self::Traverse => "TRAVERSE",
@@ -159,6 +168,9 @@ impl Keyword {
             "from" => Some(Self::From),
             "where" => Some(Self::Where),
             "and" => Some(Self::And),
+            "or" => Some(Self::Or),
+            "not" => Some(Self::Not),
+            "null" => Some(Self::Null),
             "limit" => Some(Self::Limit),
             "knn" => Some(Self::Knn),
             "traverse" => Some(Self::Traverse),

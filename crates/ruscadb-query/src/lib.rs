@@ -37,10 +37,11 @@ mod tests {
     use ruscadb_core::RuscaError;
 
     /// Palabras reservadas de RQL: no pueden usarse como identificadores.
-    const RESERVED_IDENTIFIERS: [&str; 29] = [
-        "select", "from", "where", "and", "limit", "knn", "traverse", "depth", "explain", "match",
-        "order", "by", "asc", "desc", "group", "count", "sum", "avg", "min", "max", "as", "insert",
-        "into", "values", "update", "set", "delete", "join", "on",
+    const RESERVED_IDENTIFIERS: [&str; 37] = [
+        "select", "from", "where", "and", "or", "not", "null", "limit", "knn", "traverse", "depth",
+        "explain", "match", "order", "by", "asc", "desc", "group", "count", "sum", "avg", "min",
+        "max", "as", "insert", "into", "values", "update", "set", "delete", "join", "on", "case",
+        "when", "then", "else", "end",
     ];
 
     /// Estrategia de identificadores que evita las palabras reservadas.
