@@ -9,6 +9,21 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 9 (2026-11-02)**:
+  - Investigación SurrealDB (`docs/research/surrealdb-2026-11-02.md`): RELATE,
+    paths de grafo, LET/IF/RETURN, LIVE fuera de alcance.
+  - **SPEC-0185/0186** propuestas (`proposed`/`stub`): RELATE + paths BFS
+    O(V+E) y variables de sesión/IF/RETURN con contexto por query.
+  - Auditoría reproducible `cargo xtask audit` (ACs sin test, stubs, `todo!`).
+
+- **Ciclo 8 (2026-11-02)**:
+  - **SPEC-0161**: cableado real de `IN`/`BETWEEN`/`LIKE`/`ILIKE`/`COALESCE`/
+    `NULLIF` al parser/executor, con 3VL y tests SQL.
+  - **SPEC-0164**: `UNION [ALL]`/`INTERSECT`/`EXCEPT` reales
+    (`Statement::SetOp`, clave canónica + `BTreeSet`).
+  - **Auditoría**: 0 `todo!`/`unimplemented!`; 0 ACs sin test. `SPEC-0162/0163/
+    0165` se reclasifican a `accepted`/`stub` (eran helpers sin parser).
+
 - **Ciclo 7 (2026-11-01)**:
   - **SPEC-0183**: `OR`, `NOT`, `IS [NOT] NULL` y `NULL` literal con lógica SQL
     de tres valores (Kleene); `WHERE` solo conserva `TRUE`. `DISTINCT` pasa de

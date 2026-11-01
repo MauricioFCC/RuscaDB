@@ -1174,12 +1174,33 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
 - **Investigación**: `docs/research/frontier-2026-11-01.md` (Kleene, SQL:2023,
   protocolo extendido de PostgreSQL, WCOJ como siguiente frontera).
 
+
+## Ola 19 - Auditoría de specs y cableado RQL (SPEC-0161/0164)
+
+- **SPEC-0161 cableada**: `IN`/`BETWEEN`/`LIKE`/`ILIKE`/`COALESCE`/`NULLIF`
+  en parser/executor con 3VL real; `LIKE` DP `O(m·n)`.
+- **SPEC-0164 cableada**: `UNION [ALL]`/`INTERSECT`/`EXCEPT` como
+  `Statement::SetOp` con clave canónica `O((n+m)·k·log(n+m))`.
+- **Auditoría honesta**: `SPEC-0162` (subqueries), `SPEC-0163` (CTE) y
+  `SPEC-0165` (window functions) eran helpers sin parser; se reclasifican a
+  `accepted`/`stub` hasta cablearlas.
+- `CAST`/`CONCAT` quedan fuera de alcance de SPEC-0161.
+
+
+## Ola 20 - Paridad SurrealDB (SPEC-0185/0186, propuestas)
+
+- Investigación `docs/research/surrealdb-2026-11-02.md` (RELATE, graph paths,
+  LET/IF/RETURN, LIVE fuera de alcance).
+- **SPEC-0185** propuesta: `RELATE` + navegación `->label->` con BFS `O(V+E)`.
+- **SPEC-0186** propuesta: `LET`/`IF`/`RETURN` con contexto por query.
+- Sin implementar aún: se declaran `proposed`/`stub` para no sobredeclarar.
+
 ## Estado actual (2026-10-30)
 
-- 23 crates, 179 specs (178 `implemented` + 1 `proposed`), 586 AC trazados.
+- 23 crates, 181 specs (175 `implemented` + 3 `accepted` + 3 `proposed`), 586 AC trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- Madurez declarada: **48 `real`, 0 `stub`, 1 `placeholder`** (ML-KEM, decision
+- Madurez declarada: **45 `real`, 5 `stub`, 1 `placeholder`** (ML-KEM, decision
   en `docs/adr/ADR-0180-post-quantum-deferred.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).

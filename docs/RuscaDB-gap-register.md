@@ -189,18 +189,27 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test -p ruscadb --all-features`: OK (287 lib tests + integracion; 660 en total).
+- `cargo test -p ruscadb --all-features`: OK (287 lib tests + integracion; 668 en total).
 - `cargo test --workspace --all-features --exclude ruscadb`: OK (68 suites, 497 tests).
 - `cargo xtask trace`: 586 AC trazados.
 - `cargo xtask contract`: OK.
 - `cargo xtask check-architecture`: 0 ciclos, 0 aristas prohibidas.
 - `cargo xtask check-unsafe`: OK (presupuesto 93).
 - `scripts/check_ci_config.py`: OK (incluye el gate `mutation-score`).
-- `cargo xtask check-specs`: 179 specs, 48 `real` + 1 `placeholder`.
+- `cargo xtask check-specs`: 181 specs, 45 `real` + 5 `stub` + 1 `placeholder`.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
 
 ## 10. Modulos stub declarados (no cablear aun)
+
+Auditoria 2026-11-02: **2 specs nuevas `proposed`/`stub`** de paridad SurrealDB
+(`SPEC-0185` RELATE/paths, `SPEC-0186` LET/IF/RETURN), documentadas en
+`docs/research/surrealdb-2026-11-02.md`.
+
+Auditoria 2026-11-02: **3 specs re-clasificadas a `stub`** (helper sin cablear
+al parser/executor): `SPEC-0162` subqueries, `SPEC-0163` CTE y `SPEC-0165`
+window functions. `SPEC-0161` (expresiones) y `SPEC-0164` (set ops) si quedaron
+cableadas con tests SQL reales. El resto sigue en 0 stubs.
 
 Auditoria 2026-10-30: **0 modulos stub**. Los siete ultimos
 (`async_io`, `branching`, `concurrent_txn`, `lance_format`, `pgwire`, `simd`,
@@ -267,7 +276,7 @@ Pasaron a `maturity: real` en este ciclo:
 - **`cargo xtask check-specs`**: valida frontmatter (id unico, feature, status),
   `status`/`maturity` permitidos, ACs declarados con el prefijo correcto y
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
-- **`docs/specs-index.md`**: indice generado (179 specs) con
+- **`docs/specs-index.md`**: indice generado (181 specs) con
   `cargo xtask gen-specs-index`; fuente unica para ver status y madurez.
-- Estado: 178 `implemented` + 1 `proposed`; madurez declarada **48 `real`,
-  0 `stub`, 1 `placeholder`** (el resto sin declarar).
+- Estado: 175 `implemented` + 3 `accepted` + 3 `proposed`; madurez declarada **45 `real`,
+  5 `stub`, 1 `placeholder`** (el resto sin declarar).
