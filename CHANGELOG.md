@@ -21,6 +21,8 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
     `NULLIF` al parser/executor, con 3VL y tests SQL.
   - **SPEC-0164**: `UNION [ALL]`/`INTERSECT`/`EXCEPT` reales
     (`Statement::SetOp`, clave canónica + `BTreeSet`).
+  - **Subqueries**: `IN (SELECT ...)` no correlacionado cableado
+    (materializacion unica, `O(n+m)`); scalar/EXISTS/derived pendientes.
   - **Auditoría**: 0 `todo!`/`unimplemented!`; 0 ACs sin test. `SPEC-0162/0163/
     0165` se reclasifican a `accepted`/`stub` (eran helpers sin parser).
 

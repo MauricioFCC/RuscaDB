@@ -332,6 +332,16 @@ fn expr_json(expr: &Expr) -> Value {
             "case_insensitive": case_insensitive,
             "negated": negated,
         }),
+        Expr::InSubquery {
+            expr,
+            query,
+            negated,
+        } => json!({
+            "kind": "in_subquery",
+            "expr": expr_json(expr),
+            "query": select_json(query),
+            "negated": negated,
+        }),
         Expr::Coalesce(items) => json!({
             "kind": "coalesce",
             "items": items.iter().map(expr_json).collect::<Vec<_>>(),

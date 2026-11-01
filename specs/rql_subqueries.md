@@ -95,7 +95,7 @@ dependientes. Es el bloqueante principal para compatibilidad con SQL.
 
 ## Gap de wiring (auditoria 2026-11-02)
 
-**SPEC-0162 Subqueries**: `RqlSubquery` existe como helper, pero el parser no acepta `(SELECT ...)` ni `IN (SELECT ...)`; falta cablear `Expr::ScalarSubquery`/`InSubquery` y la evaluacion por fila.
+**SPEC-0162 Subqueries**: `IN (SELECT ...)` no correlacionado ya esta cableado (materializacion unica + `InList`). Siguen pendientes la subconsulta escalar, `EXISTS` y `FROM (subquery)`; por eso la spec sigue `accepted`/`stub`.
 
 Mientras no se cablee, esta spec se declara `accepted`/`stub` para no
 sobredeclarar madurez; el helper sigue disponible como API auxiliar.

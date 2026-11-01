@@ -189,7 +189,7 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test -p ruscadb --all-features`: OK (287 lib tests + integracion; 668 en total).
+- `cargo test -p ruscadb --all-features`: OK (287 lib tests + integracion; 669 en total).
 - `cargo test --workspace --all-features --exclude ruscadb`: OK (68 suites, 497 tests).
 - `cargo xtask trace`: 586 AC trazados.
 - `cargo xtask contract`: OK.
@@ -200,16 +200,21 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
 
-## 10. Modulos stub declarados (no cablear aun)
+## 10. Modulos stub y propuestas declaradas
 
-Auditoria 2026-11-02: **2 specs nuevas `proposed`/`stub`** de paridad SurrealDB
-(`SPEC-0185` RELATE/paths, `SPEC-0186` LET/IF/RETURN), documentadas en
-`docs/research/surrealdb-2026-11-02.md`.
+Estado 2026-11-02: **45 `real`, 5 `stub`, 1 `placeholder`**, 0 codigo sin
+implementar (audit: 0 `todo!`/`unimplemented!`).
 
-Auditoria 2026-11-02: **3 specs re-clasificadas a `stub`** (helper sin cablear
-al parser/executor): `SPEC-0162` subqueries, `SPEC-0163` CTE y `SPEC-0165`
-window functions. `SPEC-0161` (expresiones) y `SPEC-0164` (set ops) si quedaron
-cableadas con tests SQL reales. El resto sigue en 0 stubs.
+- **Helper-only (stub honesto)**: `SPEC-0162` subqueries (IN ya cableado;
+  scalar/EXISTS/derived pendientes), `SPEC-0163` CTE y
+  `SPEC-0165` window functions. Tienen motor auxiliar y tests, pero **no** estan
+  cableadas al parser/executor; declararlas `real` era sobredeclarar.
+- **Propuestas SurrealDB (stub/proposed)**: `SPEC-0185` RELATE + paths de grafo
+  y `SPEC-0186` LET/IF/RETURN. Investigacion y ACs en
+  `docs/research/surrealdb-2026-11-02.md`; pendientes de implementar.
+- **Placeholder**: `SPEC-0180` ML-KEM (feature off por defecto, ADR-0180).
+
+Historico (ciclo 4): los siete stubs de storage/protocolo pasaron a `real`:
 
 Auditoria 2026-10-30: **0 modulos stub**. Los siete ultimos
 (`async_io`, `branching`, `concurrent_txn`, `lance_format`, `pgwire`, `simd`,

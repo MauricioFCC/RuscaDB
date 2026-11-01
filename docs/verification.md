@@ -35,6 +35,7 @@ cargo xtask check-unsafe    # política de unsafe y presupuestos
 cargo xtask check-specs   # frontmatter, ids unicos, status/maturity
 cargo xtask trace
 cargo xtask contract   # marcadores @spec y estados de specs (SPEC-0061)
+cargo xtask audit      # ACs sin test, stubs y todo!/unimplemented!
 # indice generado: cargo xtask gen-specs-index -> docs/specs-index.md
 
 # 5) Config de CI/supply chain (SPEC-0016)

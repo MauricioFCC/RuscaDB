@@ -95,3 +95,39 @@ la misma sintaxis multi-modelo de SurrealQL.
 - O'Neil, P. et al. (1996). The Log-Structured Merge-Tree (LSM-Tree). *Acta
   Informatica*.
 - Kleene, S. C. (1952). *Introduction to Metamathematics* (3VL).
+
+## 6. Hipótesis evaluadas (criterios: exactitud, coste, escalabilidad, robustez)
+
+| # | Hipótesis | Veredicto | Motivo |
+|---|---|---|---|
+| H1 | Modelar aristas como tabla `{in,out,label,data}` (SurrealDB) | **Adoptar** | Exactitud referencial, datos en la arista y consultas por label; coste `O(log n)` con índice `(in,out,label)`. |
+| H2 | Navegar con `->label->` y BFS por niveles | **Adoptar** | `O(V+E)` frente a nested-loop `O(∏ grados)`; dedupe por `RecordId`. |
+| H3 | Variables de sesión `LET`/`IF`/`RETURN` con contexto por query | **Adoptar (propuesta)** | Evita concatenar SQL; `O(1)` por variable; sin estado global. |
+| H4 | `LIVE SELECT` (suscripción) | **Rechazar en embedded** | Requiere servidor/red y un bus de eventos; fuera de la filosofía 0-red. |
+| H5 | `DEFINE` completo (permisos por campo) | **Aplazar** | El RBAC/catálogo actual cubre el caso embedded; portarlo añade complejidad sin consumidor medido. |
+
+## 7. Medición O(n²)→O(n)
+
+Plan de gate (no ejecutado aun; requiere benchmark reproducible):
+
+```text
+N, 2N, 4N sobre IN-subquery y set ops
+oráculo: resultado anterior congelado (Vec::contains / nested loop)
+criterio: ratio de tiempo ~2.0 por duplicar N (lineal) y equivalencia exacta
+```
+
+`DISTINCT` ya se midió funcionalmente con 4.000 filas en unit test; el
+benchmark formal queda para el nightly (cargo bench).
+
+## 8. Paper trail
+
+- SurrealDB RELATE: https://surrealdb.com/docs/surrealql/statements/relate
+  (leído 2026-11-02).
+- SurrealDB grafo/multi-modelo: https://surrealdb.com/docs/surrealql/datamodel/graphs
+  (leído 2026-11-02; la página devolvio tipos/multi-modelo).
+- Repositorio SurrealDB (estructura pública):
+  https://github.com/surrealdb/surrealdb (leído; los paths raw de
+  `core/src/sql/statements/*` devolvieron 404, por lo que no se citan como
+  fuente de codigo).
+- Ngo et al. 2018; Malkov & Yashunin 2020; Robertson & Zaragoza 2009;
+  O'Neil et al. 1996; Kleene 1952 (referencias completas en §5).

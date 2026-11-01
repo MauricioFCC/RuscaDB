@@ -23,6 +23,9 @@ pub(crate) fn execute_select_at(
     // Planner (SPEC-0054): budget pre-ejecución + LIMIT implícito + deadline.
     check_budget(select)?;
     let mut effective = select.clone();
+    if let Some(filter) = effective.filter.clone() {
+        effective.filter = Some(materialize_subqueries(database, &filter, snapshot)?);
+    }
     if effective.limit.is_none() {
         effective.limit = Some(IMPLICIT_LIMIT);
     }
@@ -31,6 +34,69 @@ pub(crate) fn execute_select_at(
     let plan = plan_for(&effective, &catalog)?;
     execute_with_plan_at(database, &effective, plan, snapshot, &budget)
 }
+
+/// Materializa subconsultas `IN (SELECT ...)` no correlacionadas.
+///
+/// Ejecuta cada subconsulta una vez con el mismo snapshot y la convierte en
+/// `InList` de literales; el filtro por fila queda `O(n·k)` y la subconsulta
+/// `O(m)` una sola vez. No soporta subconsultas correlacionadas.
+fn materialize_subqueries(
+    database: &mut Database,
+    expression: &Expr,
+    snapshot: &Snapshot,
+) -> Result<Expr, RuscaError> {
+    match expression {
+        Expr::InSubquery {
+            expr,
+            query,
+            negated,
+        } => {
+            let rows = execute_select_at(database, query, snapshot)?;
+            let list: Vec<Expr> = rows
+                .iter()
+                .filter_map(|row| row.values().next().cloned())
+                .map(|value| scalar_expr(&value))
+                .collect();
+            Ok(Expr::InList {
+                expr: Box::new(materialize_subqueries(database, expr, snapshot)?),
+                list,
+                negated: *negated,
+            })
+        }
+        Expr::And(left, right) => Ok(Expr::And(
+            Box::new(materialize_subqueries(database, left, snapshot)?),
+            Box::new(materialize_subqueries(database, right, snapshot)?),
+        )),
+        Expr::Or(left, right) => Ok(Expr::Or(
+            Box::new(materialize_subqueries(database, left, snapshot)?),
+            Box::new(materialize_subqueries(database, right, snapshot)?),
+        )),
+        Expr::Not(inner) => Ok(Expr::Not(Box::new(materialize_subqueries(
+            database, inner, snapshot,
+        )?))),
+        Expr::Compare { left, op, right } => Ok(Expr::Compare {
+            left: Box::new(materialize_subqueries(database, left, snapshot)?),
+            op: *op,
+            right: Box::new(materialize_subqueries(database, right, snapshot)?),
+        }),
+        other => Ok(other.clone()),
+    }
+}
+
+/// Convierte un escalar en literal del IR (para materializar subconsultas).
+fn scalar_expr(value: &ScalarValue) -> Expr {
+    match value {
+        ScalarValue::Null => Expr::Null,
+        ScalarValue::Bool(flag) => Expr::Bool(*flag),
+        ScalarValue::Int(number) => Expr::Int(*number),
+        ScalarValue::UInt(number) => Expr::Int(*number as i64),
+        ScalarValue::Float(number) => Expr::Float(*number),
+        ScalarValue::Text(text) => Expr::Text(text.clone()),
+        ScalarValue::TimestampMillis(millis) => Expr::Int(*millis),
+        ScalarValue::Bytes(bytes) => Expr::Text(format!("{bytes:?}")),
+    }
+}
+
 /// Ejecuta un `SELECT` con un plan fijado resolviendo cláusulas en orden.
 ///
 /// Orden de resolución documentado (SPEC-0017 §Diseño):

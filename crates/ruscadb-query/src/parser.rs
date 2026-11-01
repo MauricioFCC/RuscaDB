@@ -1000,7 +1000,34 @@ impl Parser {
         }
         let negated = self.match_keyword(Keyword::Not);
         if self.match_keyword(Keyword::In) {
-            let list = self.parse_call_list()?;
+            self.expect_token(&Token::LParen, &format!("{EXPECTED_PREFIX}'(' tras IN"))?;
+            if self.peek() == Some(&Token::Keyword(Keyword::Select)) {
+                let query = self.parse_select()?;
+                self.expect_token(
+                    &Token::RParen,
+                    &format!("{EXPECTED_PREFIX}')' para cerrar la subconsulta"),
+                )?;
+                return Ok(Expr::InSubquery {
+                    expr: Box::new(left),
+                    query: Box::new(query),
+                    negated,
+                });
+            }
+            let mut list = Vec::new();
+            if self.peek() != Some(&Token::RParen) {
+                loop {
+                    list.push(self.parse_expr()?);
+                    if self.peek() == Some(&Token::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            self.expect_token(
+                &Token::RParen,
+                &format!("{EXPECTED_PREFIX}')' para cerrar la lista"),
+            )?;
             return Ok(Expr::InList {
                 expr: Box::new(left),
                 list,

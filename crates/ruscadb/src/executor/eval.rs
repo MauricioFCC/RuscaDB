@@ -17,6 +17,7 @@ pub(crate) fn expr_literal(expression: &Expr) -> Option<ScalarValue> {
         | Expr::Not(_)
         | Expr::IsNull { .. }
         | Expr::InList { .. }
+        | Expr::InSubquery { .. }
         | Expr::Between { .. }
         | Expr::Like { .. }
         | Expr::Coalesce(_)
@@ -133,6 +134,7 @@ pub(crate) fn validate_filter_columns(
         }
         Expr::Not(inner) => validate_filter_columns(table, inner),
         Expr::IsNull { expr, .. } => validate_filter_columns(table, expr),
+        Expr::InSubquery { expr, .. } => validate_filter_columns(table, expr),
         Expr::InList { expr, list, .. } => {
             validate_filter_columns(table, expr)?;
             for item in list {
@@ -219,6 +221,9 @@ pub(crate) fn eval_truth(expression: &Expr, record: &Record) -> Result<Truth, Ru
             Truth::True
         } else {
             Truth::False
+        }),
+        Expr::InSubquery { .. } => Err(RuscaError::TypeMismatch {
+            message: "subconsulta IN no materializada".to_string(),
         }),
         Expr::InList {
             expr,
@@ -336,6 +341,7 @@ pub(crate) fn eval_operand(expression: &Expr, record: &Record) -> Result<ScalarV
         | Expr::Not(_)
         | Expr::IsNull { .. }
         | Expr::InList { .. }
+        | Expr::InSubquery { .. }
         | Expr::Between { .. }
         | Expr::Like { .. } => Ok(truth_scalar(eval_truth(expression, record)?)),
         Expr::Coalesce(_) | Expr::Nullif(_, _) => eval_scalar(expression, &record.scalars),
@@ -398,6 +404,9 @@ pub(crate) fn eval_scalar(
             let is_null = eval_scalar(expr, scalars)? == ScalarValue::Null;
             Ok(ScalarValue::Bool(is_null != *negated))
         }
+        Expr::InSubquery { .. } => Err(RuscaError::TypeMismatch {
+            message: "subconsulta IN no materializada".to_string(),
+        }),
         Expr::InList {
             expr,
             list,

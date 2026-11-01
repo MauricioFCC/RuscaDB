@@ -187,6 +187,15 @@ pub enum Expr {
         /// `true` para `NOT LIKE`.
         negated: bool,
     },
+    /// `expr [NOT] IN (SELECT ...)` (subconsulta no correlacionada).
+    InSubquery {
+        /// Expresión comparada.
+        expr: Box<Expr>,
+        /// Subconsulta de un solo campo.
+        query: Box<Select>,
+        /// `true` para `NOT IN`.
+        negated: bool,
+    },
     /// `COALESCE(a, b, ...)`.
     Coalesce(Vec<Expr>),
     /// `NULLIF(a, b)`.
@@ -611,6 +620,15 @@ impl fmt::Display for Expr {
                 "{expr} {}{} {pattern}",
                 if *negated { "NOT " } else { "" },
                 if *case_insensitive { "ILIKE" } else { "LIKE" }
+            ),
+            Self::InSubquery {
+                expr,
+                query,
+                negated,
+            } => write!(
+                formatter,
+                "{expr} {}IN ({query})",
+                if *negated { "NOT " } else { "" }
             ),
             Self::Coalesce(items) => {
                 write!(formatter, "COALESCE(")?;

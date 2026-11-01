@@ -45,6 +45,7 @@ python scripts/check_ci_config.py
 cargo xtask check-specs
 cargo xtask trace
 cargo xtask contract
+cargo xtask audit
 ```
 
 Cada AC de una spec debe tener un test `test_ac_XXXX_NN_*` (lo exige

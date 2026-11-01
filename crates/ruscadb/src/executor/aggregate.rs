@@ -435,6 +435,7 @@ pub(crate) fn infer_expr_type(
         | Expr::Not(_)
         | Expr::IsNull { .. }
         | Expr::InList { .. }
+        | Expr::InSubquery { .. }
         | Expr::Between { .. }
         | Expr::Like { .. }
         | Expr::Match { .. } => Ok(ColumnType::Bool),

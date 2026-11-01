@@ -72,6 +72,7 @@ pub fn expr_depth(expression: &Expr) -> usize {
         }
         Expr::Not(inner) => 1 + expr_depth(inner),
         Expr::IsNull { expr, .. } => 1 + expr_depth(expr),
+        Expr::InSubquery { expr, .. } => 1 + expr_depth(expr),
         Expr::InList { expr, list, .. } => {
             1 + list
                 .iter()
@@ -154,6 +155,7 @@ fn expr_cost(expression: &Expr) -> u64 {
             .saturating_add(expr_cost(right)),
         Expr::Not(inner) => 1u64.saturating_add(expr_cost(inner)),
         Expr::IsNull { expr, .. } => 1u64.saturating_add(expr_cost(expr)),
+        Expr::InSubquery { expr, .. } => 10u64.saturating_add(expr_cost(expr)),
         Expr::InList { expr, list, .. } => {
             let mut cost = expr_cost(expr);
             for item in list {
