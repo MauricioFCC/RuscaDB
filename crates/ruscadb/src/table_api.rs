@@ -350,6 +350,10 @@ impl Database {
                 rows
             }
         };
+        let mut rows = rows;
+        if let Some(limit) = self.max_result_rows {
+            rows.truncate(limit);
+        }
         let nanos = started.elapsed().as_nanos() as u64;
         self.note_execution(rows.len(), nanos);
         self.note_audit("execute", query);

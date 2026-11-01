@@ -51,6 +51,13 @@ pub struct DbConfig {
     /// Con [`FsyncPolicy::Normal`] el commit espera el ack del grupo de
     /// group commit antes de publicar las páginas.
     pub fsync_policy: FsyncPolicy,
+    /// Tope de filas devueltas por `execute` (`None` = sin tope, SPEC-0189).
+    pub max_result_rows: Option<usize>,
+    /// Timeout de query en ms (reservado; se aplica en el planner en una fase
+    /// posterior, SPEC-0189).
+    pub query_timeout_ms: Option<u64>,
+    /// Presupuesto de memoria en bytes (reservado, SPEC-0189).
+    pub max_memory_bytes: Option<usize>,
 }
 
 impl DbConfig {
@@ -69,6 +76,9 @@ impl DbConfig {
             encryption: None,
             blob_path: None,
             fsync_policy: FsyncPolicy::Full,
+            max_result_rows: None,
+            query_timeout_ms: None,
+            max_memory_bytes: None,
         }
     }
 }
@@ -113,6 +123,8 @@ pub struct Database {
     pub(crate) query_count: u64,
     /// Filas devueltas acumuladas (P2.5).
     pub(crate) rows_returned: u64,
+    /// Tope de filas por query (SPEC-0189).
+    pub(crate) max_result_rows: Option<usize>,
     /// Overlay WAL en modo cifrado (SPEC-0106): `page_id -> (lsn, offset)`.
     ///
     /// Apunta al commit record que contiene la última imagen confirmada de
@@ -281,6 +293,7 @@ impl Database {
             last_lsn: 0,
             query_count: 0,
             rows_returned: 0,
+            max_result_rows: config.max_result_rows,
             wal_overlay: HashMap::new(),
             blobs,
             shadow_enabled: false,
