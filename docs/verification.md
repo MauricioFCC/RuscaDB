@@ -473,3 +473,24 @@ el parseo de T1/T2/T3.
 | `.cargo/mutants.toml` | SPEC-0016/AC-02 | idem |
 | `deny.toml` | SPEC-0016/AC-03 | idem |
 | `.pre-commit-config.yaml` | §6.5 | `pre-commit run --all-files` |
+
+---
+
+## Última verificación de cierre (2026-11-02)
+
+```text
+cargo test --workspace --all-features -j 2   201 suites, 1166 tests, 0 fallos
+cargo clippy --workspace --all-targets --all-features -- -D warnings   OK
+cargo fmt --all -- --check                    OK
+cargo xtask audit                             0 ACs sin test, 0 todo!/unimplemented!
+cargo xtask check-specs                       181 specs (175 impl, 3 accepted, 3 proposed)
+cargo xtask trace                             586 AC
+cargo xtask contract                          OK
+cargo xtask check-architecture / check-unsafe OK
+python scripts/check_ci_config.py             OK
+cargo xtask mutation-score (parcial)          85,71 % (objetivo nightly >= 85 %)
+```
+
+Suite completa ejecutada en Windows/MSVC con `-j 2`; los tests de crash/VM
+(`crash_tests`) quedaron verdes. El gate de mutación completo sigue siendo
+responsabilidad del nightly (`mutation-score`).
