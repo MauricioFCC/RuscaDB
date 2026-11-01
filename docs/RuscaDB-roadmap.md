@@ -1160,12 +1160,26 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
   `mutation-score`, `check-commits` y `check-changelog` (Rust, sin Python de
   produccion). Python queda solo para coverage/SLO/LLM/CI-YAML.
 
+
+## Ola 18 - Lógica 3VL, prepared API y dedup lineal (SPEC-0183/0184)
+
+- **SQL 3VL**: `OR`, `NOT`, `IS [NOT] NULL` y `NULL` literal con tablas de
+  Kleene; `WHERE` solo conserva `TRUE`. Evaluación `O(n·|φ|)`.
+- **DISTINCT**: clave canónica + `BTreeSet` (`O(n·k·log n)`) en lugar de
+  `Vec::contains` (`O(n²·k)`).
+- **Prepared API**: `Database::{prepare, prepare_typed, execute_prepared}` con
+  `ParamValue` y `plan_cache_key`; el cliente no concatena SQL.
+- **Errores**: `RuscaError::code()` estable (`RQL_PARSE`, `COLUMN_NOT_FOUND`,
+  `TYPE_MISMATCH`, ...).
+- **Investigación**: `docs/research/frontier-2026-11-01.md` (Kleene, SQL:2023,
+  protocolo extendido de PostgreSQL, WCOJ como siguiente frontera).
+
 ## Estado actual (2026-10-30)
 
-- 23 crates, 177 specs (176 `implemented` + 1 `proposed`), 579 AC trazados.
+- 23 crates, 179 specs (178 `implemented` + 1 `proposed`), 586 AC trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- Madurez declarada: **46 `real`, 0 `stub`, 1 `placeholder`** (ML-KEM, decision
+- Madurez declarada: **48 `real`, 0 `stub`, 1 `placeholder`** (ML-KEM, decision
   en `docs/adr/ADR-0180-post-quantum-deferred.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).

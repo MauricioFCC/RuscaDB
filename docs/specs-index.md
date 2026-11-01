@@ -182,3 +182,5 @@
 | SPEC-0180 | `post_quantum_crypto` | proposed | placeholder | `post_quantum_crypto.md` |
 | SPEC-0181 | `knn_modes` | implemented | real | `knn_modes.md` |
 | SPEC-0182 | `rql_expressions_isolation` | implemented | real | `rql_expressions_isolation.md` |
+| SPEC-0183 | `sql_three_valued_logic` | implemented | real | `sql_three_valued_logic.md` |
+| SPEC-0184 | `prepared_api_error_codes` | implemented | real | `prepared_api_error_codes.md` |

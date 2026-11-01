@@ -9,6 +9,16 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 7 (2026-11-01)**:
+  - **SPEC-0183**: `OR`, `NOT`, `IS [NOT] NULL` y `NULL` literal con lógica SQL
+    de tres valores (Kleene); `WHERE` solo conserva `TRUE`. `DISTINCT` pasa de
+    `O(n²)` a `O(n·k·log n)` con clave canónica y `BTreeSet`.
+  - **SPEC-0184**: `Database::{prepare, prepare_typed, execute_prepared}` y
+    `RuscaError::code()` con códigos estables (`RQL_PARSE`,
+    `COLUMN_NOT_FOUND`, `TYPE_MISMATCH`, ...).
+  - **Research**: `docs/research/frontier-2026-11-01.md` con 3VL, prepared,
+    histogramas y worst-case optimal joins.
+
 - **Ciclo 6 (2026-11-01)**:
   - **SPEC-0182** `CASE` dentro de agregados (`SUM/AVG/MIN/MAX(CASE ...)`) y
     literales booleanos en `WHERE` (`= TRUE/FALSE`, columna desnuda,

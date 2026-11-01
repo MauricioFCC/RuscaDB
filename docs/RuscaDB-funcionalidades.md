@@ -102,6 +102,8 @@ extendido (RQL)**.
 - `insert_record` con `Embedding` (+ `EmbeddingMeta` con modelo, dimensión y `Metric::L2`).
 - Búsqueda `KNN embedding <|k|> [...]`.
 - `KNN` con `WHERE` resuelto por **iFVS** (estrategia pre/in/post por selectividad).
+- Lógica SQL de tres valores: `OR`, `NOT`, `IS [NOT] NULL` (SPEC-0183).
+- Prepared statements: `prepare`/`execute_prepared` y `RuscaError::code()` (SPEC-0184).
 - `KNN ... USING AUTO|QUANTIZED|FILTERED|EXACT` (SPEC-0181) y equivalentes en la
   C-ABI (`ruscadb_search_quantized`, `ruscadb_search_filtered`).
 - HNSW index.

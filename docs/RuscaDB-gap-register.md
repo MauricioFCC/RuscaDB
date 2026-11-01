@@ -189,14 +189,14 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test -p ruscadb --all-features`: OK (285 lib tests + integracion; 652 en total).
+- `cargo test -p ruscadb --all-features`: OK (287 lib tests + integracion; 660 en total).
 - `cargo test --workspace --all-features --exclude ruscadb`: OK (68 suites, 497 tests).
-- `cargo xtask trace`: 580 AC trazados.
+- `cargo xtask trace`: 586 AC trazados.
 - `cargo xtask contract`: OK.
 - `cargo xtask check-architecture`: 0 ciclos, 0 aristas prohibidas.
 - `cargo xtask check-unsafe`: OK (presupuesto 93).
 - `scripts/check_ci_config.py`: OK (incluye el gate `mutation-score`).
-- `cargo xtask check-specs`: 177 specs, 46 `real` + 1 `placeholder`.
+- `cargo xtask check-specs`: 179 specs, 48 `real` + 1 `placeholder`.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
 
@@ -267,7 +267,7 @@ Pasaron a `maturity: real` en este ciclo:
 - **`cargo xtask check-specs`**: valida frontmatter (id unico, feature, status),
   `status`/`maturity` permitidos, ACs declarados con el prefijo correcto y
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
-- **`docs/specs-index.md`**: indice generado (177 specs) con
+- **`docs/specs-index.md`**: indice generado (179 specs) con
   `cargo xtask gen-specs-index`; fuente unica para ver status y madurez.
-- Estado: 176 `implemented` + 1 `proposed`; madurez declarada **46 `real`,
+- Estado: 178 `implemented` + 1 `proposed`; madurez declarada **48 `real`,
   0 `stub`, 1 `placeholder`** (el resto sin declarar).
