@@ -61,11 +61,26 @@ pub fn expr_depth(expression: &Expr) -> usize {
         | Expr::Int(_)
         | Expr::Float(_)
         | Expr::Text(_)
+        | Expr::Bool(_)
         | Expr::Match { .. }
         | Expr::DocExtract { .. }
         | Expr::DocContains { .. } => 1,
         Expr::Compare { left, right, .. } => 1 + expr_depth(left).max(expr_depth(right)),
         Expr::And(left, right) => 1 + expr_depth(left).max(expr_depth(right)),
+        Expr::Case {
+            operand,
+            branches,
+            otherwise,
+        } => {
+            let mut depth = operand.as_deref().map(expr_depth).unwrap_or(1);
+            for (condition, result) in branches {
+                depth = depth.max(1 + expr_depth(condition).max(expr_depth(result)));
+            }
+            if let Some(otherwise) = otherwise {
+                depth = depth.max(1 + expr_depth(otherwise));
+            }
+            depth
+        }
     }
 }
 
@@ -77,7 +92,13 @@ pub fn expr_depth(expression: &Expr) -> usize {
 /// Returns:
 ///     Profundidad (≥ 1).
 pub fn select_depth(select: &Select) -> usize {
-    select.filter.as_ref().map(expr_depth).unwrap_or(1)
+    let mut depth = select.filter.as_ref().map(expr_depth).unwrap_or(1);
+    for aggregate in &select.aggregates {
+        if let Some(expr) = &aggregate.expr {
+            depth = depth.max(expr_depth(expr));
+        }
+    }
+    depth
 }
 
 /// Verifica la profundidad contra [`MAX_AST_DEPTH`].
@@ -100,13 +121,30 @@ pub fn check_depth(select: &Select) -> Result<(), String> {
 /// Coste de una expresión en unidades abstractas (saturante).
 fn expr_cost(expression: &Expr) -> u64 {
     match expression {
-        Expr::Column(_) | Expr::Int(_) | Expr::Float(_) | Expr::Text(_) => 1,
+        Expr::Column(_) | Expr::Int(_) | Expr::Float(_) | Expr::Text(_) | Expr::Bool(_) => 1,
         Expr::Compare { left, right, .. } => COST_COMPARISON
             .saturating_add(expr_cost(left))
             .saturating_add(expr_cost(right)),
         Expr::And(left, right) => 1u64
             .saturating_add(expr_cost(left))
             .saturating_add(expr_cost(right)),
+        Expr::Case {
+            operand,
+            branches,
+            otherwise,
+        } => {
+            let mut cost = operand.as_deref().map(expr_cost).unwrap_or(0);
+            for (condition, result) in branches {
+                cost = cost
+                    .saturating_add(1)
+                    .saturating_add(expr_cost(condition))
+                    .saturating_add(expr_cost(result));
+            }
+            if let Some(otherwise) = otherwise {
+                cost = cost.saturating_add(expr_cost(otherwise));
+            }
+            cost
+        }
         Expr::Match { .. } => COST_MATCH,
         Expr::DocExtract { .. } => COST_DOC_EXTRACT,
         Expr::DocContains { .. } => COST_DOC_CONTAINS,

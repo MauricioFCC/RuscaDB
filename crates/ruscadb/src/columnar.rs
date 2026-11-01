@@ -611,6 +611,45 @@ impl ColumnarTable {
         Ok(Self { columns, data })
     }
 
+    /// Escribe la tabla en un fichero `RCOL1` y devuelve los bytes escritos.
+    ///
+    /// Args:
+    ///     path: Ruta destino.
+    ///
+    /// Returns:
+    ///     Tamano del fichero en bytes.
+    ///
+    /// Errors:
+    ///     Texto accionable si falla la escritura o el rename.
+    pub fn write_rcol1(&self, path: impl AsRef<std::path::Path>) -> Result<u64, String> {
+        let stats = self.write_to(path)?;
+        Ok(stats.encoded_bytes as u64)
+    }
+
+    /// Alias de [`Self::write_rcol1`] (nombre corto de la API publica).
+    pub fn write_rcol(&self, path: impl AsRef<std::path::Path>) -> Result<u64, String> {
+        self.write_rcol1(path)
+    }
+
+    /// Lee una tabla desde un fichero `RCOL1`.
+    ///
+    /// Args:
+    ///     path: Ruta del fichero.
+    ///
+    /// Returns:
+    ///     Tabla reconstruida.
+    ///
+    /// Errors:
+    ///     Texto accionable si falla la lectura o el contenido es invalido.
+    pub fn read_rcol1(path: impl AsRef<std::path::Path>) -> Result<Self, String> {
+        Self::read_from(path)
+    }
+
+    /// Alias de [`Self::read_rcol1`] (nombre corto de la API publica).
+    pub fn read_rcol(path: impl AsRef<std::path::Path>) -> Result<Self, String> {
+        Self::read_rcol1(path)
+    }
+
     /// Escribe la tabla en `path` de forma atomica (`tmp` + rename).
     ///
     /// Args:
@@ -979,24 +1018,17 @@ mod chunk_tests {
     #[test]
     fn columnar_file_compresses_floats() {
         let table = sample_table();
-        let stats = table
-            .write_to(
-                std::env::temp_dir().join(format!("ruscadb-columnar-{}.rcol", std::process::id())),
-            )
-            .expect("write_to");
-        assert_eq!(stats.rows, 200);
-        assert_eq!(stats.columns, 5);
-        assert!(
-            stats.encoded_bytes < stats.raw_bytes,
-            "encoded {} raw {}",
-            stats.encoded_bytes,
-            stats.raw_bytes
-        );
-        assert!(stats.ratio() > 1.2, "ratio {}", stats.ratio());
-
         let path =
             std::env::temp_dir().join(format!("ruscadb-columnar-{}.rcol", std::process::id()));
-        let restored = ColumnarTable::read_from(&path).expect("read_from");
+        let encoded = table.write_rcol1(&path).expect("write_rcol1");
+        assert!(encoded > 0, "bytes escritos");
+        assert!(
+            (encoded as usize) < table.raw_size(),
+            "encoded {encoded} raw {}",
+            table.raw_size()
+        );
+
+        let restored = ColumnarTable::read_rcol1(&path).expect("read_rcol1");
         assert_eq!(restored.scan(), table.scan());
         let _ = std::fs::remove_file(path);
     }

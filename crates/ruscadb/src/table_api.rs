@@ -8,7 +8,8 @@
 //! filas e índices sin estado en memoria.
 
 use ruscadb_core::{
-    EdgeSet, Metric, Record, RecordId, RecordMeta, RuscaError, ScalarMap, ScalarValue,
+    EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError, ScalarMap,
+    ScalarValue,
 };
 use ruscadb_query::{Statement, parse_statement};
 use ruscadb_txn::Snapshot;
@@ -107,6 +108,69 @@ impl Database {
             meta: RecordMeta::default(),
         };
         self.insert_record(table, record)
+    }
+
+    /// Inserta una fila relacional con su embedding (SPEC-0182, P1.3).
+    ///
+    /// Es la via publica para que un cliente que trabaja con [`ScalarMap`]
+    /// asocie un vector a la fila: el embedding se persiste en `Record.vector`
+    /// (el mismo campo que resuelve `SELECT ... KNN <col> <|k|> [...]`).
+    ///
+    /// Args:
+    ///     table: Tabla destino.
+    ///     scalars: Columnas relacionales.
+    ///     embedding: Vector + metadata (modelo, dimension y metrica).
+    ///
+    /// Returns:
+    ///     El [`RecordId`] generado.
+    ///
+    /// Errors:
+    ///     Las de [`Self::insert_record`] (tabla/columnas, allowlist y WAL).
+    pub fn insert_with_vector(
+        &mut self,
+        table: &str,
+        scalars: ScalarMap,
+        embedding: Embedding,
+    ) -> Result<RecordId, RuscaError> {
+        self.ensure_writable("insert_with_vector")?;
+        let record = Record {
+            id: RecordId::new(),
+            scalars,
+            doc: None,
+            edges: EdgeSet::default(),
+            vector: Some(embedding),
+            blob: None,
+            meta: RecordMeta::default(),
+        };
+        self.insert_record(table, record)
+    }
+
+    /// Inserta una fila relacional construyendo el embedding desde sus partes.
+    ///
+    /// Atajo de [`Self::insert_with_vector`] para clientes que no quieren
+    /// importar [`Embedding`]: valida la dimension con [`Embedding::new`].
+    ///
+    /// Args:
+    ///     table: Tabla destino.
+    ///     scalars: Columnas relacionales.
+    ///     values: Componentes del vector.
+    ///     meta: Metadata del modelo (`model_id`, `dim`, `metric`).
+    ///
+    /// Returns:
+    ///     El [`RecordId`] generado.
+    ///
+    /// Errors:
+    ///     [`RuscaError::DimensionMismatch`] si `meta.dim` no coincide; las de
+    ///     [`Self::insert_record`].
+    pub fn insert_with_embedding(
+        &mut self,
+        table: &str,
+        scalars: ScalarMap,
+        values: Vec<f32>,
+        meta: EmbeddingMeta,
+    ) -> Result<RecordId, RuscaError> {
+        let embedding = Embedding::new(values, meta)?;
+        self.insert_with_vector(table, scalars, embedding)
     }
 
     /// Inserta un [`Record`] completo y alimenta los índices derivados.

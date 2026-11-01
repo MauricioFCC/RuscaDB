@@ -251,6 +251,23 @@ fn expr_json(expr: &Expr) -> Value {
         Expr::Int(value) => json!({ "kind": "int", "value": value }),
         Expr::Float(value) => json!({ "kind": "float", "value": value }),
         Expr::Text(text) => json!({ "kind": "text", "value": text }),
+        Expr::Bool(flag) => json!({ "kind": "bool", "value": flag }),
+        Expr::Case {
+            operand,
+            branches,
+            otherwise,
+        } => json!({
+            "kind": "case",
+            "operand": operand.as_deref().map(expr_json),
+            "branches": branches
+                .iter()
+                .map(|(condition, result)| json!({
+                    "when": expr_json(condition),
+                    "then": expr_json(result),
+                }))
+                .collect::<Vec<_>>(),
+            "otherwise": otherwise.as_deref().map(expr_json),
+        }),
         Expr::Compare { left, op, right } => json!({
             "kind": "compare",
             "left": expr_json(left),

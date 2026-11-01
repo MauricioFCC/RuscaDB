@@ -83,6 +83,16 @@ pub enum Keyword {
     Full,
     /// `CROSS` (`CROSS JOIN`, SPEC-0103).
     Cross,
+    /// `CASE` (expresión condicional, SPEC-0182).
+    Case,
+    /// `WHEN` (rama de `CASE`).
+    When,
+    /// `THEN` (resultado de una rama `CASE`).
+    Then,
+    /// `ELSE` (rama por defecto de `CASE`).
+    Else,
+    /// `END` (cierre de `CASE`).
+    End,
 }
 
 impl Keyword {
@@ -128,6 +138,11 @@ impl Keyword {
             Self::Right => "RIGHT",
             Self::Full => "FULL",
             Self::Cross => "CROSS",
+            Self::Case => "CASE",
+            Self::When => "WHEN",
+            Self::Then => "THEN",
+            Self::Else => "ELSE",
+            Self::End => "END",
         }
     }
 
@@ -179,6 +194,11 @@ impl Keyword {
             "right" => Some(Self::Right),
             "full" => Some(Self::Full),
             "cross" => Some(Self::Cross),
+            "case" => Some(Self::Case),
+            "when" => Some(Self::When),
+            "then" => Some(Self::Then),
+            "else" => Some(Self::Else),
+            "end" => Some(Self::End),
             _ => None,
         }
     }
@@ -197,6 +217,8 @@ pub enum Token {
     Float(f64),
     /// Texto entre comillas simples.
     Text(String),
+    /// Literal booleano (`TRUE`/`FALSE`).
+    Bool(bool),
     /// `*`
     Star,
     /// `,`
@@ -417,8 +439,13 @@ impl<'a> Lexer<'a> {
             self.index += 1;
         }
         let word = &self.input[start..self.index];
-        Keyword::from_lowercase(&word.to_ascii_lowercase())
-            .map_or_else(|| Token::Ident(word.to_string()), Token::Keyword)
+        let lowercase = word.to_ascii_lowercase();
+        match lowercase.as_str() {
+            "true" => Token::Bool(true),
+            "false" => Token::Bool(false),
+            _ => Keyword::from_lowercase(&lowercase)
+                .map_or_else(|| Token::Ident(word.to_string()), Token::Keyword),
+        }
     }
 
     /// Lee un número entero o flotante, rechazando overflow y no-finitos.

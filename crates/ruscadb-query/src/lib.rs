@@ -294,6 +294,63 @@ mod tests {
         assert_eq!(select.limit, None);
     }
 
+    /// `CASE` dentro de agregados y literales booleanos en `WHERE`.
+    #[test]
+    fn case_in_aggregate_and_boolean_literals() {
+        let select = parse(
+            "SELECT SUM(CASE WHEN amount > 0 THEN 1 ELSE 0 END) AS positivos \
+             FROM t WHERE active = TRUE",
+        )
+        .expect("parse");
+        let aggregate = select.aggregates.first().expect("agregado");
+        assert_eq!(aggregate.func, AggFunc::Sum);
+        assert_eq!(aggregate.alias.as_deref(), Some("positivos"));
+        assert!(matches!(aggregate.expr, Some(Expr::Case { .. })));
+        let text = select.to_string();
+        let reparsed = parse(&text).expect("roundtrip");
+        assert_eq!(reparsed, select);
+        assert!(
+            matches!(
+                &select.filter,
+                Some(Expr::Compare { right, .. }) if **right == Expr::Bool(true)
+            ),
+            "filtro: {:?}",
+            select.filter
+        );
+
+        // CASE simple (operando) y ELSE opcional.
+        let simple = parse("SELECT COUNT(CASE kind WHEN 'a' THEN 1 END) FROM t WHERE FALSE")
+            .expect("case simple");
+        assert!(matches!(simple.aggregates[0].expr, Some(Expr::Case { .. })));
+        assert!(matches!(simple.filter, Some(Expr::Bool(false))));
+
+        // `WHERE TRUE` sin comparación.
+        let bare = parse("SELECT * FROM t WHERE TRUE").expect("bool desnudo");
+        assert_eq!(bare.filter, Some(Expr::Bool(true)));
+
+        // Columna booleana desnuda e `IS [NOT] TRUE`.
+        let bare_column = parse("SELECT * FROM t WHERE closed").expect("columna bool");
+        assert_eq!(bare_column.filter, Some(Expr::Column("closed".to_string())));
+        let is_not = parse("SELECT * FROM t WHERE closed IS NOT TRUE").expect("is not true");
+        assert!(matches!(
+            is_not.filter,
+            Some(Expr::Compare {
+                op: CompareOp::NotEq,
+                right,
+                ..
+            }) if *right == Expr::Bool(true)
+        ));
+
+        // CASE sin WHEN es error accionable.
+        let error = parse("SELECT SUM(CASE END) FROM t").expect_err("case invalido");
+        match error {
+            RuscaError::ParseError { message, .. } => {
+                assert!(message.contains("WHEN"), "{message}")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
     /// `USING <modo>` se parsea sin reservar palabra clave y hace round-trip.
     #[test]
     fn knn_using_mode_roundtrip() {
@@ -533,6 +590,7 @@ mod tests {
                 func: AggFunc::CountStar,
                 column: None,
                 alias: None,
+                expr: None,
             }]
         );
         let canonical = "SELECT a, COUNT(*) FROM t GROUP BY a";

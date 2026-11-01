@@ -46,14 +46,16 @@ impl AggFunc {
 }
 
 /// Agregado de la proyección (p. ej. `COUNT(*)`, `SUM(a) AS total`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Aggregate {
     /// Función de agregación.
     pub func: AggFunc,
-    /// Columna de entrada (`None` solo para `COUNT(*)`).
+    /// Columna de entrada (`None` solo para `COUNT(*)` o si hay `expr`).
     pub column: Option<String>,
     /// Alias opcional (`AS nombre`); si falta, el executor deriva el nombre.
     pub alias: Option<String>,
+    /// Expresión de entrada alternativa (`CASE ...`); si existe, `column` es `None`.
+    pub expr: Option<Expr>,
 }
 
 /// Condición de `HAVING`: `<agregado> <op> <literal>` (SPEC-0051).
@@ -114,6 +116,22 @@ pub enum Expr {
     Float(f64),
     /// Literal de texto.
     Text(String),
+    /// Literal booleano (`TRUE`/`FALSE`).
+    Bool(bool),
+    /// Expresión condicional `CASE [operando] WHEN ... THEN ... [ELSE ...] END`.
+    ///
+    /// Con `operand` se compara por igualdad (CASE simple); sin él, cada
+    /// condición es un predicado (CASE buscado). Las ramas se evalúan en orden
+    /// y el primer `WHEN` verdadero gana; sin coincidencia se usa `otherwise`
+    /// o `NULL`.
+    Case {
+        /// Operando del CASE simple (opcional).
+        operand: Option<Box<Expr>>,
+        /// Pares `(condición, resultado)`.
+        branches: Vec<(Expr, Expr)>,
+        /// Resultado por defecto (`ELSE`), si existe.
+        otherwise: Option<Box<Expr>>,
+    },
     /// Comparación binaria.
     Compare {
         /// Lado izquierdo.
@@ -442,6 +460,24 @@ impl fmt::Display for Expr {
             Self::Int(value) => write!(formatter, "{value}"),
             Self::Float(value) => write_float(formatter, *value),
             Self::Text(text) => write!(formatter, "'{text}'"),
+            Self::Bool(flag) => write!(formatter, "{}", if *flag { "TRUE" } else { "FALSE" }),
+            Self::Case {
+                operand,
+                branches,
+                otherwise,
+            } => {
+                write!(formatter, "CASE")?;
+                if let Some(operand) = operand {
+                    write!(formatter, " {operand}")?;
+                }
+                for (condition, result) in branches {
+                    write!(formatter, " WHEN {condition} THEN {result}")?;
+                }
+                if let Some(otherwise) = otherwise {
+                    write!(formatter, " ELSE {otherwise}")?;
+                }
+                write!(formatter, " END")
+            }
             Self::Compare { left, op, right } => {
                 write!(formatter, "{left} {} {right}", op.as_str())
             }
@@ -490,9 +526,13 @@ impl fmt::Display for OrderBy {
 
 impl fmt::Display for Aggregate {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.column {
-            Some(column) => write!(formatter, "{}({column})", self.func.as_str())?,
-            None => write!(formatter, "{}(*)", self.func.as_str())?,
+        if let Some(expr) = &self.expr {
+            write!(formatter, "{}({expr})", self.func.as_str())?;
+        } else {
+            match &self.column {
+                Some(column) => write!(formatter, "{}({column})", self.func.as_str())?,
+                None => write!(formatter, "{}(*)", self.func.as_str())?,
+            }
         }
         if let Some(alias) = &self.alias {
             write!(formatter, " AS {alias}")?;

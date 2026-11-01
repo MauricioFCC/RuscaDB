@@ -131,6 +131,13 @@ impl Parser {
         self.tokens.get(self.position).map(|spanned| &spanned.token)
     }
 
+    /// Token en la posicion `offset` desde el cursor (lookahead sin consumir).
+    fn peek_at(&self, offset: usize) -> Option<&Token> {
+        self.tokens
+            .get(self.position + offset)
+            .map(|spanned| &spanned.token)
+    }
+
     /// Posición del token actual (o el final del texto).
     fn current_position(&self) -> usize {
         self.tokens
@@ -692,9 +699,9 @@ impl Parser {
         )
     }
 
-    /// Parsea un agregado `FUNC(<*|columna>) [AS alias]`.
+    /// Parsea un agregado `FUNC(<*|columna|CASE ...>) [AS alias]`.
     fn parse_aggregate(&mut self) -> Result<Aggregate, RuscaError> {
-        let (func, column) = self.parse_agg_call()?;
+        let (func, column, expr) = self.parse_agg_call()?;
         let alias = if self.match_keyword(Keyword::As) {
             Some(self.expect_ident()?)
         } else {
@@ -704,35 +711,39 @@ impl Parser {
             func,
             column,
             alias,
+            expr,
         })
     }
 
-    /// Parsea la llamada `FUNC(<*|columna>)` sin alias.
+    /// Parsea la llamada `FUNC(<*|columna|CASE ...>)` sin alias.
     ///
     /// Returns:
-    ///     `(función, columna)`: `COUNT(*)` se normaliza a
-    ///     `(CountStar, None)`; solo `COUNT` admite `'*'`.
+    ///     `(función, columna, expresión)`: `COUNT(*)` se normaliza a
+    ///     `(CountStar, None, None)`; `CASE` produce `(func, None, Some(expr))`.
+    ///     Solo `COUNT` admite `'*'`.
     ///
     /// Errors:
     ///     [`RuscaError::ParseError`] si falta el paréntesis o si una función
     ///     distinta de `COUNT` usa `'*'`.
-    fn parse_agg_call(&mut self) -> Result<(AggFunc, Option<String>), RuscaError> {
+    fn parse_agg_call(&mut self) -> Result<(AggFunc, Option<String>, Option<Expr>), RuscaError> {
         let func = self.parse_agg_func()?;
         self.expect_token(
             &Token::LParen,
             &format!("{EXPECTED_PREFIX}'(' tras {}", func.as_str()),
         )?;
-        let column = if self.peek() == Some(&Token::Star) {
+        let (column, expr) = if self.peek() == Some(&Token::Star) {
             self.advance();
-            None
+            (None, None)
+        } else if self.peek() == Some(&Token::Keyword(Keyword::Case)) {
+            (None, Some(self.parse_case()?))
         } else {
-            Some(self.expect_ident()?)
+            (Some(self.expect_ident()?), None)
         };
         self.expect_token(
             &Token::RParen,
             &format!("{EXPECTED_PREFIX}')' para cerrar {}", func.as_str()),
         )?;
-        let func = match (func, column.is_some()) {
+        let func = match (func, column.is_some() || expr.is_some()) {
             (AggFunc::Count, false) => AggFunc::CountStar,
             (other, false) => {
                 return Err(self.error(format!(
@@ -743,7 +754,7 @@ impl Parser {
             }
             (other, true) => other,
         };
-        Ok((func, column))
+        Ok((func, column, expr))
     }
 
     /// Parsea la función de agregación y avanza el cursor.
@@ -758,6 +769,55 @@ impl Parser {
         };
         self.advance();
         Ok(func)
+    }
+
+    /// Parsea `CASE [operando] WHEN ... THEN ... [ELSE ...] END`.
+    ///
+    /// Sin operando, cada `WHEN` es un predicado (admite `AND`); con operando,
+    /// cada `WHEN` es un valor que se compara por igualdad.
+    ///
+    /// Returns:
+    ///     [`Expr::Case`] con las ramas en orden.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si falta `WHEN`/`THEN`/`END` o no hay ramas.
+    fn parse_case(&mut self) -> Result<Expr, RuscaError> {
+        self.expect_keyword(Keyword::Case)?;
+        // `CASE END` (sin WHEN) tambien entra aqui para dar el error de rama
+        // faltante en vez de "se esperaba una columna".
+        let operand = if matches!(
+            self.peek(),
+            Some(Token::Keyword(Keyword::When | Keyword::End))
+        ) {
+            None
+        } else {
+            Some(Box::new(self.parse_expr()?))
+        };
+        let mut branches = Vec::new();
+        while self.match_keyword(Keyword::When) {
+            let condition = if operand.is_some() {
+                self.parse_expr()?
+            } else {
+                self.parse_filter()?
+            };
+            self.expect_keyword(Keyword::Then)?;
+            let result = self.parse_expr()?;
+            branches.push((condition, result));
+        }
+        if branches.is_empty() {
+            return Err(self.error(format!("{EXPECTED_PREFIX}al menos un WHEN en CASE")));
+        }
+        let otherwise = if self.match_keyword(Keyword::Else) {
+            Some(Box::new(self.parse_expr()?))
+        } else {
+            None
+        };
+        self.expect_keyword(Keyword::End)?;
+        Ok(Expr::Case {
+            operand,
+            branches,
+            otherwise,
+        })
     }
 
     /// Parsea `BY <col>[, <col>...]` de la cláusula `GROUP BY`.
@@ -795,7 +855,10 @@ impl Parser {
     /// Errors:
     ///     [`RuscaError::ParseError`] ante agregado u operador inválidos.
     fn parse_having_condition(&mut self) -> Result<HavingCondition, RuscaError> {
-        let (func, column) = self.parse_agg_call()?;
+        let (func, column, expr) = self.parse_agg_call()?;
+        if expr.is_some() {
+            return Err(self.error("HAVING no admite CASE; usa una columna o el alias"));
+        }
         let op = self.parse_compare_op()?;
         let literal = self.parse_literal()?;
         Ok(HavingCondition {
@@ -819,10 +882,27 @@ impl Parser {
     /// Parsea un predicado: `MATCH(...)` o una comparación escalar.
     fn parse_predicate(&mut self) -> Result<Expr, RuscaError> {
         if self.match_keyword(Keyword::Match) {
-            self.parse_match()
-        } else {
-            self.parse_comparison()
+            return self.parse_match();
         }
+        if matches!(self.peek(), Some(Token::Bool(_))) {
+            return self.parse_expr();
+        }
+        // `WHERE col` sobre una columna booleana: identificador seguido del
+        // final del predicado (AND/GROUP/ORDER/LIMIT/OFFSET o fin de consulta).
+        if matches!(self.peek(), Some(Token::Ident(_))) && self.is_bare_column_predicate() {
+            return self.parse_expr();
+        }
+        self.parse_comparison()
+    }
+
+    /// Indica si el identificador actual es un predicado booleano desnudo.
+    fn is_bare_column_predicate(&self) -> bool {
+        matches!(
+            self.peek_at(1),
+            None | Some(Token::Keyword(
+                Keyword::And | Keyword::Group | Keyword::Order | Keyword::Limit | Keyword::Offset
+            ))
+        )
     }
 
     /// Parsea la búsqueda full-text `MATCH(columna, 'texto')`.
@@ -858,6 +938,28 @@ impl Parser {
         if self.peek() == Some(&Token::AtGt) {
             return self.parse_doc_contains(left);
         }
+        if self.match_word("is") {
+            let negated = self.match_word("not");
+            let expected = match self.peek().cloned() {
+                Some(Token::Bool(flag)) => {
+                    self.advance();
+                    flag
+                }
+                _ => {
+                    return Err(self.error(format!("{EXPECTED_PREFIX}TRUE o FALSE tras IS")));
+                }
+            };
+            let op = if negated {
+                CompareOp::NotEq
+            } else {
+                CompareOp::Eq
+            };
+            return Ok(Expr::Compare {
+                left: Box::new(left),
+                op,
+                right: Box::new(Expr::Bool(expected)),
+            });
+        }
         let op = self.parse_compare_op()?;
         let right = self.parse_expr()?;
         Ok(Expr::Compare {
@@ -892,13 +994,15 @@ impl Parser {
         Ok(op)
     }
 
-    /// Parsea un operando: columna (o extracción `col -> 'ruta'`) o literal.
+    /// Parsea un operando: columna (o extracción `col -> 'ruta'`), literal o `CASE`.
     fn parse_expr(&mut self) -> Result<Expr, RuscaError> {
         let expr = match self.peek().cloned() {
+            Some(Token::Keyword(Keyword::Case)) => return self.parse_case(),
             Some(Token::Ident(name)) => Expr::Column(name),
             Some(Token::Int(value)) => Expr::Int(value),
             Some(Token::Float(value)) => Expr::Float(value),
             Some(Token::Text(value)) => Expr::Text(value),
+            Some(Token::Bool(value)) => Expr::Bool(value),
             _ => return Err(self.error(format!("{EXPECTED_PREFIX}una columna o un literal"))),
         };
         self.advance();

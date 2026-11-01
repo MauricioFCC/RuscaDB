@@ -14,7 +14,7 @@ use ruscadb_btree::BPlusTree;
 use ruscadb_core::{RecordId, RuscaError};
 use ruscadb_multimodal::BlobStore;
 use ruscadb_storage::{BufferPool, PAGE_SIZE, Page, PageId, PagedFile};
-use ruscadb_txn::{Manifest, Snapshot, TxId, TxnManager};
+use ruscadb_txn::{IsoLevel, Manifest, Snapshot, TxId, TxnManager};
 use ruscadb_wal::{FsyncPolicy, Lsn, RecordKind, Wal};
 
 use crate::auth::{AuditEntry, Role};
@@ -95,6 +95,10 @@ pub struct Database {
     manifest_path: PathBuf,
     /// Gestor MVCC de transacciones y snapshots, SPEC-0019.
     pub(crate) txn: TxnManager,
+    /// Nivel de aislamiento configurado (SPEC-0182).
+    isolation: IsoLevel,
+    /// Snapshot fijado al `begin` para `Snapshot`/`Serializable`.
+    tx_snapshot: Option<Snapshot>,
     /// Transacción explícita en vuelo (`Database::begin`), si la hay.
     pub(crate) active_tx: Option<TxId>,
     /// Allowlist en memoria de modelos de embedding (SPEC-0032).
@@ -266,6 +270,8 @@ impl Database {
             manifest,
             manifest_path,
             txn: TxnManager::new(),
+            isolation: IsoLevel::Snapshot,
+            tx_snapshot: None,
             active_tx: None,
             registry: ModelRegistry::new(),
             last_lsn: 0,
@@ -448,6 +454,7 @@ impl Database {
         if let Some(tx) = self.active_tx.take() {
             self.txn.commit(tx)?;
         }
+        self.tx_snapshot = None;
         #[cfg(feature = "metrics")]
         metrics::histogram!("ruscadb_commit_latency_seconds")
             .record(started.elapsed().as_secs_f64());
@@ -500,6 +507,7 @@ impl Database {
         if let Some(tx) = self.active_tx.take() {
             self.txn.rollback(tx)?;
         }
+        self.tx_snapshot = None;
         self.discard_dirty_pages()?;
         self.rebuild_indexes()?;
         self.rebuild_primary_index()?;
@@ -632,12 +640,66 @@ impl Database {
 
     /// Inicia una transacción MVCC explícita y la marca como activa.
     ///
+    /// Con aislamiento `Snapshot`/`Serializable` se fija el snapshot de
+    /// visibilidad aquí (SPEC-0182); `ReadCommitted` lo refresca por sentencia.
+    ///
     /// Returns:
     ///     El `TxId` monótono de la nueva transacción.
     pub fn begin(&mut self) -> TxId {
+        if self.isolation != IsoLevel::ReadCommitted {
+            self.tx_snapshot = Some(self.txn.snapshot());
+        }
         let tx = self.txn.begin();
         self.active_tx = Some(tx);
         tx
+    }
+
+    /// Configura el nivel de aislamiento (builder, SPEC-0182).
+    ///
+    /// - `ReadCommitted`: cada lectura ve el último commit (snapshot por
+    ///   sentencia); sin SSI.
+    /// - `Snapshot` (defecto): la transacción explícita fija su snapshot en
+    ///   [`Self::begin`]; sin SSI.
+    /// - `Serializable`: snapshot fijo + detección SSI en el commit.
+    ///
+    /// Args:
+    ///     level: Nivel deseado.
+    ///
+    /// Returns:
+    ///     La base con el nivel aplicado (permite encadenar en `open`).
+    pub fn with_isolation(mut self, level: IsoLevel) -> Self {
+        self.set_isolation(level);
+        self
+    }
+
+    /// Aplica el nivel de aislamiento sobre una base ya abierta.
+    ///
+    /// Args:
+    ///     level: Nivel deseado.
+    pub fn set_isolation(&mut self, level: IsoLevel) {
+        self.isolation = level;
+        self.txn.enable_ssi(level == IsoLevel::Serializable);
+        if level == IsoLevel::ReadCommitted {
+            self.tx_snapshot = None;
+        } else if self.active_tx.is_some() && self.tx_snapshot.is_none() {
+            self.tx_snapshot = Some(self.txn.snapshot());
+        }
+    }
+
+    /// Nivel de aislamiento configurado.
+    ///
+    /// Returns:
+    ///     El [`IsoLevel`] activo.
+    pub fn isolation(&self) -> IsoLevel {
+        self.isolation
+    }
+
+    /// Indica si la deteccion SSI esta activa (nivel `Serializable`).
+    ///
+    /// Returns:
+    ///     `true` si los commits aplican el grafo SSI.
+    pub fn is_ssi_enabled(&self) -> bool {
+        self.txn.is_ssi_enabled()
     }
 
     /// Toma un snapshot de visibilidad con el estado transaccional actual.
@@ -645,7 +707,9 @@ impl Database {
     /// Returns:
     ///     La vista fija de visibilidad para consultas "as of".
     pub fn snapshot(&self) -> Snapshot {
-        self.txn.snapshot()
+        self.tx_snapshot
+            .clone()
+            .unwrap_or_else(|| self.txn.snapshot())
     }
 
     /// Transacción explícita en vuelo, si [`Database::begin`] fue llamada.
@@ -829,6 +893,64 @@ fn read_u64(bytes: &[u8], at: usize) -> Result<u64, RuscaError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// `with_isolation` fija el snapshot en `Snapshot` y lo refresca en
+    /// `ReadCommitted`; `Serializable` activa SSI.
+    #[test]
+    fn isolation_levels_control_snapshot_and_ssi() {
+        let snapshot_dir = tempfile::tempdir().expect("dir snapshot");
+        let snapshot_path = snapshot_dir.path().join("snapshot.db");
+        let mut snapshot_db =
+            Database::open(DbConfig::new(&snapshot_path, 16)).expect("open snapshot");
+        assert_eq!(snapshot_db.isolation(), IsoLevel::Snapshot);
+        snapshot_db.begin();
+        let pinned = snapshot_db.snapshot().tx_id;
+        let other = snapshot_db.txn.begin();
+        snapshot_db
+            .txn
+            .stage_write(other, "k".to_string())
+            .expect("stage");
+        snapshot_db.txn.commit(other).expect("commit ajeno");
+        assert_eq!(
+            snapshot_db.snapshot().tx_id,
+            pinned,
+            "Snapshot debe fijar la visibilidad al begin"
+        );
+        snapshot_db.rollback().expect("rollback");
+        assert!(
+            snapshot_db.snapshot().tx_id > pinned,
+            "tras terminar la tx vuelve a verse el ultimo commit"
+        );
+
+        let rc_dir = tempfile::tempdir().expect("dir rc");
+        let rc_path = rc_dir.path().join("read_committed.db");
+        let mut rc_db = Database::open(DbConfig::new(&rc_path, 16))
+            .expect("open rc")
+            .with_isolation(IsoLevel::ReadCommitted);
+        assert_eq!(rc_db.isolation(), IsoLevel::ReadCommitted);
+        rc_db.begin();
+        let before = rc_db.snapshot().tx_id;
+        let other = rc_db.txn.begin();
+        rc_db
+            .txn
+            .stage_write(other, "k".to_string())
+            .expect("stage");
+        rc_db.txn.commit(other).expect("commit ajeno");
+        assert!(
+            rc_db.snapshot().tx_id > before,
+            "ReadCommitted ve el ultimo commit en cada lectura"
+        );
+        rc_db.rollback().expect("rollback");
+
+        let serializable_dir = tempfile::tempdir().expect("dir serializable");
+        let serializable_path = serializable_dir.path().join("serializable.db");
+        let serializable = Database::open(DbConfig::new(&serializable_path, 16))
+            .expect("open serializable")
+            .with_isolation(IsoLevel::Serializable);
+        assert_eq!(serializable.isolation(), IsoLevel::Serializable);
+        assert!(serializable.txn.is_ssi_enabled());
+        assert!(!snapshot_db.txn.is_ssi_enabled());
+    }
+
     use pretty_assertions::assert_eq;
     use proptest::prelude::*;
     use rstest::rstest;
