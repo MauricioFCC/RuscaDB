@@ -342,6 +342,15 @@ fn expr_json(expr: &Expr) -> Value {
             "query": select_json(query),
             "negated": negated,
         }),
+        Expr::ScalarSubquery(query) => json!({
+            "kind": "scalar_subquery",
+            "query": select_json(query),
+        }),
+        Expr::Exists { query, negated } => json!({
+            "kind": "exists",
+            "query": select_json(query),
+            "negated": negated,
+        }),
         Expr::Coalesce(items) => json!({
             "kind": "coalesce",
             "items": items.iter().map(expr_json).collect::<Vec<_>>(),

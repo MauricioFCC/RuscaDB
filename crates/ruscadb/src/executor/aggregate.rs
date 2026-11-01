@@ -436,9 +436,13 @@ pub(crate) fn infer_expr_type(
         | Expr::IsNull { .. }
         | Expr::InList { .. }
         | Expr::InSubquery { .. }
+        | Expr::Exists { .. }
         | Expr::Between { .. }
         | Expr::Like { .. }
         | Expr::Match { .. } => Ok(ColumnType::Bool),
+        Expr::ScalarSubquery(_) => Err(RuscaError::TypeMismatch {
+            message: "subconsulta escalar no soportada en agregado".to_string(),
+        }),
         Expr::Coalesce(items) => {
             let mut result = None;
             for item in items {

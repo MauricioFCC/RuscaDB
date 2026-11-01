@@ -205,8 +205,8 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 Estado 2026-11-02: **45 `real`, 5 `stub`, 1 `placeholder`**, 0 codigo sin
 implementar (audit: 0 `todo!`/`unimplemented!`).
 
-- **Helper-only (stub honesto)**: `SPEC-0162` subqueries (IN ya cableado;
-  scalar/EXISTS/derived pendientes), `SPEC-0163` CTE y
+- **Helper-only (stub honesto)**: `SPEC-0162` subqueries (IN/scalar/EXISTS
+  cableados; solo `FROM (subquery)` pendiente), `SPEC-0163` CTE y
   `SPEC-0165` window functions. Tienen motor auxiliar y tests, pero **no** estan
   cableadas al parser/executor; declararlas `real` era sobredeclarar.
 - **Propuestas SurrealDB (stub/proposed)**: `SPEC-0185` RELATE + paths de grafo

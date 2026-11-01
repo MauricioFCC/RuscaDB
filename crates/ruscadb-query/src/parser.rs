@@ -935,6 +935,18 @@ impl Parser {
         if self.match_keyword(Keyword::Match) {
             return self.parse_match();
         }
+        if self.match_keyword(Keyword::Exists) {
+            self.expect_token(&Token::LParen, &format!("{EXPECTED_PREFIX}'(' tras EXISTS"))?;
+            let query = self.parse_select()?;
+            self.expect_token(
+                &Token::RParen,
+                &format!("{EXPECTED_PREFIX}')' para cerrar EXISTS"),
+            )?;
+            return Ok(Expr::Exists {
+                query: Box::new(query),
+                negated: false,
+            });
+        }
         if matches!(self.peek(), Some(Token::Bool(_))) {
             return self.parse_expr();
         }
@@ -1126,6 +1138,17 @@ impl Parser {
 
     /// Parsea un operando: columna (o extracción `col -> 'ruta'`), literal o `CASE`.
     fn parse_expr(&mut self) -> Result<Expr, RuscaError> {
+        if self.peek() == Some(&Token::LParen)
+            && matches!(self.peek_at(1), Some(Token::Keyword(Keyword::Select)))
+        {
+            self.advance();
+            let query = self.parse_select()?;
+            self.expect_token(
+                &Token::RParen,
+                &format!("{EXPECTED_PREFIX}')' para cerrar la subconsulta"),
+            )?;
+            return Ok(Expr::ScalarSubquery(Box::new(query)));
+        }
         let expr = match self.peek().cloned() {
             Some(Token::Keyword(Keyword::Case)) => return self.parse_case(),
             Some(Token::Keyword(Keyword::Coalesce)) => {

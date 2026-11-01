@@ -18,6 +18,8 @@ pub(crate) fn expr_literal(expression: &Expr) -> Option<ScalarValue> {
         | Expr::IsNull { .. }
         | Expr::InList { .. }
         | Expr::InSubquery { .. }
+        | Expr::ScalarSubquery(_)
+        | Expr::Exists { .. }
         | Expr::Between { .. }
         | Expr::Like { .. }
         | Expr::Coalesce(_)
@@ -135,6 +137,7 @@ pub(crate) fn validate_filter_columns(
         Expr::Not(inner) => validate_filter_columns(table, inner),
         Expr::IsNull { expr, .. } => validate_filter_columns(table, expr),
         Expr::InSubquery { expr, .. } => validate_filter_columns(table, expr),
+        Expr::ScalarSubquery(_) | Expr::Exists { .. } => Ok(()),
         Expr::InList { expr, list, .. } => {
             validate_filter_columns(table, expr)?;
             for item in list {
@@ -224,6 +227,9 @@ pub(crate) fn eval_truth(expression: &Expr, record: &Record) -> Result<Truth, Ru
         }),
         Expr::InSubquery { .. } => Err(RuscaError::TypeMismatch {
             message: "subconsulta IN no materializada".to_string(),
+        }),
+        Expr::ScalarSubquery(_) | Expr::Exists { .. } => Err(RuscaError::TypeMismatch {
+            message: "subconsulta no materializada".to_string(),
         }),
         Expr::InList {
             expr,
@@ -342,6 +348,8 @@ pub(crate) fn eval_operand(expression: &Expr, record: &Record) -> Result<ScalarV
         | Expr::IsNull { .. }
         | Expr::InList { .. }
         | Expr::InSubquery { .. }
+        | Expr::ScalarSubquery(_)
+        | Expr::Exists { .. }
         | Expr::Between { .. }
         | Expr::Like { .. } => Ok(truth_scalar(eval_truth(expression, record)?)),
         Expr::Coalesce(_) | Expr::Nullif(_, _) => eval_scalar(expression, &record.scalars),
@@ -406,6 +414,9 @@ pub(crate) fn eval_scalar(
         }
         Expr::InSubquery { .. } => Err(RuscaError::TypeMismatch {
             message: "subconsulta IN no materializada".to_string(),
+        }),
+        Expr::ScalarSubquery(_) | Expr::Exists { .. } => Err(RuscaError::TypeMismatch {
+            message: "subconsulta no materializada".to_string(),
         }),
         Expr::InList {
             expr,

@@ -33,6 +33,7 @@ mod execute;
 mod knn;
 mod plan;
 mod rows;
+mod subquery;
 
 pub(crate) use aggregate::*;
 pub(crate) use budget::*;
@@ -43,6 +44,7 @@ pub use plan::Plan;
 pub(crate) use plan::full_scan_warning;
 pub(crate) use plan::plan_for;
 pub(crate) use rows::*;
+pub(crate) use subquery::*;
 
 /// Fila proyectada: nombre de columna → valor escalar.
 pub type Row = BTreeMap<String, ScalarValue>;

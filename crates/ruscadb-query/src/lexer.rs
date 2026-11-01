@@ -39,6 +39,8 @@ pub enum Keyword {
     Except,
     /// `ALL`
     All,
+    /// `EXISTS`
+    Exists,
     /// `LIMIT`
     Limit,
     /// `KNN`
@@ -142,6 +144,7 @@ impl Keyword {
             Self::Intersect => "INTERSECT",
             Self::Except => "EXCEPT",
             Self::All => "ALL",
+            Self::Exists => "EXISTS",
             Self::Limit => "LIMIT",
             Self::Knn => "KNN",
             Self::Traverse => "TRAVERSE",
@@ -211,6 +214,7 @@ impl Keyword {
             "intersect" => Some(Self::Intersect),
             "except" => Some(Self::Except),
             "all" => Some(Self::All),
+            "exists" => Some(Self::Exists),
             "limit" => Some(Self::Limit),
             "knn" => Some(Self::Knn),
             "traverse" => Some(Self::Traverse),

@@ -196,6 +196,15 @@ pub enum Expr {
         /// `true` para `NOT IN`.
         negated: bool,
     },
+    /// Subconsulta escalar `(SELECT ...)` (no correlacionada).
+    ScalarSubquery(Box<Select>),
+    /// `[NOT] EXISTS (SELECT ...)` (no correlacionada).
+    Exists {
+        /// Subconsulta comprobada.
+        query: Box<Select>,
+        /// `true` para `NOT EXISTS`.
+        negated: bool,
+    },
     /// `COALESCE(a, b, ...)`.
     Coalesce(Vec<Expr>),
     /// `NULLIF(a, b)`.
@@ -628,6 +637,12 @@ impl fmt::Display for Expr {
             } => write!(
                 formatter,
                 "{expr} {}IN ({query})",
+                if *negated { "NOT " } else { "" }
+            ),
+            Self::ScalarSubquery(query) => write!(formatter, "({query})"),
+            Self::Exists { query, negated } => write!(
+                formatter,
+                "{}EXISTS ({query})",
                 if *negated { "NOT " } else { "" }
             ),
             Self::Coalesce(items) => {
