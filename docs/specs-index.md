@@ -161,10 +161,10 @@
 | SPEC-0159 | `query_result_cache` | implemented | real | `query_result_cache.md` |
 | SPEC-0160 | `schema_evolution` | implemented | real | `schema_evolution.md` |
 | SPEC-0161 | `rql_expression_language` | implemented | real | `rql_expression_language.md` |
-| SPEC-0162 | `rql_subqueries` | accepted | stub | `rql_subqueries.md` |
-| SPEC-0163 | `rql_cte` | accepted | stub | `rql_cte.md` |
+| SPEC-0162 | `rql_subqueries` | implemented | real | `rql_subqueries.md` |
+| SPEC-0163 | `rql_cte` | implemented | real | `rql_cte.md` |
 | SPEC-0164 | `rql_set_operations` | implemented | real | `rql_set_operations.md` |
-| SPEC-0165 | `rql_window_functions` | accepted | stub | `rql_window_functions.md` |
+| SPEC-0165 | `rql_window_functions` | implemented | real | `rql_window_functions.md` |
 | SPEC-0166 | `prepared_statements_real` | implemented | real | `prepared_statements_real.md` |
 | SPEC-0167 | `page_checksums` | implemented | real | `page_checksums.md` |
 | SPEC-0168 | `segmented_wal` | implemented | real | `segmented_wal.md` |
@@ -184,10 +184,11 @@
 | SPEC-0182 | `rql_expressions_isolation` | implemented | real | `rql_expressions_isolation.md` |
 | SPEC-0183 | `sql_three_valued_logic` | implemented | real | `sql_three_valued_logic.md` |
 | SPEC-0184 | `prepared_api_error_codes` | implemented | real | `prepared_api_error_codes.md` |
-| SPEC-0185 | `surreal_graph_relations` | proposed | stub | `surreal_graph_relations.md` |
-| SPEC-0186 | `surreal_session_expressions` | proposed | stub | `surreal_session_expressions.md` |
+| SPEC-0185 | `surreal_graph_relations` | implemented | real | `surreal_graph_relations.md` |
+| SPEC-0186 | `surreal_session_expressions` | implemented | real | `surreal_session_expressions.md` |
 | SPEC-0187 | `operability_api` | implemented | real | `operability_api.md` |
 | SPEC-0188 | `doctor_metrics` | implemented | real | `doctor_metrics.md` |
 | SPEC-0189 | `resource_limits` | implemented | real | `resource_limits.md` |
 | SPEC-0190 | `conformance_fixtures` | implemented | real | `conformance_fixtures.md` |
 | SPEC-0191 | `migrate_check` | implemented | real | `migrate_check.md` |
+| SPEC-0192 | `artifact_gc` | implemented | real | `artifact_gc.md` |

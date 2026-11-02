@@ -12,9 +12,14 @@
 //!   (puerta T2 v0, SPEC-0061; sin el path lee stdin).
 //! - `red <spec>`: gate RED-first (SPEC-0094) para specs `planned`/`draft`:
 //!   exige que los tests citados por sus ACs fallen antes de implementar.
+//! - `gc [--apply] [--all] [--max-age-hours N] [--json] [--root DIR]`:
+//!   recolector de artefactos regenerables (`target/`, `mutants.out*`, ...)
+//!   con allowlist y dry-run por defecto (SPEC-0192).
 //!
-//! Sin dependencias externas (solo `std`) para mantener el bootstrap liviano.
+//! Sin dependencias externas en runtime (solo `std` + `serde_json`) para
+//! mantener el bootstrap liviano.
 
+mod gc;
 mod guards;
 mod judge;
 mod red;
@@ -40,11 +45,12 @@ fn main() -> ExitCode {
         "check-commits" => check_commits_cmd(args.collect()),
         "check-changelog" => check_changelog_cmd(args.collect()),
         "audit" => guard_cmd(guards::audit),
+        "gc" => gc_cmd(args.collect()),
         other => {
             eprintln!(
                 "comando desconocido: {other} (disponibles: trace, contract, judge, red, \
                  check-architecture, check-unsafe, check-specs, gen-specs-index, mutation-score, \
-                 check-commits, check-changelog, audit)"
+                 check-commits, check-changelog, audit, gc)"
             );
             ExitCode::FAILURE
         }
@@ -108,6 +114,92 @@ fn check_changelog_cmd(args: Vec<String>) -> ExitCode {
         Err(detail) => {
             eprintln!("[FAIL] {detail}");
             exit_for(&detail)
+        }
+    }
+}
+
+/// `gc [--apply] [--all] [--max-age-hours N] [--json] [--root DIR]`.
+///
+/// Recolecta artefactos regenerables. Por defecto es dry-run y conserva lo
+/// más reciente que 24 h; `--all` ignora la antigüedad.
+fn gc_cmd(args: Vec<String>) -> ExitCode {
+    let mut options = gc::GcOptions::default();
+    let mut root = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--apply" => options.apply = true,
+            "--dry-run" => options.apply = false,
+            "--all" => options.all = true,
+            "--json" => options.json = true,
+            "--max-age-hours" => {
+                index += 1;
+                let Some(value) = args.get(index).and_then(|value| value.parse::<u64>().ok())
+                else {
+                    eprintln!(
+                        "uso: cargo xtask gc [--apply] [--all] [--max-age-hours N] [--json] [--root DIR]"
+                    );
+                    return ExitCode::from(2);
+                };
+                options.max_age = std::time::Duration::from_secs(value.saturating_mul(3600));
+            }
+            "--root" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    eprintln!("uso: cargo xtask gc --root <directorio>");
+                    return ExitCode::from(2);
+                };
+                root = Some(PathBuf::from(value));
+            }
+            other => {
+                eprintln!("argumento desconocido: {other}");
+                return ExitCode::from(2);
+            }
+        }
+        index += 1;
+    }
+    let Some(root) = root.or_else(workspace_root) else {
+        eprintln!("[FAIL] xtask gc: no se pudo determinar la raíz del workspace");
+        return ExitCode::FAILURE;
+    };
+    match gc::collect(&root, &options) {
+        Ok(report) => {
+            if options.json {
+                println!("{}", gc::report_json(&report));
+            } else {
+                println!(
+                    "[gc] root={} dry_run={} candidates={} total={} B removed={} B",
+                    report.root.display(),
+                    report.dry_run,
+                    report.candidates.len(),
+                    report.total_bytes,
+                    report.removed_bytes
+                );
+                for candidate in &report.candidates {
+                    println!(
+                        "  - {} {} ({} B, {} s)",
+                        candidate.action.as_str(),
+                        candidate.path.display(),
+                        candidate.bytes,
+                        candidate.age.as_secs()
+                    );
+                }
+                for warning in &report.warnings {
+                    eprintln!("  ~ {warning}");
+                }
+                for error in &report.errors {
+                    eprintln!("  ! {error}");
+                }
+            }
+            if report.errors.is_empty() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(detail) => {
+            eprintln!("[FAIL] {detail}");
+            ExitCode::FAILURE
         }
     }
 }

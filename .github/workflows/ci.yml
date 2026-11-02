@@ -72,6 +72,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
         run: cargo test --workspace --all-features --locked
+      # SPEC-0192: los artefactos de build/test son regenerables; se recolectan
+      # también si el job falla para no dejar GB en el runner.
+      - name: Recolectar artefactos regenerables
+        if: always()
+        run: cargo xtask gc --apply --all
 
   architecture:
     name: Architecture
@@ -240,6 +245,10 @@ jobs:
           path: mutants.out/outcomes.json
           if-no-files-found: warn
           retention-days: 30
+      # SPEC-0192: recolecta target/ y mutants.out después de subir la evidencia.
+      - name: Recolectar artefactos regenerables
+        if: always()
+        run: cargo xtask gc --apply --all
 
   # Cobertura llvm-cov multi-scope (SPEC-0061 + SPEC-0079): core >= 80 %,
   # txn/wal >= 90 % (hard floor; medido 96.5 %/96.6 % el 2026-10-13). Corre la

@@ -719,6 +719,27 @@ fn unsafe_lines(source: &str) -> Vec<usize> {
             clean.push(' ');
             continue;
         }
+        // Literal de carácter (`'"'`, `'/'`, `'\n'`): no abre una cadena.
+        if ch == '\'' {
+            let mut lookahead = chars.clone();
+            let next = lookahead.next();
+            let next2 = lookahead.next();
+            if next == Some('\\') {
+                chars.next();
+                chars.next();
+                if chars.peek() == Some(&'\'') {
+                    chars.next();
+                }
+                clean.push(' ');
+                continue;
+            }
+            if next.is_some() && next2 == Some('\'') {
+                chars.next();
+                chars.next();
+                clean.push(' ');
+                continue;
+            }
+        }
         if ch == '"' {
             in_string = true;
             clean.push(' ');
@@ -814,4 +835,23 @@ fn declared_acs(header: &str) -> Vec<String> {
             id.starts_with("AC-").then(|| id.to_string())
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unsafe_lines;
+
+    /// Los literales de carácter con comillas no abren una cadena falsa.
+    #[test]
+    fn unsafe_lines_ignores_char_literals() {
+        let source = "let quote = '\"'; let slash = '/'; // unsafe\nfn f() { unsafe { } }";
+        assert_eq!(unsafe_lines(source), vec![2]);
+    }
+
+    /// Un `unsafe` dentro de una cadena o comentario no cuenta.
+    #[test]
+    fn unsafe_lines_ignores_strings_and_comments() {
+        let source = "let s = \"unsafe {}\";\n/* unsafe */\nfn g() {}";
+        assert!(unsafe_lines(source).is_empty());
+    }
 }

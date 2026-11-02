@@ -18,6 +18,20 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 15 (2026-11-01)**:
+  - **SPEC-0192**: `cargo xtask gc [--apply] [--all] [--max-age-hours N]
+    [--json]` recolecta artefactos regenerables (`target/`, `mutants.out*`,
+    `coverage`, `crates/*/target`, perfiles de cobertura) con allowlist,
+    dry-run por defecto, política de antigüedad y reporte JSON. `ci.yml` y
+    `nightly.yml` lo ejecutan tras los tests (`if: always()`).
+
+- **Ciclo 14 (2026-11-01)**:
+  - **SPEC-0162/0163/0165/0185/0186**: cableado real de tablas derivadas
+    (`FROM (subquery) AS alias`), CTE recursivo (`WITH RECURSIVE`), funciones
+    de ventana (`OVER`), `RELATE` + paths de grafo encadenados (BFS) y
+    `execute_script` con `LET`/`IF`/`RETURN`. Tests SQL en
+    `crates/ruscadb/tests/rql_frontier.rs`.
+
 - **Ciclo 13 (2026-11-02)**:
   - **SPEC-0189 AC-02**: `query_timeout_ms` aplicado al `QueryBudget`
     (0 = deadline inmediato); `max_memory_bytes` documentado como pendiente.

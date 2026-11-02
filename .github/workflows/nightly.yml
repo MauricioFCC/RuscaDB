@@ -210,6 +210,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
         run: cargo test --workspace --all-features --locked
+      # SPEC-0192: artefactos regenerables fuera del runner.
+      - name: Recolectar artefactos regenerables
+        if: always()
+        run: cargo xtask gc --apply --all
 
   # ── T3.6 — Loom: model checking del MVCC (SPEC-0053, alert-only) ───────────
   # Explora planificaciones de commits/snapshots concurrentes con --cfg loom.
