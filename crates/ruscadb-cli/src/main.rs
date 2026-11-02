@@ -99,10 +99,41 @@ fn run(args: &[String]) -> Result<(), CliError> {
         "table" => run_table(&args[1..]),
         "mcp" => run_mcp(&args[1..]),
         "doctor" => run_doctor(&args[1..]),
+        "migrate" => run_migrate(&args[1..]),
         other => Err(CliError::Usage(format!(
             "subcomando desconocido '{other}'. Usa 'ruscadb help' para ver la lista"
         ))),
     }
+}
+
+/// `migrate --db <ruta> [check|apply]`: estado del esquema.
+fn run_migrate(args: &[String]) -> Result<(), CliError> {
+    let options = parse_options(args, true)?;
+    let mode = options
+        .positional
+        .first()
+        .map(String::as_str)
+        .unwrap_or("check");
+    if !matches!(mode, "check" | "apply") {
+        return Err(CliError::Usage(
+            "migrate admite 'check' o 'apply'".to_string(),
+        ));
+    }
+    let database = open_database(&options.db)?;
+    let found = database.manifest().schema_version;
+    let supported = ruscadb::CURRENT_SCHEMA_VERSION;
+    if found > supported {
+        return Err(CliError::Runtime(format!(
+            "schema_version {found} > soportada {supported}: actualiza el binario"
+        )));
+    }
+    if mode == "check" {
+        let ok = found <= supported;
+        println!("schema_version={found} supported={supported} ok={ok}");
+    } else {
+        println!("schema_version={found} (abrir la base aplica migraciones disponibles)");
+    }
+    Ok(())
 }
 
 /// `doctor --db <ruta> [--json]`: diagnostico de integridad y estado.
