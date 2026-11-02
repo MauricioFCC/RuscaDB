@@ -21,7 +21,11 @@
 use crate::{KEY_SIZE, NONCE_SIZE, open, seal};
 use ruscadb_core::RuscaError;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+#[cfg(feature = "post-quantum")]
+use crate::ml_kem::MlKemKeyPair;
 
 /// Prefijo de versión de los tokens emitidos.
 const TOKEN_VERSION: &str = "v1";
@@ -53,6 +57,17 @@ struct KeyRecord {
     status: String,
 }
 
+/// Registro de una clave ML-KEM en el keystore (SPEC-0180).
+#[derive(Debug, Serialize, Deserialize)]
+struct PqKeyRecord {
+    /// Clave pública ML-KEM en hexadecimal.
+    public_key: String,
+    /// Clave privada ML-KEM en hexadecimal (KMS-lite, en claro).
+    private_key: String,
+    /// Ciclo de vida: `active` o `retired`.
+    status: String,
+}
+
 /// Fichero keystore (JSON versionado).
 #[derive(Debug, Serialize, Deserialize)]
 struct KeystoreFile {
@@ -62,6 +77,9 @@ struct KeystoreFile {
     next_id: u64,
     /// Keys conocidas (activas y retiradas).
     keys: Vec<KeyRecord>,
+    /// Claves ML-KEM (SPEC-0180); vacío en ficheros legacy.
+    #[serde(default)]
+    pq_keys: BTreeMap<String, PqKeyRecord>,
 }
 
 /// Keystore local versionado con rotación de keys (SPEC-0088).
@@ -262,6 +280,60 @@ impl Keystore {
         self.path.as_deref()
     }
 
+    /// Guarda un par de claves ML-KEM en el keystore (SPEC-0180).
+    ///
+    /// Args:
+    ///     kid: Identificador lógico de la clave.
+    ///     keypair: Par ML-KEM validado.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla la persistencia.
+    #[cfg(feature = "post-quantum")]
+    pub fn store_ml_kem_keypair(
+        &mut self,
+        kid: &str,
+        keypair: &MlKemKeyPair,
+    ) -> Result<(), RuscaError> {
+        self.file.pq_keys.insert(
+            kid.to_string(),
+            PqKeyRecord {
+                public_key: hex::encode(keypair.public_key()),
+                private_key: hex::encode(keypair.private_key()),
+                status: STATUS_ACTIVE.to_string(),
+            },
+        );
+        self.persist()
+    }
+
+    /// Carga un par de claves ML-KEM del keystore (SPEC-0180).
+    ///
+    /// Args:
+    ///     kid: Identificador lógico de la clave.
+    ///
+    /// Returns:
+    ///     `Some(MlKemKeyPair)` si existe; `None` si no.
+    ///
+    /// Errors:
+    ///     [`RuscaError::InvalidConfig`] si el material hex o las claves son
+    ///     inválidos.
+    #[cfg(feature = "post-quantum")]
+    pub fn load_ml_kem_keypair(&self, kid: &str) -> Result<Option<MlKemKeyPair>, RuscaError> {
+        let Some(record) = self.file.pq_keys.get(kid) else {
+            return Ok(None);
+        };
+        let public_key = hex::decode(&record.public_key).map_err(|_| {
+            RuscaError::InvalidConfig(format!(
+                "clave pública ML-KEM '{kid}' no es hexadecimal válida"
+            ))
+        })?;
+        let private_key = hex::decode(&record.private_key).map_err(|_| {
+            RuscaError::InvalidConfig(format!(
+                "clave privada ML-KEM '{kid}' no es hexadecimal válida"
+            ))
+        })?;
+        Ok(Some(MlKemKeyPair::from_parts(&public_key, &private_key)?))
+    }
+
     /// Construye un estado inicial con `k1` activa y `next_id = 2`.
     ///
     /// Returns:
@@ -274,6 +346,7 @@ impl Keystore {
             version: FILE_FORMAT_VERSION,
             next_id: 2,
             keys: vec![Self::generate_key(1)?],
+            pq_keys: BTreeMap::new(),
         })
     }
 

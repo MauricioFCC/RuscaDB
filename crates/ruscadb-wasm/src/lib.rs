@@ -223,11 +223,21 @@ fn statement_json(statement: &Statement) -> Value {
             })).collect::<Vec<_>>(),
             "body": statement_json(body),
         }),
-        Statement::Relate { from, edge, to } => json!({
+        Statement::Relate {
+            from,
+            edge,
+            to,
+            payload,
+            ts_unix,
+            conflict,
+        } => json!({
             "kind": "relate",
             "from": from.to_string(),
             "edge": edge,
             "to": to.to_string(),
+            "payload": payload,
+            "ts_unix": ts_unix,
+            "conflict": format!("{conflict:?}"),
         }),
         Statement::Let { name, expr } => json!({
             "kind": "let",

@@ -20,8 +20,8 @@ pub use ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Cte, Delete, Explain,
     Expr, FrameBound, FrameKind, FrameSpec, GraphPath, HavingCondition, Insert, JoinClause,
     JoinKind, KnnClause, KnnMode, OnConflict, OrderBy, PathDirection, PathHop, ProjectedExpr,
-    Projection, RecordRef, Select, SetOpKind, Statement, TraverseClause, Update, WindowFunc,
-    WindowItem, WindowSpec,
+    Projection, RecordRef, RelateConflict, Select, SetOpKind, Statement, TraverseClause, Update,
+    WindowFunc, WindowItem, WindowSpec,
 };
 pub use limits::{
     COMPLEXITY_BUDGET, DEFAULT_TIMEOUT_MILLIS, FULL_SCAN_WARN_THRESHOLD, IMPLICIT_LIMIT,

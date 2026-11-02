@@ -600,6 +600,21 @@ pub enum PathDirection {
     In,
 }
 
+/// Política de conflicto de `RELATE` (SPEC-0193).
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum RelateConflict {
+    /// Default: no-op si payload/ts coinciden; error `EDGE_CONFLICT` si difieren.
+    #[default]
+    Default,
+    /// `ON CONFLICT DO NOTHING`: no-op siempre.
+    DoNothing,
+    /// `ON CONFLICT DO UPDATE SET payload = ...`: actualiza solo el payload.
+    DoUpdate {
+        /// Payload nuevo (JSON crudo); `None` conserva el actual.
+        payload: Option<String>,
+    },
+}
+
 /// Salto de un path de grafo (`->label->tabla` o `<-label<-tabla`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PathHop {
@@ -609,6 +624,8 @@ pub struct PathHop {
     pub label: String,
     /// Tabla destino (filtra los nodos vecinos).
     pub table: String,
+    /// Campos de metadatos de la arista (`{payload, ts_unix}`); vacío = solo IDs.
+    pub edge_fields: Vec<String>,
 }
 
 /// Path de grafo de uno o más saltos, con alias opcional (SPEC-0185).
@@ -733,7 +750,8 @@ pub enum Statement {
         /// Sentencia que consume los CTEs.
         body: Box<Statement>,
     },
-    /// `RELATE tabla:id->etiqueta->tabla:id` (SPEC-0185).
+    /// `RELATE tabla:id->etiqueta->tabla:id [SET {...}] [AT n] [ON CONFLICT ...]`
+    /// (SPEC-0185/SPEC-0193).
     Relate {
         /// Registro origen.
         from: RecordRef,
@@ -741,6 +759,12 @@ pub enum Statement {
         edge: String,
         /// Registro destino.
         to: RecordRef,
+        /// Payload JSON crudo (`SET { ... }`), validado por el executor.
+        payload: Option<String>,
+        /// `ts_unix` explícito (`AT <unix>`); `None` = ahora.
+        ts_unix: Option<i64>,
+        /// Política de conflicto.
+        conflict: RelateConflict,
     },
     /// `LET $nombre = expr` en un script (SPEC-0186).
     Let {
@@ -1178,7 +1202,11 @@ impl fmt::Display for GraphPath {
                 PathDirection::Out => "->",
                 PathDirection::In => "<-",
             };
-            write!(formatter, "{arrow}{}{arrow}{}", hop.label, hop.table)?;
+            write!(formatter, "{arrow}{}", hop.label)?;
+            if !hop.edge_fields.is_empty() {
+                write!(formatter, "{{{}}}", hop.edge_fields.join(", "))?;
+            }
+            write!(formatter, "{arrow}{}", hop.table)?;
         }
         match &self.alias {
             Some(alias) => write!(formatter, " AS {alias}"),
@@ -1349,8 +1377,33 @@ impl fmt::Display for Statement {
                 }
                 write!(formatter, " {body}")
             }
-            Self::Relate { from, edge, to } => {
-                write!(formatter, "RELATE {from}->{edge}->{to}")
+            Self::Relate {
+                from,
+                edge,
+                to,
+                payload,
+                ts_unix,
+                conflict,
+            } => {
+                write!(formatter, "RELATE {from}->{edge}->{to}")?;
+                if let Some(payload) = payload {
+                    write!(formatter, " SET {payload}")?;
+                }
+                if let Some(ts_unix) = ts_unix {
+                    write!(formatter, " AT {ts_unix}")?;
+                }
+                match conflict {
+                    RelateConflict::Default => {}
+                    RelateConflict::DoNothing => write!(formatter, " ON CONFLICT DO NOTHING")?,
+                    RelateConflict::DoUpdate { payload } => {
+                        write!(formatter, " ON CONFLICT DO UPDATE SET payload = ")?;
+                        match payload {
+                            Some(payload) => write!(formatter, "{payload}")?,
+                            None => write!(formatter, "payload")?,
+                        }
+                    }
+                }
+                Ok(())
             }
             Self::Let { name, expr } => write!(formatter, "LET ${name} = {expr}"),
             Self::Return(expr) => write!(formatter, "RETURN {expr}"),

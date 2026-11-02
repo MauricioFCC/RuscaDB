@@ -32,6 +32,17 @@
 /// tokens AEAD con rotación de keys y persistencia versionada.
 pub mod keystore;
 
+/// ML-KEM FIPS 203 + híbrido X25519+ML-KEM (SPEC-0180, opt-in).
+#[cfg(feature = "post-quantum")]
+pub mod ml_kem;
+
+#[cfg(feature = "post-quantum")]
+pub use ml_kem::{
+    HYBRID_CIPHERTEXT_BYTES, HYBRID_PUBLIC_KEY_BYTES, HYBRID_SECRET_KEY_BYTES, HybridKem,
+    HybridKeyPair, ML_KEM_768_CIPHERTEXT_BYTES, ML_KEM_768_PRIVATE_KEY_BYTES,
+    ML_KEM_768_PUBLIC_KEY_BYTES, MlKem, MlKemKeyPair, SHARED_SECRET_BYTES,
+};
+
 use argon2::Argon2;
 use chacha20poly1305::{
     Key, XChaCha20Poly1305, XNonce,

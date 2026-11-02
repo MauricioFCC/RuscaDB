@@ -14,12 +14,16 @@ use ruscadb_core::{
     ScalarMap, ScalarValue,
 };
 use ruscadb_query::{
-    Cte, Expr, RecordRef, Select, SetOpKind, Statement, parse_script, parse_statement,
+    Cte, Expr, RecordRef, RelateConflict, Select, SetOpKind, Statement, parse_script,
+    parse_statement,
 };
 use ruscadb_txn::Snapshot;
 
 use crate::catalog::{Catalog, ColumnDef, ColumnType, TableDef};
 use crate::database::Database;
+use crate::edge_meta::{
+    EDGE_META_TABLE, edge_key, edge_meta_scalars, lookup_edge_meta, parse_payload,
+};
 use crate::executor::{
     Plan, Row, VirtualTable, execute_select_at_ctx, full_scan_warning, plan_for,
 };
@@ -46,7 +50,11 @@ impl Database {
         catalog.register_table(name, columns)?;
         let heap_start = catalog.get(name)?.heap_start;
         self.write_page(&blank_slotted_page(heap_start))?;
-        catalog.save(self)?;
+        if self.active_tx.is_some() {
+            catalog.save_pages(self)?;
+        } else {
+            catalog.save(self)?;
+        }
         self.indexes
             .insert(name.to_string(), TableIndexes::default());
         Ok(())
@@ -281,7 +289,11 @@ impl Database {
         };
         catalog.get_mut(table)?.indexes.push(indexed);
         crate::index::index_build(self, &mut catalog, table, column)?;
-        catalog.save(self)
+        if self.active_tx.is_some() {
+            catalog.save_pages(self)
+        } else {
+            catalog.save(self)
+        }
     }
 
     /// Ejecuta una sentencia RQL y devuelve las filas resultantes.
@@ -477,7 +489,14 @@ impl Database {
                 }
                 self.execute_statement_with(*body, snapshot, vars, &scope)
             }
-            Statement::Relate { from, edge, to } => self.execute_relate(&from, &edge, &to),
+            Statement::Relate {
+                from,
+                edge,
+                to,
+                payload,
+                ts_unix,
+                conflict,
+            } => self.execute_relate(&from, &edge, &to, payload.as_deref(), ts_unix, &conflict),
             Statement::Let { name, expr } => {
                 let expr = substitute_expr_vars(&expr, vars)?;
                 let value = crate::executor::eval_scalar(&expr, &ScalarMap::new())?;
@@ -590,11 +609,23 @@ impl Database {
         from: &RecordRef,
         edge: &str,
         to: &RecordRef,
+        payload: Option<&str>,
+        ts_unix: Option<i64>,
+        conflict: &RelateConflict,
     ) -> Result<Vec<Row>, RuscaError> {
-        let created = self.relate(&from.table, &from.id, edge, &to.table, &to.id)?;
+        let changed = self.relate_with_meta(
+            &from.table,
+            &from.id,
+            edge,
+            &to.table,
+            &to.id,
+            payload,
+            ts_unix,
+            conflict,
+        )?;
         Ok(vec![Row::from([(
             "affected".to_string(),
-            ScalarValue::Int(i64::from(created)),
+            ScalarValue::Int(i64::from(changed)),
         )])])
     }
 
@@ -656,6 +687,49 @@ impl Database {
         to_table: &str,
         to_id: &str,
     ) -> Result<bool, RuscaError> {
+        self.relate_with_meta(
+            from_table,
+            from_id,
+            label,
+            to_table,
+            to_id,
+            None,
+            None,
+            &RelateConflict::Default,
+        )
+    }
+
+    /// Crea/actualiza una arista con payload y `ts_unix` (SPEC-0193).
+    ///
+    /// Args:
+    ///     from_table: Tabla del nodo origen.
+    ///     from_id: ULID del origen.
+    ///     label: Etiqueta de la arista.
+    ///     to_table: Tabla del nodo destino.
+    ///     to_id: ULID del destino.
+    ///     payload_raw: JSON crudo de `SET { ... }`; `None` = sin payload explícito.
+    ///     ts_unix: `ts_unix` explícito (`AT`); `None` = ahora.
+    ///     conflict: Política `ON CONFLICT`.
+    ///
+    /// Returns:
+    ///     `Ok(true)` si creó o actualizó algo; `Ok(false)` si fue no-op.
+    ///
+    /// Errors:
+    ///     [`RuscaError::InvalidConfig`] con prefijo `EDGE_CONFLICT` si los
+    ///     metadatos difieren y la política es la default; errores de payload,
+    ///     ids o catálogo en otro caso.
+    #[allow(clippy::too_many_arguments)] // API interna: clave + payload/ts/política
+    pub(crate) fn relate_with_meta(
+        &mut self,
+        from_table: &str,
+        from_id: &str,
+        label: &str,
+        to_table: &str,
+        to_id: &str,
+        payload_raw: Option<&str>,
+        ts_unix: Option<i64>,
+        conflict: &RelateConflict,
+    ) -> Result<bool, RuscaError> {
         self.ensure_writable("relate")?;
         self.require_write("relate")?;
         if label.is_empty() {
@@ -665,9 +739,15 @@ impl Database {
         }
         let from_id = RecordId::from_string(from_id)?;
         let to_id = RecordId::from_string(to_id)?;
+        let payload_explicit = payload_raw.is_some();
+        let (payload_value, payload_canonical) = parse_payload(payload_raw.unwrap_or("{}"))?;
+        let ts_explicit = ts_unix.is_some();
+        let ts = ts_unix.unwrap_or_else(now_unix);
+        self.ensure_edge_meta_table()?;
         let mut catalog = Catalog::load(self)?;
         let from_def = catalog.get(from_table)?.clone();
         let to_def = catalog.get(to_table)?.clone();
+        let meta_table = catalog.get(EDGE_META_TABLE)?.clone();
         let Some((from_locator, from_record)) =
             crate::delete::locate_row(self, &from_def, &from_id)?
         else {
@@ -681,72 +761,177 @@ impl Database {
                 "no existe el registro {to_table}:{to_id}"
             )));
         };
-        if from_record
+        let edge_exists = from_record
             .edges
             .out
             .iter()
-            .any(|edge| edge.label == label && edge.node == to_id)
-        {
+            .any(|edge| edge.label == label && edge.node == to_id);
+        let key = edge_key(from_table, &from_id, label, to_table, &to_id);
+        let snapshot = self.snapshot();
+        let existing = lookup_edge_meta(self, &meta_table, &key, &snapshot)?;
+        let mut meta_insert: Option<Record> = None;
+        let mut meta_update: Option<(crate::heap::RowLocator, Record, String)> = None;
+        if let Some((locator, record, meta)) = existing {
+            let payload_differs = payload_explicit && meta.payload != payload_value;
+            let ts_differs = ts_explicit && meta.ts_unix != ts;
+            match conflict {
+                RelateConflict::DoNothing => {}
+                RelateConflict::Default if payload_differs || ts_differs => {
+                    return Err(RuscaError::InvalidConfig(format!(
+                        "EDGE_CONFLICT: la arista {from_table}:{from_id}->{label}->{to_table}:{to_id} ya existe con payload/ts_unix distintos; usa ON CONFLICT DO NOTHING o DO UPDATE SET payload"
+                    )));
+                }
+                RelateConflict::Default => {}
+                RelateConflict::DoUpdate {
+                    payload: new_payload,
+                } => {
+                    if ts_explicit {
+                        return Err(RuscaError::InvalidConfig(
+                            "EDGE_CONFLICT: ts_unix es inmutable; AT solo se admite al crear la arista"
+                                .to_string(),
+                        ));
+                    }
+                    let new_value = match new_payload {
+                        Some(raw) => parse_payload(raw)?.0,
+                        None => payload_value.clone(),
+                    };
+                    if new_value != meta.payload {
+                        let canonical = serde_json::to_string(&new_value).map_err(|error| {
+                            RuscaError::InvalidConfig(format!(
+                                "no se pudo serializar el payload de arista: {error}"
+                            ))
+                        })?;
+                        meta_update = Some((locator, record, canonical));
+                    }
+                }
+            }
+        } else {
+            let scalars = edge_meta_scalars(
+                &key,
+                from_table,
+                &from_id,
+                label,
+                to_table,
+                &to_id,
+                &payload_canonical,
+                ts,
+            );
+            meta_insert = Some(Record {
+                id: RecordId::new(),
+                scalars,
+                doc: None,
+                edges: EdgeSet::default(),
+                vector: None,
+                blob: None,
+                meta: RecordMeta::default(),
+            });
+        }
+        if edge_exists && meta_insert.is_none() && meta_update.is_none() {
             return Ok(false);
         }
         let (tx, is_auto_commit) = match self.active_tx {
             Some(tx) => (tx, false),
             None => (self.txn.begin(), true),
         };
-        let mut updated_from = from_record.clone();
-        updated_from.edges.out.push(Edge {
-            label: label.to_string(),
-            node: to_id,
-        });
-        updated_from.meta.created_tx = tx;
-        updated_from.meta.deleted_tx = None;
-        updated_from.meta.lsn = self.wal.next_lsn();
-        if from_table == to_table && from_id == to_id {
-            updated_from.edges.incoming.push(Edge {
-                label: label.to_string(),
-                node: from_id,
-            });
-            crate::dml::persist_row_update(
-                self,
-                &mut catalog,
-                &from_def,
-                &from_record,
-                &updated_from,
-                from_locator,
-            )?;
-        } else {
-            let mut updated_to = to_record.clone();
-            updated_to.edges.incoming.push(Edge {
-                label: label.to_string(),
-                node: from_id,
-            });
-            updated_to.meta.created_tx = tx;
-            updated_to.meta.deleted_tx = None;
-            updated_to.meta.lsn = self.wal.next_lsn();
-            crate::dml::persist_row_update(
-                self,
-                &mut catalog,
-                &from_def,
-                &from_record,
-                &updated_from,
-                from_locator,
-            )?;
-            crate::dml::persist_row_update(
-                self,
-                &mut catalog,
-                &to_def,
-                &to_record,
-                &updated_to,
-                to_locator,
-            )?;
+        let result = (|| -> Result<(), RuscaError> {
+            if let Some(mut record) = meta_insert {
+                let definition = catalog.get(EDGE_META_TABLE)?.clone();
+                record.meta.created_tx = tx;
+                record.meta.lsn = self.wal.next_lsn();
+                record.scalars = validate_scalars(&definition, EDGE_META_TABLE, record.scalars)?;
+                let locator = heap_insert(self, &mut catalog, EDGE_META_TABLE, &record)?;
+                self.primary_insert(EDGE_META_TABLE, record.id, locator)?;
+                maintain_index(self, &mut catalog, EDGE_META_TABLE, &record, locator)?;
+                let entry = self.indexes.entry(EDGE_META_TABLE.to_string()).or_default();
+                entry.index_record(&record, &definition)?;
+                entry.finalize();
+            }
+            if let Some((locator, record, canonical)) = meta_update {
+                let mut updated = record.clone();
+                updated
+                    .scalars
+                    .insert("payload".to_string(), ScalarValue::Text(canonical));
+                updated.meta.created_tx = tx;
+                updated.meta.deleted_tx = None;
+                updated.meta.lsn = self.wal.next_lsn();
+                crate::dml::persist_row_update(
+                    self,
+                    &mut catalog,
+                    &meta_table,
+                    &record,
+                    &updated,
+                    locator,
+                )?;
+            }
+            if !edge_exists {
+                let mut updated_from = from_record.clone();
+                updated_from.edges.out.push(Edge {
+                    label: label.to_string(),
+                    node: to_id,
+                });
+                updated_from.meta.created_tx = tx;
+                updated_from.meta.deleted_tx = None;
+                updated_from.meta.lsn = self.wal.next_lsn();
+                if from_table == to_table && from_id == to_id {
+                    updated_from.edges.incoming.push(Edge {
+                        label: label.to_string(),
+                        node: from_id,
+                    });
+                    crate::dml::persist_row_update(
+                        self,
+                        &mut catalog,
+                        &from_def,
+                        &from_record,
+                        &updated_from,
+                        from_locator,
+                    )?;
+                } else {
+                    let mut updated_to = to_record.clone();
+                    updated_to.edges.incoming.push(Edge {
+                        label: label.to_string(),
+                        node: from_id,
+                    });
+                    updated_to.meta.created_tx = tx;
+                    updated_to.meta.deleted_tx = None;
+                    updated_to.meta.lsn = self.wal.next_lsn();
+                    crate::dml::persist_row_update(
+                        self,
+                        &mut catalog,
+                        &from_def,
+                        &from_record,
+                        &updated_from,
+                        from_locator,
+                    )?;
+                    crate::dml::persist_row_update(
+                        self,
+                        &mut catalog,
+                        &to_def,
+                        &to_record,
+                        &updated_to,
+                        to_locator,
+                    )?;
+                }
+            }
+            catalog.save_pages(self)?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                if is_auto_commit {
+                    self.commit()?;
+                    self.txn.commit(tx)?;
+                }
+                self.note_audit("relate", label);
+                self.invalidate_semantic_cache();
+                Ok(true)
+            }
+            Err(error) => {
+                if is_auto_commit {
+                    self.txn.rollback(tx)?;
+                }
+                Err(error)
+            }
         }
-        catalog.save(self)?;
-        if is_auto_commit {
-            self.txn.commit(tx)?;
-        }
-        self.note_audit("relate", label);
-        self.invalidate_semantic_cache();
-        Ok(true)
     }
 
     /// Carga el catálogo actual (instantánea para planificar e inspeccionar).
@@ -1011,6 +1196,13 @@ pub(crate) fn maintain_index(
         index_insert(database, catalog, table, &column, &value, locator)?;
     }
     Ok(())
+}
+
+/// Timestamp Unix actual en segundos (0 si el reloj es anterior a epoch).
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs() as i64)
 }
 
 /// Indica si una sentencia escribe datos (para RBAC y `ensure_writable`).

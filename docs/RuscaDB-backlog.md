@@ -13,8 +13,8 @@
 | D3 | Window `OVER (PARTITION/ORDER)` | SPEC-0165 | accepted/stub | proyección solo columnas/agregados; falta `Projection::Expr` | diferido: fase 1 = `ROW_NUMBER` |
 | D4 | `RELATE` + paths `->label->` | SPEC-0185 | proposed/stub | no hay update genérico de `Record.edges`; falta índice `(in,out,label)` | diferido: fase 1 = tabla de aristas |
 | D5 | `LET`/`IF`/`RETURN` | SPEC-0186 | proposed/stub | `execute` es una sentencia; falta contexto de sesión | diferido: fase 1 = `execute_script` |
-| D6 | ML-KEM FIPS 203 | SPEC-0180 | proposed/placeholder | requiere crate auditado + ACVP (ADR-0180) | bloqueado por dependencia |
-| D7 | Payload JSON + `ts_unix` en aristas | SPEC-0193 | proposed/stub | `Edge` solo guarda `{label,node}`; falta store transaccional y política de conflicto | spec + scaffold RED listos; implementar `EdgeMetaStore` (REDG1 + WAL) |
+| D6 | ML-KEM FIPS 203 | SPEC-0180 | implemented/real | auditoría externa pendiente (feature off por defecto) | implementado con libcrux-ml-kem (hax/F*) + KAT ACVP; híbrido X25519 y keystore |
+| D7 | Payload JSON + `ts_unix` en aristas | SPEC-0193 | implemented/real | — | implementado: tabla interna `__ruscadb_edge_meta` + índice `edge_id`, `SET`/`AT`/`ON CONFLICT` y proyección `{payload, ts_unix}` |
 
 ## Diseño y complejidad por ítem
 
@@ -65,17 +65,19 @@ Fase 2: variables en `WHERE` (`Expr::Variable`) e `IF` en proyección.
 
 ### D6 - ML-KEM
 
-Bloqueado: `ml-kem` auditado + vectores ACVP. Sin red/credenciales no se
-simula seguridad. Permanece `placeholder` (feature off).
+Implementado (SPEC-0180): `libcrux-ml-kem` 0.0.11 (formalmente verificado con
+hax/F*) para ML-KEM-768, híbrido X25519+ML-KEM con SHA-256 y keystore
+`pq_keys`. KAT ACVP/FIPS 203 en `crates/ruscadb-crypto/tests/post_quantum.rs`.
+**Riesgo residual**: no hay auditoría externa independiente; la feature
+`post-quantum` sigue OFF por defecto.
 
 ### D7 - Payload JSON + `ts_unix` en aristas
 
-Spec `SPEC-0193` (`specs/edge_properties.md`) con scaffold RED en
-`crates/ruscadb/tests/edge_properties.rs`. Diseño elegido: `EdgeMetaStore`
-separado (`BTreeMap<(from,label,to), {payload, ts_unix}>`) con página `REDG1`
-+ frames WAL; `Record.edges` no cambia. Idempotencia estricta con
+Spec `SPEC-0193` (`specs/edge_properties.md`) **implementada**. Tabla interna
+`__ruscadb_edge_meta` con clave sintética `edge_id = SHA-256(from,label,to)` e
+índice B+tree; `Record.edges` no cambia. Idempotencia estricta con
 `ON CONFLICT DO NOTHING | DO UPDATE SET payload`; `ts_unix` inmutable.
-Pendiente: implementación y activación de los tests (quitar `#[ignore]`).
+7 tests SQL en `crates/ruscadb/tests/edge_properties.rs`.
 
 ## Criterio de aceptación de este cierre
 

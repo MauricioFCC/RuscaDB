@@ -4,8 +4,8 @@ use crate::ast::{
     AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Cte, Delete, Explain,
     Expr, FrameBound, FrameKind, FrameSpec, GraphPath, HavingCondition, Insert, JoinClause,
     JoinKind, KnnClause, KnnMode, OnConflict, OrderBy, PathDirection, PathHop, ProjectedExpr,
-    Projection, RecordRef, Select, SetOpKind, Statement, TraverseClause, Update, WindowFunc,
-    WindowItem, WindowSpec,
+    Projection, RecordRef, RelateConflict, Select, SetOpKind, Statement, TraverseClause, Update,
+    WindowFunc, WindowItem, WindowSpec,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use crate::limits::check_depth;
@@ -140,6 +140,41 @@ fn validate_insert_rows(columns: &[String], rows: &[Vec<Expr>]) -> Result<(), St
         }
     }
     Ok(())
+}
+
+/// Parsea `{payload, ts_unix}` de un path de grafo (SPEC-0193).
+///
+/// Args:
+///     raw: Texto crudo del objeto JSON, incluidas las llaves.
+///
+/// Returns:
+///     Los campos pedidos (`payload`, `ts_unix`), sin duplicados.
+///
+/// Errors:
+///     Mensaje accionable si el objeto no es válido o pide un campo no
+///     soportado.
+fn parse_edge_fields(raw: &str) -> Result<Vec<String>, String> {
+    let inner = raw
+        .strip_prefix('{')
+        .and_then(|text| text.strip_suffix('}'))
+        .ok_or_else(|| "campos de arista mal formados: usa {payload, ts_unix}".to_string())?;
+    if inner.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut fields = Vec::new();
+    for part in inner.split(',') {
+        let name = part.trim();
+        if !matches!(name, "payload" | "ts_unix") {
+            return Err(format!(
+                "campo de arista '{name}' no soportado; usa payload o ts_unix"
+            ));
+        }
+        if fields.iter().any(|field| field == name) {
+            return Err(format!("campo de arista duplicado: '{name}'"));
+        }
+        fields.push(name.to_string());
+    }
+    Ok(fields)
 }
 
 /// Divide una ruta documental `'a.b'` en sus segmentos `["a", "b"]`.
@@ -357,7 +392,66 @@ impl Parser {
             &format!("{EXPECTED_PREFIX}'->' tras la etiqueta de RELATE"),
         )?;
         let to = self.parse_record_ref()?;
-        Ok(Statement::Relate { from, edge, to })
+        let payload = if self.match_keyword(Keyword::Set) {
+            Some(self.expect_json()?)
+        } else {
+            None
+        };
+        let ts_unix = if self.match_word("at") {
+            Some(self.parse_unsigned::<i64>("se esperaba un entero Unix (segundos) tras AT")?)
+        } else {
+            None
+        };
+        let conflict = if self.match_keyword(Keyword::On) {
+            if !self.match_word("conflict") {
+                return Err(self.error(format!("{EXPECTED_PREFIX}CONFLICT tras ON")));
+            }
+            if !self.match_word("do") {
+                return Err(self.error(format!("{EXPECTED_PREFIX}DO tras ON CONFLICT")));
+            }
+            if self.match_word("nothing") {
+                RelateConflict::DoNothing
+            } else if self.match_keyword(Keyword::Update) {
+                self.expect_keyword(Keyword::Set)?;
+                if !self.match_word("payload") {
+                    return Err(self.error(
+                        "ON CONFLICT DO UPDATE solo admite 'payload = { ... }'".to_string(),
+                    ));
+                }
+                self.expect_token(
+                    &Token::Eq,
+                    &format!("{EXPECTED_PREFIX}'=' tras payload en ON CONFLICT"),
+                )?;
+                RelateConflict::DoUpdate {
+                    payload: Some(self.expect_json()?),
+                }
+            } else {
+                return Err(self.error(format!(
+                    "{EXPECTED_PREFIX}NOTHING o UPDATE tras ON CONFLICT DO"
+                )));
+            }
+        } else {
+            RelateConflict::Default
+        };
+        Ok(Statement::Relate {
+            from,
+            edge,
+            to,
+            payload,
+            ts_unix,
+            conflict,
+        })
+    }
+
+    /// Consume un objeto JSON crudo `{ ... }`.
+    fn expect_json(&mut self) -> Result<String, RuscaError> {
+        match self.peek().cloned() {
+            Some(Token::Json(raw)) => {
+                self.advance();
+                Ok(raw)
+            }
+            _ => Err(self.error(format!("{EXPECTED_PREFIX}un objeto JSON '{{ ... }}'"))),
+        }
     }
 
     /// Parsea `tabla:id` de una sentencia `RELATE`.
@@ -1166,6 +1260,13 @@ impl Parser {
         };
         self.expect_token(&arrow, &format!("{EXPECTED_PREFIX}'->' o '<-' en el path"))?;
         let label = self.expect_ident()?;
+        let edge_fields = match self.peek().cloned() {
+            Some(Token::Json(raw)) => {
+                self.advance();
+                parse_edge_fields(&raw).map_err(|message| self.error(message))?
+            }
+            _ => Vec::new(),
+        };
         self.expect_token(
             &arrow,
             &format!("{EXPECTED_PREFIX}la flecha de cierre del path '{label}'"),
@@ -1175,6 +1276,7 @@ impl Parser {
             direction,
             label,
             table,
+            edge_fields,
         })
     }
 

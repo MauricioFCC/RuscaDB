@@ -16,6 +16,11 @@ workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+default = []
+# SPEC-0180: ML-KEM (FIPS 203) + híbrido X25519+ML-KEM.
+post-quantum = ["dep:libcrux-ml-kem", "dep:x25519-dalek", "dep:sha2"]
+
 [dependencies]
 ruscadb-core = { workspace = true }
 chacha20poly1305 = { workspace = true }
@@ -26,6 +31,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 hex = { workspace = true }
 getrandom = { workspace = true }
+# SPEC-0180: ML-KEM formalmente verificado (hax/F*) y combinador híbrido.
+libcrux-ml-kem = { version = "0.0.11", optional = true, default-features = false, features = ["mlkem768"] }
+x25519-dalek = { version = "3.0", optional = true, default-features = false, features = ["static_secrets", "zeroize"] }
+sha2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

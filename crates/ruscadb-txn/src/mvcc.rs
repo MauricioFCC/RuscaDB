@@ -54,6 +54,8 @@ pub struct Snapshot {
     pub tx_id: TxId,
     /// Transacciones en vuelo en el instante del snapshot.
     in_flight: BTreeSet<TxId>,
+    /// Transacciones abortadas (rollback): sus versiones nunca son visibles.
+    aborted: BTreeSet<TxId>,
 }
 
 impl Snapshot {
@@ -62,6 +64,7 @@ impl Snapshot {
         Self {
             tx_id,
             in_flight: BTreeSet::new(),
+            aborted: BTreeSet::new(),
         }
     }
 
@@ -79,7 +82,9 @@ impl Snapshot {
     /// Returns:
     ///     `true` si la versión es visible para este snapshot.
     pub fn is_visible(&self, version: &Version) -> bool {
-        if self.in_flight.contains(&version.created_tx) {
+        if self.in_flight.contains(&version.created_tx)
+            || self.aborted.contains(&version.created_tx)
+        {
             return false;
         }
         if version.created_tx > self.tx_id {
@@ -87,7 +92,11 @@ impl Snapshot {
         }
         match version.deleted_tx {
             None => true,
-            Some(deleter) => self.in_flight.contains(&deleter) || deleter > self.tx_id,
+            Some(deleter) => {
+                self.in_flight.contains(&deleter)
+                    || self.aborted.contains(&deleter)
+                    || deleter > self.tx_id
+            }
         }
     }
 }
@@ -106,6 +115,8 @@ pub struct TxnManager {
     next_tx: TxId,
     in_flight: BTreeSet<TxId>,
     committed: BTreeSet<TxId>,
+    /// Transacciones abortadas por rollback (SPEC-0193).
+    aborted: BTreeSet<TxId>,
     /// Escrituras staged por transacción en vuelo (detección first-committer-wins).
     write_sets: BTreeMap<TxId, BTreeSet<String>>,
     /// Reloj de commits visto al `begin` (para saber qué es concurrente).
@@ -133,6 +144,7 @@ impl TxnManager {
             next_tx: FIRST_TX,
             in_flight: BTreeSet::new(),
             committed: BTreeSet::new(),
+            aborted: BTreeSet::new(),
             write_sets: BTreeMap::new(),
             begin_clock: BTreeMap::new(),
             committed_writes: BTreeMap::new(),
@@ -153,6 +165,7 @@ impl TxnManager {
             next_tx,
             in_flight: BTreeSet::new(),
             committed: BTreeSet::new(),
+            aborted: BTreeSet::new(),
             write_sets: BTreeMap::new(),
             begin_clock: BTreeMap::new(),
             committed_writes: BTreeMap::new(),
@@ -353,6 +366,7 @@ impl TxnManager {
         self.begin_clock.remove(&tx);
         self.cleanup_reads(tx);
         self.ssi.retire(tx);
+        self.aborted.insert(tx);
         Ok(())
     }
 
@@ -370,6 +384,7 @@ impl TxnManager {
         Snapshot {
             tx_id: self.next_tx - 1,
             in_flight: self.in_flight.clone(),
+            aborted: self.aborted.clone(),
         }
     }
 

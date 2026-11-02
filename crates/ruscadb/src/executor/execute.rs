@@ -176,7 +176,7 @@ pub(crate) fn execute_with_plan_at_ctx(
     if let Some(order_by) = &select.order_by {
         sort_records(&table, order_by, &mut records)?;
     }
-    let mut rows = project_records(database, &table, select, &records)?;
+    let mut rows = project_records(database, &table, select, &records, snapshot)?;
     if select.distinct {
         dedup_rows(&mut rows);
     }
@@ -251,7 +251,7 @@ pub(crate) fn execute_virtual_select(
     if let Some(order_by) = &select.order_by {
         sort_records(&definition, order_by, &mut records)?;
     }
-    let mut rows = project_records(database, &definition, select, &records)?;
+    let mut rows = project_records(database, &definition, select, &records, snapshot)?;
     if select.distinct {
         dedup_rows(&mut rows);
     }
@@ -279,9 +279,10 @@ pub(crate) fn project_records(
     table: &TableDef,
     select: &Select,
     records: &[Record],
+    snapshot: &Snapshot,
 ) -> Result<Vec<Row>, RuscaError> {
     let windows = evaluate_windows(&select.windows, records, table)?;
-    let paths = evaluate_paths(database, &select.paths, records)?;
+    let paths = evaluate_paths(database, &select.paths, records, &table.name, snapshot)?;
     let mut rows = Vec::with_capacity(records.len());
     for (index, record) in records.iter().enumerate() {
         let mut row = project_row(table, &select.projection, &record.scalars)?;

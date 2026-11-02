@@ -45,6 +45,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 # CRC32C por línea del audit persistido (SPEC-0073).
 crc32c = { workspace = true }
+# Clave sintética de arista (SPEC-0193) y su codificación hexadecimal.
+sha2 = { workspace = true }
+hex = { workspace = true }
 zeroize = { workspace = true }
 # Spans de frontera (SPEC-0080): no-op sin subscriber, coste despreciable.
 tracing = { workspace = true }
@@ -230,8 +233,8 @@ crdt-sync = []
 heat = []
 learned-threshold = []
 reconciliation = []
-# SPEC-0180: Post-quantum crypto.
-post-quantum = []
+# SPEC-0180: Post-quantum crypto (ML-KEM FIPS 203, opt-in).
+post-quantum = ["ruscadb-crypto/post-quantum"]
 # SPEC-0146: Epoch-based reclamation (RCU).
 rcu = []
 # SPEC-0148: Sentencias preparadas.

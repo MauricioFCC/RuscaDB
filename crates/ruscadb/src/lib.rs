@@ -21,6 +21,7 @@ mod delete;
 mod dml;
 mod doctor;
 mod document;
+mod edge_meta;
 mod encryption;
 mod executor;
 pub mod features;
@@ -266,7 +267,11 @@ pub use pgwire::{BackendMessage, FrontendMessage, PgWireServer};
 #[cfg(feature = "cost-planner")]
 pub use planner_cost::CostEstimator;
 #[cfg(feature = "post-quantum")]
-pub use post_quantum::MlKemStub;
+pub use post_quantum::{
+    HYBRID_CIPHERTEXT_BYTES, HYBRID_PUBLIC_KEY_BYTES, HYBRID_SECRET_KEY_BYTES, HybridKem,
+    HybridKeyPair, ML_KEM_768_CIPHERTEXT_BYTES, ML_KEM_768_PRIVATE_KEY_BYTES,
+    ML_KEM_768_PUBLIC_KEY_BYTES, MlKem, MlKemKeyPair, SHARED_SECRET_BYTES,
+};
 #[cfg(feature = "prepared")]
 #[cfg(feature = "prepared-real")]
 pub use prepared::PreparedStatement;
@@ -337,6 +342,7 @@ pub use metrics::Metrics;
 
 pub use catalog::{Catalog, ColumnDef, ColumnType, IndexDef, TableDef};
 pub use database::{Database, DbConfig};
+pub use edge_meta::{EDGE_META_TABLE, EdgeMeta, MAX_PAYLOAD_BYTES};
 pub use encryption::EncryptionConfig;
 pub use executor::{Plan, Row};
 pub use gates::IngestionPolicy;

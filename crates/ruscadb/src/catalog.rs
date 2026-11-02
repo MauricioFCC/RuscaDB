@@ -262,6 +262,22 @@ impl Catalog {
     ///     explica la causa y el límite;
     ///     [`RuscaError::Io`] si falla la escritura o la confirmación.
     pub(crate) fn save(&mut self, database: &mut Database) -> Result<(), RuscaError> {
+        self.save_pages(database)?;
+        database.commit()?;
+        Ok(())
+    }
+
+    /// Escribe el catálogo en páginas **sin** confirmar la transacción.
+    ///
+    /// Se usa cuando el llamador ya tiene una transacción activa (SPEC-0193):
+    /// el commit lo decide el llamador, no el catálogo.
+    ///
+    /// Args:
+    ///     database: Base abierta.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla la escritura de páginas.
+    pub(crate) fn save_pages(&mut self, database: &mut Database) -> Result<(), RuscaError> {
         if self.next_page < CATALOG_RESERVED_PAGES {
             self.next_page = CATALOG_RESERVED_PAGES;
         }
@@ -600,7 +616,6 @@ fn write_reserved(database: &mut Database, bytes: &[u8]) -> Result<(), RuscaErro
         page.data_mut().copy_from_slice(chunk);
         database.write_page(&page)?;
     }
-    database.commit()?;
     Ok(())
 }
 
@@ -650,7 +665,6 @@ fn write_overflow(database: &mut Database, bytes: &[u8], chain: &[u64]) -> Resul
         database.write_page(&page)?;
         offset += take;
     }
-    database.commit()?;
     Ok(())
 }
 

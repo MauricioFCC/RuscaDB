@@ -1,19 +1,21 @@
 ---
 id: SPEC-0193
 feature: edge_properties
-status: proposed
-maturity: stub
+status: implemented
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:
-  crates: [ruscadb, ruscadb-query, ruscadb-graph, ruscadb-wal]
+  crates: [ruscadb, ruscadb-query, ruscadb-txn]
   files:
     - crates/ruscadb-query/src/ast.rs
+    - crates/ruscadb-query/src/lexer.rs
     - crates/ruscadb-query/src/parser.rs
+    - crates/ruscadb/src/edge_meta.rs
     - crates/ruscadb/src/executor/graph_paths.rs
     - crates/ruscadb/src/table_api.rs
-    - crates/ruscadb-graph/src/lib.rs
-    - crates/ruscadb-wal/src/lib.rs
+    - crates/ruscadb/src/catalog.rs
+    - crates/ruscadb-txn/src/mvcc.rs
   out_of_scope: [historial bi-temporal de aristas, RDF-star, LIVE SELECT]
 fr:
   - { id: FR-0193-01, desc: "RELATE a->label->b [SET {json}] [AT unix] crea la arista con payload y ts_unix" }
@@ -104,19 +106,22 @@ RELATE person:a -> knows -> person:b
 
 ### Persistencia
 
-`EdgeMetaStore` en `ruscadb-graph`:
+Tabla interna `__ruscadb_edge_meta` (no visible en la API pública):
 
 ```text
-EdgeKey  = (from: RecordId, label: String, to: RecordId)
-EdgeMeta = { payload: serde_json::Value, ts_unix: i64 }
+edge_id = SHA-256(from_table, from_id, label, to_table, to_id)
+columnas = edge_id TEXT (índice), from_table, from_id, label,
+           to_table, to_id, payload TEXT (JSON), ts_unix INT
 ```
 
-- `BTreeMap<EdgeKey, EdgeMeta>` en memoria.
-- Página `REDG1`: `[magic u64 | version u32 | count u64 | frames...]` con
-  CRC32C por frame; cadena de overflow como el catálogo (SPEC-0086).
-- WAL: frame `EdgeUpsert { from, label, to, payload, ts_unix }`; recovery
-  reconstruye el mapa y es idempotente por `EdgeKey`.
+- Clave sintética única + índice B+tree ⇒ lookup/insert `O(log E)`.
+- Se reutilizan **heap, índice, MVCC, WAL y recovery** existentes; no hay
+  formato `REDG1` ni frame WAL nuevo.
 - `Record.edges` **no** cambia: sigue siendo `{ label, node }`.
+- En una transacción explícita, el catálogo se escribe con
+  `Catalog::save_pages` (sin commit) y el commit lo decide el llamador.
+- Rollback: el `TxnManager` marca la transacción como abortada y
+  `Snapshot::is_visible` excluye sus versiones (SPEC-0193 AC-06).
 
 ### Lectura
 
@@ -145,9 +150,9 @@ Una arista legacy (sin `EdgeMeta`) devuelve
 
 ```text
 validar payload:       O(P)          P = bytes JSON (<= 64 KiB)
-lookup/insert:         O(log E)      E = aristas
+lookup/insert:         O(log E)      E = aristas (índice edge_id)
 RELATE total:          O(log E + P)
-recovery REDG1:        O(E)
+recovery:              O(E)          (heap + WAL existentes)
 path con metadatos:    O(V + E + k log E)
 ```
 
@@ -157,12 +162,12 @@ atomicidad MVCC/WAL y sin tocar el formato de `Edge`.
 
 ## Migración
 
-- Bases existentes: no hay `REDG1`; las aristas legacy se leen con
-  `payload=null`, `ts_unix=null`. No se reescribe `Record.edges`.
-- `RELATE` sobre una arista legacy crea su `EdgeMeta` (el `Edge` ya existe); no
-  duplica la arista.
-- Rollback: borrar la página `REDG1` y sus frames; el grafo sigue funcionando
-  con `Record.edges`.
+- Bases existentes: no hay `__ruscadb_edge_meta`; las aristas legacy se leen
+  con `payload=null`, `ts_unix=null`. No se reescribe `Record.edges`.
+- `RELATE` sobre una arista legacy crea su fila de metadatos (el `Edge` ya
+  existe); no duplica la arista.
+- Rollback: borrar la tabla `__ruscadb_edge_meta`; el grafo sigue funcionando
+  con `Record.edges` y el formato postcard intacto.
 
 ## Riesgos
 
@@ -173,12 +178,18 @@ atomicidad MVCC/WAL y sin tocar el formato de `Edge`.
   decide el ganador y el perdedor aplica la política de conflicto.
 - **Auditoría**: no hay historial bi-temporal; solo el estado actual.
 
-## Tests RED (scaffold)
+## Estado de implementación (2026-11-02)
 
-`crates/ruscadb/tests/edge_properties.rs` contiene los tests de los ACs
-marcados `#[ignore = "SPEC-0193 propuesta: pendiente de implementación"]`.
-Se activarán al implementar la spec; `cargo xtask trace` los reconoce y
-`cargo xtask audit` no los cuenta como huecos.
+- `crates/ruscadb/tests/edge_properties.rs`: **7 tests activos** (sin
+  `#[ignore]`) para AC-0193-01..07.
+- Gramática: `SET {json}`, `AT <unix>`, `ON CONFLICT DO NOTHING` y
+  `ON CONFLICT DO UPDATE SET payload = {json}`.
+- Lectura: `->label{payload, ts_unix}->tabla` devuelve `Text` JSON.
+- Persistencia: tabla interna + índice `edge_id`; `Catalog::save_pages` evita
+  commits prematuros dentro de una transacción explícita.
+- MVCC: `TxnManager` registra transacciones abortadas y `Snapshot::is_visible`
+  las excluye (rollback observable).
+- Golden postcard de `Edge`: bytes congelados en AC-0193-07.
 
 ## Referencias
 

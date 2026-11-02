@@ -341,6 +341,8 @@ pub enum Token {
     Variable(String),
     /// Identificador de registro tras `:` (ULID; puede empezar por dígito).
     RecordId(String),
+    /// Objeto JSON crudo `{ ... }` (payload de arista, SPEC-0193).
+    Json(String),
 }
 
 /// Token con su posición (byte) en el texto original.
@@ -449,6 +451,7 @@ impl<'a> Lexer<'a> {
             b']' => self.single(Token::RBracket),
             b'(' => self.single(Token::LParen),
             b')' => self.single(Token::RParen),
+            b'{' => self.read_json_object(position)?,
             b';' => self.single(Token::Semicolon),
             b':' => self.consume_colon(position)?,
             b'$' => self.read_variable(position)?,
@@ -616,6 +619,50 @@ impl<'a> Lexer<'a> {
                 .map_err(|_| parse_error("entero fuera de rango", position))?;
             Ok(Token::Int(value))
         }
+    }
+
+    /// Lee un objeto JSON crudo `{ ... }` respetando cadenas y escapes.
+    ///
+    /// Args:
+    ///     position: Posición inicial (para el error).
+    ///
+    /// Returns:
+    ///     El texto crudo, incluidas las llaves exterior.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si el objeto no se cierra.
+    fn read_json_object(&mut self, position: usize) -> Result<Token, RuscaError> {
+        let start = self.index;
+        let mut depth = 0usize;
+        let mut in_string = false;
+        let mut escaped = false;
+        while self.index < self.bytes.len() {
+            let byte = self.bytes[self.index];
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if byte == b'\\' {
+                    escaped = true;
+                } else if byte == b'"' {
+                    in_string = false;
+                }
+            } else {
+                match byte {
+                    b'"' => in_string = true,
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            self.index += 1;
+                            return Ok(Token::Json(self.input[start..self.index].to_string()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            self.index += 1;
+        }
+        Err(parse_error("objeto JSON sin cerrar", position))
     }
 
     /// Lee un literal de texto entre comillas simples.

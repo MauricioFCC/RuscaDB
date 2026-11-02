@@ -18,12 +18,17 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
-- **SPEC-0193 (2026-11-02)**: propuesta `edge_properties` — aristas con
+- **SPEC-0180 (2026-11-02)**: `post_quantum_crypto` implementada — ML-KEM-768
+  (FIPS 203) con `libcrux-ml-kem` formalmente verificado, híbrido
+  X25519+ML-KEM con SHA-256, keystore `pq_keys` y KAT ACVP. Feature
+  `post-quantum` OFF por defecto; auditoría externa pendiente.
+- **SPEC-0193 (2026-11-02)**: `edge_properties` implementada — aristas con
   payload JSON y `ts_unix` inmutable, idempotencia por `(from,label,to)` y
-  `ON CONFLICT DO NOTHING | DO UPDATE SET payload`; store `EdgeMetaStore`
-  (`REDG1` + WAL) sin cambiar el formato postcard de `Edge`. Research en
-  `docs/research/frontier-2026-11-02-edge-properties.md` y scaffold RED en
-  `crates/ruscadb/tests/edge_properties.rs` (tests `#[ignore]`).
+  `ON CONFLICT DO NOTHING | DO UPDATE SET payload`; tabla interna
+  `__ruscadb_edge_meta` con índice `edge_id` (sin cambiar el postcard de
+  `Edge`), `Catalog::save_pages` para transacciones explícitas y rollback
+  observable vía `Snapshot`/`TxnManager`. 7 tests SQL en
+  `crates/ruscadb/tests/edge_properties.rs`.
 
 - **Ciclo 15 (2026-11-01)**:
   - **SPEC-0192**: `cargo xtask gc [--apply] [--all] [--max-age-hours N]
