@@ -188,3 +188,5 @@
 | SPEC-0186 | `surreal_session_expressions` | proposed | stub | `surreal_session_expressions.md` |
 | SPEC-0187 | `operability_api` | implemented | real | `operability_api.md` |
 | SPEC-0188 | `doctor_metrics` | implemented | real | `doctor_metrics.md` |
+| SPEC-0189 | `resource_limits` | implemented | real | `resource_limits.md` |
+| SPEC-0190 | `conformance_fixtures` | implemented | real | `conformance_fixtures.md` |

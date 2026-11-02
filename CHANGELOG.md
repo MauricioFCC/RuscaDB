@@ -9,6 +9,13 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 12 (2026-11-02)**:
+  - **SPEC-0189**: `DbConfig::max_result_rows` (truncado real); `query_timeout_ms`
+    y `max_memory_bytes` reservados/documentados.
+  - **SPEC-0190**: conformance baseline `tests/conformance/basic.json` ejecutado
+    por Rust con comparación canónica.
+  - `docs/formats.md` con RCOL1/RHNSW1/WAL/RCRD1 (migrate queda fase 2).
+
 - **Ciclo 11 (2026-11-02)**:
   - **SPEC-0188**: `Database::doctor() -> DoctorReport` y CLI
     `ruscadb doctor --db <ruta> --json`; `Database::metrics()` con queries,
