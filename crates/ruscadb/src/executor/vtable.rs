@@ -29,6 +29,27 @@ impl VirtualTable {
         Self { columns, rows }
     }
 
+    /// Ejecuta una subconsulta y la materializa (fase 2 de D1/D2).
+    ///
+    /// Args:
+    ///     database: Base abierta.
+    ///     select: Subconsulta ya analizada.
+    ///     snapshot: Vista fija de visibilidad MVCC.
+    ///
+    /// Returns:
+    ///     Tabla virtual con la subconsulta materializada una sola vez.
+    ///
+    /// Errors:
+    ///     Los del executor (`execute_select_at`).
+    pub(crate) fn materialize_select(
+        database: &mut Database,
+        select: &ruscadb_query::Select,
+        snapshot: &Snapshot,
+    ) -> Result<Self, RuscaError> {
+        let rows = crate::executor::execute_select_at(database, select, snapshot)?;
+        Ok(Self::infer_from_rows(rows))
+    }
+
     /// Materializa infiriendo el esquema de la primera fila.
     ///
     /// Args:
