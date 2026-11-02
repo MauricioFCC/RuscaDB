@@ -29,7 +29,7 @@ pub(crate) fn execute_select_at(
     if effective.limit.is_none() {
         effective.limit = Some(IMPLICIT_LIMIT);
     }
-    let budget = QueryBudget::default_budget();
+    let budget = database.query_budget();
     let catalog = Catalog::load(database)?;
     let plan = plan_for(&effective, &catalog)?;
     execute_with_plan_at(database, &effective, plan, snapshot, &budget)

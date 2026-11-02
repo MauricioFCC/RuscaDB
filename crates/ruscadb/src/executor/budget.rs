@@ -11,10 +11,13 @@ pub(crate) struct QueryBudget {
 impl QueryBudget {
     /// Presupuesto con timeout explícito desde ahora.
     pub(crate) fn with_timeout(millis: u64) -> Self {
-        Self {
-            deadline: Instant::now() + Duration::from_millis(millis),
-            millis,
-        }
+        let now = Instant::now();
+        let deadline = if millis == 0 {
+            now.checked_sub(Duration::from_millis(1)).unwrap_or(now)
+        } else {
+            now + Duration::from_millis(millis)
+        };
+        Self { deadline, millis }
     }
 
     /// Presupuesto por defecto del planner.

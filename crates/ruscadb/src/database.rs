@@ -125,6 +125,8 @@ pub struct Database {
     pub(crate) rows_returned: u64,
     /// Tope de filas por query (SPEC-0189).
     pub(crate) max_result_rows: Option<usize>,
+    /// Timeout de query en ms (SPEC-0189).
+    pub(crate) query_timeout_ms: Option<u64>,
     /// Overlay WAL en modo cifrado (SPEC-0106): `page_id -> (lsn, offset)`.
     ///
     /// Apunta al commit record que contiene la última imagen confirmada de
@@ -294,6 +296,7 @@ impl Database {
             query_count: 0,
             rows_returned: 0,
             max_result_rows: config.max_result_rows,
+            query_timeout_ms: config.query_timeout_ms,
             wal_overlay: HashMap::new(),
             blobs,
             shadow_enabled: false,
@@ -719,6 +722,17 @@ impl Database {
     ///     `true` si los commits aplican el grafo SSI.
     pub fn is_ssi_enabled(&self) -> bool {
         self.txn.is_ssi_enabled()
+    }
+
+    /// Presupuesto de query con el timeout configurado (SPEC-0189).
+    ///
+    /// Returns:
+    ///     `QueryBudget` con el deadline del config o el default del planner.
+    pub(crate) fn query_budget(&self) -> crate::executor::QueryBudget {
+        match self.query_timeout_ms {
+            Some(millis) => crate::executor::QueryBudget::with_timeout(millis),
+            None => crate::executor::QueryBudget::default_budget(),
+        }
     }
 
     /// Ultima transaccion asignada (para time-travel).

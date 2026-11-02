@@ -19,6 +19,11 @@ acceptance_criteria:
     when: se ejecuta un SELECT con mas filas
     then: el resultado se trunca al tope
     test: test_ac_0189_01_max_result_rows
+  - id: AC-0189-02
+    given: DbConfig con query_timeout_ms=0
+    when: se ejecuta un SELECT
+    then: devuelve QueryTimeout (QUERY_TIMEOUT)
+    test: test_ac_0189_02_query_timeout
 exit_criteria:
   - cargo test -p ruscadb --all-features --test spec_0189_limits
   - cargo xtask trace
