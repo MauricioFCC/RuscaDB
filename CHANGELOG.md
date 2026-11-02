@@ -18,6 +18,13 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 17 (2026-11-02)**: auditoría de madurez por funcionalidad
+  (`docs/RuscaDB-maturity.md`) y 5 specs de mejora: SPEC-0194 (sets en hot
+  paths, O(n²)→O(n log n)), SPEC-0195 (reclaim de `aborted` MVCC), SPEC-0196
+  (conformance py/node/wasm), SPEC-0197 (endpoint HTTP Prometheus) y SPEC-0198
+  (benchmarks ANN/LDBC/SQL). Research en
+  `docs/research/frontier-2026-11-02-ruscadb-maturity.md`; scaffold RED en
+  `crates/ruscadb/tests/gap_specs.rs`.
 - **SPEC-0180 (2026-11-02)**: `post_quantum_crypto` implementada — ML-KEM-768
   (FIPS 203) con `libcrux-ml-kem` formalmente verificado, híbrido
   X25519+ML-KEM con SHA-256, keystore `pq_keys` y KAT ACVP. Feature
