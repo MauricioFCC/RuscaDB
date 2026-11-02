@@ -89,6 +89,39 @@ impl VirtualTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::database::Database;
+    use crate::{ColumnDef, ColumnType, DbConfig};
+
+    #[test]
+    fn virtual_table_materializes_subquery() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("vtable-mat.db");
+        let mut database = Database::open(DbConfig::new(&path, 64)).expect("open");
+        database
+            .create_table(
+                "t",
+                vec![ColumnDef {
+                    name: "x".to_string(),
+                    col_type: ColumnType::Int,
+                }],
+            )
+            .expect("create");
+        for value in 1..=3 {
+            database
+                .insert(
+                    "t",
+                    ScalarMap::from([("x".to_string(), ScalarValue::Int(value))]),
+                )
+                .expect("insert");
+        }
+        let select = ruscadb_query::parse("SELECT x FROM t WHERE x > 1").expect("parse");
+        let snapshot = database.snapshot();
+        let table = VirtualTable::materialize_select(&mut database, &select, &snapshot)
+            .expect("materializa");
+        assert_eq!(table.len(), 2);
+        assert_eq!(table.columns(), &["x".to_string()]);
+        assert_eq!(table.rows()[0].get("x"), Some(&ScalarValue::Int(2)));
+    }
 
     /// Esquema explícito y orden estable.
     #[test]
