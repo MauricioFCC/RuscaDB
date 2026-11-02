@@ -1088,14 +1088,14 @@ LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 - Features pure-Rust on por defecto; las de dependencias externas off (ver `docs/RuscaDB-funcionalidades.md` §3).
 
 
-## Ola 14 - Frontier IV (SPEC-0161..0180) — madurez: 19 reales, 1 placeholder (ML-KEM diferido)
+## Ola 14 - Frontier IV (SPEC-0161..0180) — madurez: 20 reales, 0 placeholder (ML-KEM implementado; feature off por defecto)
 
 Todos los modulos reales estan **cableados** a su adapter (page manager, txn,
 sync, HNSW, planner, TS, columnar, FTS): ver la tabla de
-`docs/RuscaDB-gap-register.md` §5 y `docs/adr/ADR-0180-post-quantum-deferred.md`
+`docs/RuscaDB-gap-register.md` §5 y `docs/adr/ADR-0180-post-quantum.md`
 para la decision sobre ML-KEM.
 
-Implementados (19 reales + 1 placeholder ML-KEM; TDD adversarial + mutation, features pure-Rust on por defecto):
+Implementados (20 reales; TDD adversarial + mutation, features pure-Rust on por defecto):
 
 - SPEC-0161 (RQL expression language: RqlExprEngine): implementado (real).
 - SPEC-0162 (RQL subqueries: RqlSubquery): implementado (real).
@@ -1116,7 +1116,7 @@ Implementados (19 reales + 1 placeholder ML-KEM; TDD adversarial + mutation, fea
 - SPEC-0177 (BlockMax WAND: BlockMaxWand): implementado (real).
 - SPEC-0178 (Gorilla TS: GorillaTs): implementado (real).
 - SPEC-0179 (CRDT sync: CrdtSyncReal): implementado (real).
-- SPEC-0180 (Post-quantum: MlKemStub): placeholder (feature off por defecto; ADR-0180).
+- SPEC-0180 (Post-quantum: ML-KEM-768 + híbrido X25519 con libcrux-ml-kem verificado + KAT ACVP): implementado (feature off por defecto; ADR-0180).
 
 ## Ola 15 - Cierre de stubs (SPEC-0113/0131/0136/0137/0139/0150/0151) - madurez: 7 reales, 0 stubs
 
@@ -1145,8 +1145,8 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
   resultados, `RC_DOMAIN_ERROR`/`RC_NULL_POINTER`/`RC_BUFFER_TOO_SMALL`).
 - **Columnar en disco**: `RCOL1` con ALP para flotantes, FOR + bit-packing para
   enteros, etiquetado para texto/NULL/bool y escritura atomica.
-- **Politica**: `post-quantum` sale de `default` (el placeholder ML-KEM solo se
-  compila con `--all-features` o la feature explicita).
+- **Politica**: `post-quantum` sale de `default` (ML-KEM solo se compila con
+  `--all-features` o la feature explicita).
 
 
 ## Ola 17 - Expresiones RQL, APIs P1 y guards en Rust (SPEC-0182)
@@ -1195,14 +1195,15 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
   LET/IF/RETURN, LIVE fuera de alcance).
 - **SPEC-0185** propuesta: `RELATE` + navegación `->label->` con BFS `O(V+E)`.
 - **SPEC-0186** propuesta: `LET`/`IF`/`RETURN` con contexto por query.
-- Sin implementar aún: se declaran `proposed`/`stub` para no sobredeclarar.
+- Sin implementar aún: ninguna spec; ver estado actual.
 
-## Estado actual (2026-10-30)
+## Estado actual (2026-11-02)
 
-- 23 crates, 186 specs (180 `implemented` + 3 `accepted` + 3 `proposed`), 596 AC trazados.
+- 23 crates, 188 specs (`implemented`), 618 ACs trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- Madurez declarada: **50 `real`, 5 `stub`, 1 `placeholder`** (ML-KEM, decision
-  en `docs/adr/ADR-0180-post-quantum-deferred.md`).
+- Madurez declarada: **188 specs `implemented`, 58 `real`, 0 `stub`,
+  0 `placeholder`** (ML-KEM implementado; feature off por defecto, ver
+  `docs/adr/ADR-0180-post-quantum.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).

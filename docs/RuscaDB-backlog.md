@@ -8,11 +8,11 @@
 
 | # | Ítem | Spec | Estado | Bloqueo real | Decisión |
 |---|---|---|---|---|---|
-| D1 | `FROM (subquery) AS alias` | SPEC-0162 | accepted/stub | requiere tabla virtual en `execute_with_plan_at` (hoy `TableDef` + heap) | diferido: fase 1 = `VirtualTable` en memoria |
-| D2 | CTE `WITH ... AS (...)` | SPEC-0163 | accepted/stub | depende de D1 (tabla virtual) | diferido: fase 2 tras D1 |
-| D3 | Window `OVER (PARTITION/ORDER)` | SPEC-0165 | accepted/stub | proyección solo columnas/agregados; falta `Projection::Expr` | diferido: fase 1 = `ROW_NUMBER` |
-| D4 | `RELATE` + paths `->label->` | SPEC-0185 | proposed/stub | no hay update genérico de `Record.edges`; falta índice `(in,out,label)` | diferido: fase 1 = tabla de aristas |
-| D5 | `LET`/`IF`/`RETURN` | SPEC-0186 | proposed/stub | `execute` es una sentencia; falta contexto de sesión | diferido: fase 1 = `execute_script` |
+| D1 | `FROM (subquery) AS alias` | SPEC-0162 | implemented/real | — | implementado con `VirtualTable` y `FromClause` derivado |
+| D2 | CTE `WITH ... AS (...)` | SPEC-0163 | implemented/real | — | implementado, incluido `WITH RECURSIVE` |
+| D3 | Window `OVER (PARTITION/ORDER)` | SPEC-0165 | implemented/real | — | implementado `Projection` con ventanas y `WindowSpec` |
+| D4 | `RELATE` + paths `->label->` | SPEC-0185 | implemented/real | — | implementado `Statement::Relate` + paths BFS encadenados |
+| D5 | `LET`/`IF`/`RETURN` | SPEC-0186 | implemented/real | — | implementado `execute_script` con contexto por llamada |
 | D6 | ML-KEM FIPS 203 | SPEC-0180 | implemented/real | auditoría externa pendiente (feature off por defecto) | implementado con libcrux-ml-kem (hax/F*) + KAT ACVP; híbrido X25519 y keystore |
 | D7 | Payload JSON + `ts_unix` en aristas | SPEC-0193 | implemented/real | — | implementado: tabla interna `__ruscadb_edge_meta` + índice `edge_id`, `SET`/`AT`/`ON CONFLICT` y proyección `{payload, ts_unix}` |
 
@@ -81,11 +81,12 @@ Spec `SPEC-0193` (`specs/edge_properties.md`) **implementada**. Tabla interna
 
 ## Criterio de aceptación de este cierre
 
-- Las specs afectadas conservan `proposed`/`accepted` y **no** se declaran
-  `real`; `cargo xtask audit` sigue en 0 ACs sin test.
-- Cada fase tiene ACs y complejidad; la implementación se hará en ciclos
-  separados con gate de equivalencia contra oráculo congelado.
-- Lo no aplicado queda aquí con motivo, no como deuda invisible.
+- **188/188 specs `implemented`** (`58 real`, 0 `stub`, 0 `placeholder`);
+  `cargo xtask audit` en 0 ACs sin test y 618 ACs trazados.
+- Cada fase conserva ACs, complejidad y tests SQL; las specs implementadas
+  tienen gates verdes.
+- Lo no aplicado sigue aquí con motivo (auditoría externa PQC, KMS/HSM,
+  TLS, LIVE SELECT), no como deuda invisible.
 
 ## Referencias
 

@@ -46,7 +46,11 @@ magic "RCRD1" | actor | clock_count | (actor,counter)* | value_flag | stamp_flag
 
 - Actor/strings con longitud `u32`; valida UTF-8 y bytes sobrantes.
 
-## Pendiente
+## Migración (SPEC-0191)
 
-- `ruscadb migrate --check` (compara `schema_version` y lista el plan).
-- `--apply` con backup previo y test de fichero v1 abierto en v2.
+- `ruscadb migrate --db <ruta> check`: compara `manifest.schema_version` con
+  `CURRENT_SCHEMA_VERSION` y reporta `ok`.
+- `ruscadb migrate --db <ruta> apply`: abre la base (aplica migraciones
+  disponibles); el backup previo sigue siendo responsabilidad del operador.
+- Pendiente fuera de alcance: migración *forward-only* automática con backup
+  verificado (ver `docs/MVP.md`).

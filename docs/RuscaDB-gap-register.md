@@ -49,9 +49,9 @@
 | SPEC-0177 | `BlockMaxWand` | **real** | DAAT con poda por bloque; `search == brute_force` para k=1..25 |
 | SPEC-0178 | `GorillaTs` | **real** | XOR con ventanas, exacto para NaN/-0.0/inf, sensor estable <2 B/valor |
 | SPEC-0179 | `CrdtSyncReal` | **real** | LWW + reloj vectorial, semirreticulo verificado |
-| SPEC-0180 | `MlKemStub` | **placeholder** | solo API; feature off por defecto; bloqueado por dependencia auditada (ADR-0180) |
+| SPEC-0180 | `MlKem` / `HybridKem` | **real** | ML-KEM-768 FIPS 203 con `libcrux-ml-kem` (hax/F*) + KAT ACVP; híbrido X25519; feature off por defecto y auditoría externa pendiente |
 
-**Resumen**: 19 reales, 0 stubs, 1 placeholder con decision documentada.
+**Resumen**: 20 reales, 0 stubs, 0 placeholders con decisión documentada.
 
 ## 3. Gaps cerrados en esta ola
 
@@ -67,14 +67,14 @@
 6. **HNSW persistente** (SPEC-0173): formato binario con checksum y validacion.
 7. **Block-Max WAND** (SPEC-0177): poda por bloque verificada contra fuerza bruta.
 
-## 4. Gap restante y decision (SPEC-0180)
+## 4. Gap cerrado (SPEC-0180)
 
-**ML-KEM (FIPS 203) no se implementa a mano.** Una implementacion casera de
-criptografia post-cuantica seria insegura y no pasaria los test vectors de NIST
-ACVP. Decision: mantener el placeholder, `status: proposed`, `maturity:
-placeholder`, feature `post-quantum` **off por defecto**, y abrir la integracion
-cuando se adopte un crate auditado (RustCrypto `ml-kem`). Ver
-`docs/adr/ADR-0180-post-quantum-deferred.md`.
+**ML-KEM (FIPS 203) implementado** con `libcrux-ml-kem` 0.0.11 (formalmente
+verificado con hax/F*), híbrido X25519+ML-KEM con SHA-256 y keystore
+`pq_keys`. KAT oficial ACVP/FIPS 203 en
+`crates/ruscadb-crypto/tests/post_quantum.rs`. La feature `post-quantum`
+permanece **off por defecto** y la auditoría externa sigue pendiente. Ver
+`docs/adr/ADR-0180-post-quantum.md`.
 
 ## 5. Cableado a adapters (2026-10-29)
 
@@ -185,34 +185,38 @@ Quedan solo los adapters externos de §7 (Lance, pgwire TCP, KMS/HSM, OTLP
 HTTP, S3, ONNX runtime, endpoint Prometheus). El gate de mutacion nightly ya es
 bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 
-## 9. Verificacion de gates (2026-10-30)
+## 9. Verificacion de gates (2026-11-02)
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test -p ruscadb --all-features`: OK (287 lib tests + integracion; 669 en total).
-- `cargo test --workspace --all-features --exclude ruscadb`: OK (68 suites, 497 tests).
-- `cargo xtask trace`: 596 AC trazados.
+- `cargo test --workspace --all-features -j 2`: ultimo run completo 207 suites,
+  1204 tests, 0 fallos; tras SPEC-0180/0193 se re-ejecutaron las suites
+  afectadas (lib 286, txn 48, query 62, edge 7, PQC 5, executor 8).
+- `cargo xtask trace`: 618 AC trazados.
 - `cargo xtask contract`: OK.
 - `cargo xtask check-architecture`: 0 ciclos, 0 aristas prohibidas.
 - `cargo xtask check-unsafe`: OK (presupuesto 93).
 - `scripts/check_ci_config.py`: OK (incluye el gate `mutation-score`).
-- `cargo xtask check-specs`: 186 specs, 50 `real` + 5 `stub` + 1 `placeholder`.
+- `cargo xtask check-specs`: 188 specs, 58 `real`, 0 `stub`, 0 `placeholder`.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
 
-## 10. Modulos stub y propuestas declaradas
+## 10. Cierre de stubs y propuestas (2026-11-02)
 
-Estado 2026-11-02: **45 `real`, 5 `stub`, 1 `placeholder`**, 0 codigo sin
-implementar (audit: 0 `todo!`/`unimplemented!`).
+Estado 2026-11-02: **188 specs `implemented`, 58 `real`, 0 `stub`,
+0 `placeholder`**, 0 codigo sin implementar (audit: 0
+`todo!`/`unimplemented!`, 618 ACs trazados).
 
-- **Helper-only (stub honesto)**: `SPEC-0162` subqueries (IN/scalar/EXISTS
-  cableados; solo `FROM (subquery)` pendiente), `SPEC-0163` CTE y
-  `SPEC-0165` window functions. Tienen motor auxiliar y tests, pero **no** estan
-  cableadas al parser/executor; declararlas `real` era sobredeclarar.
-- **Propuestas SurrealDB (stub/proposed)**: `SPEC-0185` RELATE + paths de grafo
-  y `SPEC-0186` LET/IF/RETURN. Investigacion y ACs en
-  `docs/research/surrealdb-2026-11-02.md`; pendientes de implementar.
-- **Placeholder**: `SPEC-0180` ML-KEM (feature off por defecto, ADR-0180).
+- **RQL frontier cableado**: `SPEC-0162` (tablas derivadas), `SPEC-0163`
+  (CTE y `WITH RECURSIVE`), `SPEC-0165` (ventanas `OVER`) y `SPEC-0161`
+  (expresiones) ya pasan por parser/executor con tests SQL.
+- **SurrealDB**: `SPEC-0185` (`RELATE` + paths BFS encadenados) y `SPEC-0186`
+  (`execute_script` con `LET`/`IF`/`RETURN`) implementados.
+- **SPEC-0193**: aristas con payload JSON + `ts_unix`, `ON CONFLICT` y tabla
+  interna `__ruscadb_edge_meta`.
+- **SPEC-0180**: ML-KEM-768 FIPS 203 con `libcrux-ml-kem` (hax/F*) + KAT ACVP;
+  híbrido X25519 y keystore `pq_keys`. La feature `post-quantum` sigue OFF por
+  defecto y la auditoría externa queda pendiente (ADR-0180).
 
 Historico (ciclo 4): los siete stubs de storage/protocolo pasaron a `real`:
 
@@ -281,7 +285,7 @@ Pasaron a `maturity: real` en este ciclo:
 - **`cargo xtask check-specs`**: valida frontmatter (id unico, feature, status),
   `status`/`maturity` permitidos, ACs declarados con el prefijo correcto y
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
-- **`docs/specs-index.md`**: indice generado (186 specs) con
+- **`docs/specs-index.md`**: indice generado (188 specs) con
   `cargo xtask gen-specs-index`; fuente unica para ver status y madurez.
-- Estado: 180 `implemented` + 3 `accepted` + 3 `proposed`; madurez declarada **50 `real`,
-  5 `stub`, 1 `placeholder`** (el resto sin declarar).
+- Estado: **188 `implemented`**, 0 `accepted`, 0 `proposed`; madurez declarada
+  **58 `real`, 0 `stub`, 0 `placeholder`**.

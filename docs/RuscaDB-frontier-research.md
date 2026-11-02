@@ -164,9 +164,10 @@ Diecinueve modulos pasaron de stub a implementacion funcional con evidencia:
   (recursiva con dedup/ciclo), RqlSetOps (semantica de bolsa), RqlWindowFuncs
   (marcos `ROWS`), PreparedStmtReal (marcadores, tipos, escapado).
 
-Queda un unico **placeholder** (ML-KEM) cerrado por decision documentada
-(`docs/adr/ADR-0180-post-quantum-deferred.md`): no se implementa criptografia a
-mano y la feature permanece off por defecto. Detalle y evidencia por modulo en
+No quedan **placeholders ni stubs**: ML-KEM se implemento con
+`libcrux-ml-kem` (hax/F*) + KAT ACVP y la feature `post-quantum` permanece off
+por defecto; la auditoria externa sigue pendiente
+(`docs/adr/ADR-0180-post-quantum.md`). Detalle y evidencia por modulo en
 `docs/RuscaDB-gap-register.md`.
 
 - redb design doc: https://github.com/cberner/redb/blob/master/docs/design.md
