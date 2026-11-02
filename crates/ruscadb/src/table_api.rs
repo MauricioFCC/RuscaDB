@@ -247,7 +247,7 @@ impl Database {
         let entry = self.indexes.entry(table.to_string()).or_default();
         entry.index_record(&record, &definition)?;
         entry.finalize();
-        catalog.save(self)?;
+        self.save_catalog(&mut catalog)?;
         if is_auto_commit {
             self.txn.commit(tx)?;
         }

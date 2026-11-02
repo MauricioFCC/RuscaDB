@@ -252,6 +252,27 @@ impl Database {
         Ok(())
     }
 
+    /// Persiste el catálogo respetando una transacción explícita.
+    ///
+    /// Con `active_tx == Some`, escribe las páginas sin confirmar (el commit
+    /// lo decide el llamador); sin transacción, confirma como siempre.
+    ///
+    /// Args:
+    ///     catalog: Catálogo cargado por el llamador.
+    ///
+    /// Errors:
+    ///     [`RuscaError::Io`] si falla la escritura del catálogo.
+    pub(crate) fn save_catalog(
+        &mut self,
+        catalog: &mut crate::catalog::Catalog,
+    ) -> Result<(), RuscaError> {
+        if self.active_tx.is_some() {
+            catalog.save_pages(self)
+        } else {
+            catalog.save(self)
+        }
+    }
+
     /// Implementación compartida de apertura.
     fn open_with(config: DbConfig, read_only: bool) -> Result<Self, RuscaError> {
         let wal_path = wal_path_for(&config.data_path);

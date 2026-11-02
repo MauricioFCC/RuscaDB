@@ -101,3 +101,9 @@ SQL scan: O(N); group: O(N); join hash: O(N + M)
 - Ruido de CI: el gate usa ratios y p95, no valores absolutos; se ejecuta en
   runner dedicado o nightly.
 - Los fixtures deben ser pequeños (<5 MB) para no inflar el repo.
+
+## Estado (2026-11-02)
+
+No iniciada. Requiere fixtures deterministas, benches de grafos/SQL y el
+subcomando `xtask bench-gate`; se deja para el siguiente loop para no mezclar
+datasets con el cierre de G1/G2/G4.

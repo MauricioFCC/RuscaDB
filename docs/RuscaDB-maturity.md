@@ -30,26 +30,26 @@ benchmarks macro, conformance multi-binding y auditoría externa).
 |---|---|---|---|---|
 | Core record/catalog | **L3** | 4 archivos, 7 tests; catálogo v1–v4 con overflow | `drop_column`/`rename_column` ausentes | — |
 | Storage/page/buffer | **L3** | 4 archivos, 27 tests; LRU-K, free-list, checksums | `O(N²)` al sembrar free-list | SPEC-0194 |
-| WAL/MVCC | **L3** | 7 archivos, 148 marcadores; group commit, segmented, cifrado, crash harness, loom, SSI | `aborted` sin reclaim; sin Jepsen | SPEC-0195 |
+| WAL/MVCC | **L3** | 7 archivos, 148 marcadores; group commit, segmented, cifrado, crash harness, loom, SSI | sin Jepsen externo | SPEC-0195 (reclaim) |
 | Query/RQL | **L3** | 6 archivos, 105 marcadores; SELECT/DML/joins/CTE/ventanas/subconsultas/set-ops | `MERGE`, plan cache, correlacionadas/laterales | — |
 | Índices B-tree/HNSW/IVF/FVS/FTS | **L3** | 13 archivos, 187 marcadores; recall, ACORN, RaBitQ, BM25 | sin ANN-Benchmarks (recall/QPS) | SPEC-0198 |
 | Grafo | **L2** | CSR, algoritmos, `RELATE`, BFS; 50 marcadores | sin LDBC Graphalytics ni edge delete | SPEC-0198 |
 | Multimodal/AI | **L2** | CAS blobs, embeddings estáticos, MLP ONNX-like | sin runtime ONNX real/GPU | — |
 | Crypto | **L2** | AEAD L3; ML-KEM verificado + KAT ACVP | auditoría externa PQC pendiente | — |
 | Bindings | **L1** | py/node wrappers 16/17 líneas, 0 tests; wasm 14 tests | conformance fase 2 | SPEC-0196 |
-| Ops/observabilidad | **L2** | `doctor`, métricas texto, backup/restore, S3 local, OTLP local | sin scrape HTTP | SPEC-0197 |
+| Ops/observabilidad | **L3** | `doctor`, métricas texto, scrape HTTP opt-in, backup/restore, S3 local, OTLP local | sin TLS/auth ni OTLP remoto | SPEC-0197 |
 | CI/calidad | **L3** | fmt/clippy/doc, trace/contract/audit, fuzz, loom, MSRV, SBOM, mutación | cobertura no medible local | — |
 | Docs/specs | **L2** | 188 specs, 618 ACs; 130 sin `maturity` | profundidad de ACs y metadata | — |
 
 ## 3. Gaps priorizados
 
-| # | Gap | Evidencia | Impacto | Spec |
+| # | Gap | Evidencia | Estado | Spec |
 |---|---|---|---|---|
-| G1 | `O(n²)` por `Vec::contains` en `gc`, free-list y columnar | `gc.rs:181`, `paged_file.rs:87`, `columnar.rs:589` | Latencia en reclaim/carga/validación | **SPEC-0194** |
-| G2 | `TxnManager::aborted` crece sin límite | `mvcc.rs` (SPEC-0193) | Memoria en procesos largos | **SPEC-0195** |
-| G3 | py/node sin conformance; solo Rust ejecuta el fixture | `crates/ruscadb-py`, `ruscadb-node` | Madurez de bindings L1 | **SPEC-0196** |
-| G4 | Métricas sin endpoint HTTP de scrape | `observability.rs` | Operabilidad L2 | **SPEC-0197** |
-| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | `benches/` (3 micro) | Regresiones no detectadas | **SPEC-0198** |
+| G1 | `O(n²)` por `Vec::contains` en `gc`, free-list y columnar | `gc.rs`, `paged_file.rs`, `columnar.rs` | ✅ implementado | SPEC-0194 |
+| G2 | `TxnManager::aborted` crece sin límite | `mvcc.rs` (SPEC-0193) | ✅ implementado (reap) | SPEC-0195 |
+| G3 | py/node sin conformance; solo Rust ejecuta el fixture | `crates/ruscadb-py`, `ruscadb-node` | ⏳ bloqueado por entorno | SPEC-0196 |
+| G4 | Métricas sin endpoint HTTP de scrape | `observability.rs` | ✅ implementado | SPEC-0197 |
+| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | `benches/` (3 micro) | ⏳ siguiente loop | SPEC-0198 |
 
 ## 4. Verificación de algoritmos (hot paths)
 

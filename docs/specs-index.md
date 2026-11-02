@@ -193,8 +193,8 @@
 | SPEC-0191 | `migrate_check` | implemented | real | `migrate_check.md` |
 | SPEC-0192 | `artifact_gc` | implemented | real | `artifact_gc.md` |
 | SPEC-0193 | `edge_properties` | implemented | real | `edge_properties.md` |
-| SPEC-0194 | `set_membership_hotpaths` | proposed | stub | `set_membership_hotpaths.md` |
-| SPEC-0195 | `mvcc_aborted_reclamation` | proposed | stub | `mvcc_aborted_reclamation.md` |
+| SPEC-0194 | `set_membership_hotpaths` | implemented | real | `set_membership_hotpaths.md` |
+| SPEC-0195 | `mvcc_aborted_reclamation` | implemented | real | `mvcc_aborted_reclamation.md` |
 | SPEC-0196 | `bindings_conformance` | proposed | stub | `bindings_conformance.md` |
-| SPEC-0197 | `metrics_http` | proposed | stub | `metrics_http.md` |
+| SPEC-0197 | `metrics_http` | implemented | real | `metrics_http.md` |
 | SPEC-0198 | `benchmark_suite` | proposed | stub | `benchmark_suite.md` |

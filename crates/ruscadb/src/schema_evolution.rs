@@ -104,7 +104,7 @@ impl Database {
                 col_type: column_type,
             });
         }
-        catalog.save(self)?;
+        self.save_catalog(&mut catalog)?;
         self.rebuild_indexes()?;
         Ok(())
     }

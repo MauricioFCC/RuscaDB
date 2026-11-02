@@ -18,6 +18,11 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 18 (2026-11-02)**: implementadas SPEC-0194 (`BTreeSet`/`HashSet` en
+  gc/free-list/columnar), SPEC-0195 (`reap` purga versiones abortadas y acota
+  `aborted`) y SPEC-0197 (`metrics-http`, scrape Prometheus opt-in). SPEC-0196
+  (conformance py/node/wasm) y SPEC-0198 (benchmarks macro) quedan en el
+  siguiente loop por bloqueo de entorno/datasets.
 - **Ciclo 17 (2026-11-02)**: auditoría de madurez por funcionalidad
   (`docs/RuscaDB-maturity.md`) y 5 specs de mejora: SPEC-0194 (sets en hot
   paths, O(n²)→O(n log n)), SPEC-0195 (reclaim de `aborted` MVCC), SPEC-0196

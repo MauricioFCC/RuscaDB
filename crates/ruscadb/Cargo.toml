@@ -283,6 +283,8 @@ fts-advanced = []
 ts-advanced = []
 # SPEC-0119: observabilidad (sin dependencias externas).
 observability = []
+# SPEC-0197: endpoint HTTP de scrape Prometheus (std::net, OFF por defecto).
+metrics-http = ["observability"]
 # SPEC-0120: backup incremental (sin dependencias externas).
 incremental-backup = []
 

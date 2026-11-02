@@ -250,6 +250,8 @@ pub use materialized_view::{MaterializedView, RefreshDelta};
 pub use mvcc_gc_real::{MvccGcReal, Version as MvccVersion};
 #[cfg(feature = "observability")]
 pub use observability::MetricsRegistry;
+#[cfg(feature = "metrics-http")]
+pub use observability::MetricsServer;
 #[cfg(feature = "onnx")]
 pub use onnx::{Mlp, OnnxModel};
 #[cfg(feature = "otel")]

@@ -1,8 +1,8 @@
 ---
 id: SPEC-0197
 feature: metrics_http
-status: proposed
-maturity: stub
+status: implemented
+maturity: real
 owner: platform-team
 appetite_days: 2
 boundaries:
@@ -88,3 +88,10 @@ accept: O(1) por conexión
 
 - No exponer en `0.0.0.0` por defecto; bind explícito.
 - Sin auth; se documenta que es un adapter local/operador.
+
+## Estado de implementación (2026-11-02)
+
+- Feature `metrics-http` (OFF por defecto) y `MetricsServer` con `std::net`.
+- `GET /metrics` → 200 `text/plain; version=0.0.4` con `registry.export()`;
+  otras rutas → 404; shutdown con `AtomicBool`.
+- Tests activos: AC-0197-01..03 en `observability.rs`.

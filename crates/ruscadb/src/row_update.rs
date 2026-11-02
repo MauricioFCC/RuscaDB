@@ -81,7 +81,7 @@ impl Database {
             &updated,
             locator,
         )?;
-        catalog.save(self)?;
+        self.save_catalog(&mut catalog)?;
         if is_auto_commit {
             self.txn.commit(tx)?;
         }

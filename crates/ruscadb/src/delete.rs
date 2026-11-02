@@ -74,7 +74,7 @@ impl Database {
             indexes.remove_record(&deleted);
         }
         self.primary_remove(table, id);
-        catalog.save(self)?;
+        self.save_catalog(&mut catalog)?;
         if is_auto_commit {
             self.txn.commit(tx)?;
         }

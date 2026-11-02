@@ -3,6 +3,8 @@
 //! Sin dependencias externas. La integraciÃ³n con Arrow/Lance queda como trabajo
 //! futuro (feature `columnar` activa este mÃ³dulo sin pulls adicionales).
 
+use std::collections::HashSet;
+
 #[cfg(all(feature = "alp", feature = "fastlanes"))]
 use crate::alp_compression::AlpCompressor;
 #[cfg(all(feature = "alp", feature = "fastlanes"))]
@@ -583,10 +585,11 @@ impl ColumnarTable {
         }
         let mut columns = Vec::with_capacity(column_count.min(1_024));
         let mut data = Vec::with_capacity(column_count.min(1_024));
+        let mut seen_columns: HashSet<String> = HashSet::with_capacity(column_count.min(1_024));
         for _ in 0..column_count {
             let name_len = read_u32(bytes, &mut cursor)? as usize;
             let name = read_text(bytes, &mut cursor, name_len)?;
-            if columns.iter().any(|existing| existing == &name) {
+            if !seen_columns.insert(name.clone()) {
                 return Err(format!("columnar: columna duplicada '{name}'"));
             }
             let encoding = *bytes
@@ -1063,5 +1066,14 @@ mod chunk_tests {
         let restored = ColumnarTable::from_bytes(&table.to_bytes()).expect("vacia");
         assert_eq!(restored.columns(), table.columns());
         assert!(restored.is_empty());
+    }
+
+    /// AC-0194-03 — duplicados de columna se detectan con set.
+    #[test]
+    // @spec AC-0194-03
+    fn test_ac_0194_03_columnar_set() {
+        let table = ColumnarTable::new(vec!["a".to_string(), "a".to_string()]);
+        let error = ColumnarTable::from_bytes(&table.to_bytes()).expect_err("duplicada");
+        assert!(error.contains("columna duplicada"));
     }
 }

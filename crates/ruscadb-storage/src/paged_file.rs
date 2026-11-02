@@ -3,6 +3,7 @@
 //! Cada página ocupa exactamente [`PAGE_SIZE`] bytes en `offset = id * PAGE_SIZE`.
 //! Ver `specs/storage_engine.md` (SPEC-0003).
 
+use std::collections::BTreeSet;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -83,8 +84,10 @@ impl PagedFile {
     /// Args:
     ///     pages: Identificadores de página (crudos) a marcar como libres.
     pub fn seed_free_pages(&mut self, pages: &[u64]) {
+        // SPEC-0194: pertenencia O(log N) y conserva el orden de inserción.
+        let mut present: BTreeSet<u64> = self.free.iter().map(|id| id.0).collect();
         for raw in pages {
-            if *raw < self.pages && !self.free.iter().any(|id| id.0 == *raw) {
+            if *raw < self.pages && present.insert(*raw) {
                 self.free.push(PageId(*raw));
             }
         }
@@ -240,5 +243,22 @@ mod tests {
             vec![PageId(1)],
             "solo el id válido y único"
         );
+    }
+
+    /// AC-0194-02 — seed de N páginas sin dobles free y preservando orden.
+    #[test]
+    // @spec AC-0194-02
+    fn test_ac_0194_02_free_list_set() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("free-seed-linear.db");
+        let mut file = PagedFile::open(&path).expect("open");
+        for _ in 0..1_000 {
+            file.allocate().expect("alloc");
+        }
+        let pages: Vec<u64> = (0..1_000).collect();
+        file.seed_free_pages(&pages);
+        file.seed_free_pages(&pages);
+        assert_eq!(file.free_pages().len(), 1_000);
+        assert_eq!(file.free_pages()[0], PageId(0));
     }
 }

@@ -20,7 +20,7 @@
 //! crash después publica ambas (consistente). Nunca se publica una página libre
 //! antes que la purga que la vació.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::mvcc_gc_real::MvccGcReal;
 use ruscadb_core::{RecordId, RuscaError};
@@ -72,12 +72,29 @@ impl Database {
     ///     [`RuscaError::Io`] si falla la escritura o la confirmación.
     pub fn reap(&mut self) -> Result<usize, RuscaError> {
         let watermark = self.txn.low_watermark();
-        let targets = collect_obsolete(self, watermark)?;
+        let aborted = self.txn.aborted().clone();
+        let targets = collect_obsolete(self, watermark, &aborted)?;
         if targets.is_empty() {
+            // Sin versiones abortadas en el heap: el rastro ya puede olvidarse.
+            for tx in &aborted {
+                self.txn.forget_aborted(*tx);
+            }
             return Ok(0);
         }
         purge_targets(self, &targets)?;
+        // SPEC-0195: una vez purgadas, las tx abortadas no necesitan ocultarse.
+        for tx in &aborted {
+            self.txn.forget_aborted(*tx);
+        }
         Ok(targets.len())
+    }
+
+    /// Número de transacciones abortadas retenidas para visibilidad MVCC.
+    ///
+    /// Returns:
+    ///     Tamaño actual del conjunto `aborted` (SPEC-0195).
+    pub fn aborted_tx_len(&self) -> usize {
+        self.txn.aborted().len()
     }
 }
 
@@ -105,6 +122,7 @@ struct ReapTarget {
 fn collect_obsolete(
     database: &mut Database,
     watermark: ruscadb_txn::TxId,
+    aborted: &BTreeSet<ruscadb_txn::TxId>,
 ) -> Result<Vec<ReapTarget>, RuscaError> {
     let catalog = Catalog::load(database)?;
     let mut targets = Vec::new();
@@ -115,7 +133,11 @@ fn collect_obsolete(
     for name in catalog.table_names() {
         let table = catalog.get(&name)?.clone();
         for (locator, record) in heap_scan(database, &table)? {
-            if collector.is_obsolete(record.meta.created_tx, record.meta.deleted_tx) {
+            // SPEC-0195: una versión creada por una tx abortada es invisible
+            // para todo snapshot y puede purgarse sin esperar al watermark.
+            if aborted.contains(&record.meta.created_tx)
+                || collector.is_obsolete(record.meta.created_tx, record.meta.deleted_tx)
+            {
                 targets.push(ReapTarget {
                     table: name.clone(),
                     locator,
@@ -178,7 +200,11 @@ fn purge_targets(database: &mut Database, targets: &[ReapTarget]) -> Result<(), 
     }
     for (table, pages) in &reclaimed {
         let definition = catalog.get_mut(table)?;
-        definition.pages.retain(|raw| !pages.contains(raw));
+        // SPEC-0194: pertenencia O(log P) en vez de O(P) por página.
+        let reclaimed_pages: BTreeSet<u64> = pages.iter().copied().collect();
+        definition
+            .pages
+            .retain(|raw| !reclaimed_pages.contains(raw));
     }
     // Alta en la free-list ANTES del commit que la persiste con la purga.
     for pages in reclaimed.values() {
@@ -186,7 +212,7 @@ fn purge_targets(database: &mut Database, targets: &[ReapTarget]) -> Result<(), 
             database.release_page(PageId(*raw));
         }
     }
-    catalog.save(database)?;
+    database.save_catalog(&mut catalog)?;
     // Rebuild desde las filas vivas (SPEC-0101): elimina las entradas
     // huérfanas de las purgadas en los índices derivados y recalcula los
     // localizadores del índice primario (el `heap_remove` los desplazó).
@@ -402,6 +428,7 @@ mod tests {
         let _anchor = database.begin();
         let _active = database.begin();
         assert!(database.delete("t", &ids[0]).expect("delete reciente"));
+        database.commit().expect("commit delete");
         let purged = database.reap().expect("reap");
         assert_eq!(purged, 0);
         let rows = database.execute("SELECT * FROM t").expect("select");
@@ -476,5 +503,101 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// AC-0194-01 — la retirada de páginas reclamadas usa pertenencia en set.
+    #[test]
+    // @spec AC-0194-01
+    fn test_ac_0194_01_gc_pages_set() {
+        let mut pages: Vec<u64> = (0..10_000).collect();
+        let reclaimed: BTreeSet<u64> = (0..10_000).step_by(3).collect();
+        pages.retain(|raw| !reclaimed.contains(raw));
+        assert_eq!(pages.len(), 10_000 - reclaimed.len());
+        assert!(pages.iter().all(|page| !reclaimed.contains(page)));
+    }
+
+    /// AC-0195-01 — `reap` purga versiones abortadas y acota `aborted`.
+    #[test]
+    // @spec AC-0195-01
+    fn test_ac_0195_01_aborted_bounded() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("aborted-bounded.db");
+        let mut database = Database::open(crate::DbConfig::new(&path, 512)).expect("open");
+        create_int_table(&mut database, "t");
+        for _ in 0..100 {
+            database.begin();
+            database
+                .insert(
+                    "t",
+                    ScalarMap::from([("a".to_string(), ScalarValue::Int(1))]),
+                )
+                .expect("insert en tx");
+            database.rollback().expect("rollback");
+        }
+        assert!(database.aborted_tx_len() > 0, "hay abortos pendientes");
+        database.reap().expect("reap");
+        assert_eq!(database.aborted_tx_len(), 0, "conjunto acotado tras reap");
+    }
+
+    /// AC-0195-02 — la purga de abortos no oculta filas vivas.
+    #[test]
+    // @spec AC-0195-02
+    fn test_ac_0195_02_visibility_preserved() {
+        let (_dir, mut database) = open_test_db("aborted-visibility");
+        create_int_table(&mut database, "t");
+        let live = database
+            .insert(
+                "t",
+                ScalarMap::from([("a".to_string(), ScalarValue::Int(7))]),
+            )
+            .expect("insert vivo");
+        database.begin();
+        database
+            .insert(
+                "t",
+                ScalarMap::from([("a".to_string(), ScalarValue::Int(8))]),
+            )
+            .expect("insert abortado");
+        database.rollback().expect("rollback");
+        let before = database.execute("SELECT * FROM t").expect("select");
+        database.reap().expect("reap");
+        let after = database.execute("SELECT * FROM t").expect("select");
+        assert_eq!(before, after);
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].get("a"), Some(&ScalarValue::Int(7)));
+        assert!(database.get_record("t", &live).expect("get").is_some());
+    }
+
+    /// AC-0195-03 — un snapshot previo sigue viendo lo mismo tras reap.
+    #[test]
+    // @spec AC-0195-03
+    fn test_ac_0195_03_snapshot_horizon() {
+        let (_dir, mut database) = open_test_db("aborted-snapshot");
+        create_int_table(&mut database, "t");
+        database
+            .insert(
+                "t",
+                ScalarMap::from([("a".to_string(), ScalarValue::Int(1))]),
+            )
+            .expect("insert vivo");
+        let snapshot = database.snapshot();
+        database.begin();
+        database
+            .insert(
+                "t",
+                ScalarMap::from([("a".to_string(), ScalarValue::Int(2))]),
+            )
+            .expect("insert abortado");
+        database.rollback().expect("rollback");
+        let before = database
+            .execute_at("SELECT * FROM t", &snapshot)
+            .expect("select snapshot");
+        database.reap().expect("reap");
+        let after = database
+            .execute_at("SELECT * FROM t", &snapshot)
+            .expect("select snapshot post-reap");
+        assert_eq!(before, after);
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].get("a"), Some(&ScalarValue::Int(1)));
     }
 }

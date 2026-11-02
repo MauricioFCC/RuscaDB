@@ -197,7 +197,7 @@ impl Database {
                 }
             }
 
-            catalog.save(self)?;
+            self.save_catalog(&mut catalog)?;
             self.invalidate_semantic_cache();
             if is_auto_commit {
                 self.txn.commit(tx)?;
@@ -270,7 +270,7 @@ impl Database {
             }
             affected += 1;
         }
-        catalog.save(self)?;
+        self.save_catalog(&mut catalog)?;
         if is_auto_commit {
             self.txn.commit(tx)?;
         }

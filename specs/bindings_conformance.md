@@ -100,3 +100,10 @@ hash:   O(bytes)
 - Python/Node deben poder cargar la `.dll`/`.so` de `ruscadb-ffi`; se documenta
   `RUSCADB_FFI_LIB`.
 - WASM en navegador real queda fuera; el test es host.
+
+## Estado (2026-11-02)
+
+No iniciada. Bloqueo de entorno: `koffi` no está instalado en Node, la FFI no
+se compiló en esta sesión y el binding WASM host no expone el almacenamiento
+de tablas que el fixture necesita. Siguiente loop: construir la FFI, instalar
+`koffi` y sembrar la DB con un helper Rust antes de ejecutar los SELECTs.

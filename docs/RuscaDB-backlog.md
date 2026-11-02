@@ -83,18 +83,18 @@ Spec `SPEC-0193` (`specs/edge_properties.md`) **implementada**. Tabla interna
 
 | # | Gap | Spec | Evidencia | Prioridad |
 |---|---|---|---|---|
-| G1 | `O(n²)` por `Vec::contains` en gc/free-list/columnar | SPEC-0194 | `gc.rs:181`, `paged_file.rs:87`, `columnar.rs:589` | Alta |
-| G2 | `TxnManager::aborted` sin reclaim | SPEC-0195 | `mvcc.rs` (SPEC-0193) | Alta |
-| G3 | py/node sin conformance (fase 2) | SPEC-0196 | wrappers 16/17 líneas, 0 tests | Media |
-| G4 | Métricas sin endpoint HTTP | SPEC-0197 | `observability.rs` solo `export()` | Media |
-| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | SPEC-0198 | 3 microbenchmarks | Media |
+| G1 | `O(n²)` por `Vec::contains` en gc/free-list/columnar | SPEC-0194 | ✅ implementado (`BTreeSet`/`HashSet`) | Alta |
+| G2 | `TxnManager::aborted` sin reclaim | SPEC-0195 | ✅ implementado (reap purga y olvida) | Alta |
+| G3 | py/node sin conformance (fase 2) | SPEC-0196 | ⏳ bloqueado por entorno (koffi/FFI/WASM) | Media |
+| G4 | Métricas sin endpoint HTTP | SPEC-0197 | ✅ implementado (`metrics-http`) | Media |
+| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | SPEC-0198 | ⏳ siguiente loop | Media |
 
 Informe de madurez: `docs/RuscaDB-maturity.md`. Research:
 `docs/research/frontier-2026-11-02-ruscadb-maturity.md`.
 
 ## Criterio de aceptación de este cierre
 
-- **193 specs**: 188 `implemented` + 5 `proposed` (SPEC-0194..0198);
+- **193 specs**: 191 `implemented` + 2 `proposed` (SPEC-0196/0198);
   `cargo xtask audit` en 0 ACs sin test y **636 ACs trazados**.
 - Cada fase conserva ACs, complejidad y tests SQL; las specs implementadas
   tienen gates verdes y las propuestas tienen scaffold RED (`#[ignore]`).

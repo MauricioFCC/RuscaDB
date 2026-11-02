@@ -90,7 +90,7 @@ impl Database {
         if let Some(entry) = self.indexes.get_mut(table) {
             entry.finalize();
         }
-        catalog.save(self)?;
+        self.save_catalog(&mut catalog)?;
         if is_auto_commit {
             self.txn.commit(tx)?;
         }

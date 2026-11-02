@@ -1,8 +1,8 @@
 ---
 id: SPEC-0194
 feature: set_membership_hotpaths
-status: proposed
-maturity: stub
+status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 2
 boundaries:
@@ -104,3 +104,12 @@ memoria:         O(P)/O(N)/O(C)
   el orden de inserción con un `Vec` + `BTreeSet` de pertenencia.
 - `HashSet` no es determinista en iteración; solo se usa para pertenencia, no
   para serializar.
+
+## Estado de implementación (2026-11-02)
+
+- `gc.rs`: `BTreeSet<u64>` para páginas reclamadas.
+- `paged_file.rs`: `BTreeSet<u64>` en `seed_free_pages` (orden de inserción
+  preservado).
+- `columnar.rs`: `HashSet<String>` para duplicados.
+- Tests activos: AC-0194-01..04 en `gc.rs`, `paged_file.rs` y
+  `tests/gap_specs.rs`.

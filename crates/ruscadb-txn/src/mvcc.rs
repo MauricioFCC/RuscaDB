@@ -388,6 +388,22 @@ impl TxnManager {
         }
     }
 
+    /// Transacciones abortadas que aún deben ocultarse (SPEC-0195).
+    pub fn aborted(&self) -> &BTreeSet<TxId> {
+        &self.aborted
+    }
+
+    /// Olvida una transacción abortada ya purgada físicamente.
+    ///
+    /// Args:
+    ///     tx: Transacción cuyo rastro de aborto puede eliminarse.
+    ///
+    /// Returns:
+    ///     `true` si estaba registrada y se eliminó.
+    pub fn forget_aborted(&mut self, tx: TxId) -> bool {
+        self.aborted.remove(&tx)
+    }
+
     /// Indica si `tx` ya está confirmada.
     ///
     /// Args:
