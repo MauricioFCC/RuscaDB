@@ -54,6 +54,6 @@ directorio de base (mutable, append-only) en un single-file memory-mappable
 
 ## Notas
 
-- ImplementaciÃ³n inicial: stub sin memory-mapping.
-- VLE real queda como trabajo futuro.
+- ImplementaciÃ³n inicial: VLE real con checksum implementado sin memory-mapping.
+- Memory-mapping queda fuera de alcance.
 ---

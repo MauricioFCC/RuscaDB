@@ -66,7 +66,7 @@ con Lance detrÃ¡s de un feature flag.
 
 ## Notas
 
-- ImplementaciÃ³n inicial: stub sin dependencia de lance crate.
-- IntegraciÃ³n real con lance queda como trabajo futuro.
+- ImplementaciÃ³n inicial: formato RLAN1 propio implementado sin dependencia del crate lance.
+- IntegraciÃ³n real con lance está fuera de alcance (formato propio RLAN1).
 - ADR requerido: `docs/adr/ADR-0136-lance-format.md`.
 ---

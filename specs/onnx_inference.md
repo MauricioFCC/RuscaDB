@@ -42,7 +42,7 @@ opcional detrÃ¡s de un feature flag, complementando los embeddings estÃ¡tico
 
 ## Notas
 
-- ImplementaciÃ³n inicial: stub sin dependencia de `ort` (no se aÃ±ade al build
-  por defecto). La integraciÃ³n real con `ort` queda como trabajo futuro cuando
+- ImplementaciÃ³n inicial: MLP pure-Rust implementado sin dependencia de `ort` (no se aÃ±ade al build
+  por defecto). La integraciÃ³n real con `ort` queda fuera de alcance; el runtime ONNX real se evaluaría cuando
   se requiera inferencia transformer.
 ---

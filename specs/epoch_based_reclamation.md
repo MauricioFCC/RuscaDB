@@ -65,7 +65,7 @@ reclamation para pÃ¡ginas copy-on-write.
 
 ## Notas
 
-- ImplementaciÃ³n inicial: stub sin sincronizaciÃ³n real.
-- RCU real queda como trabajo futuro (requiere atomics y memory ordering).
+- ImplementaciÃ³n: RCU real con sincronizaciÃ³n por epochs.
+- El tuning avanzado de epochs y el memory reclamation multi-hilo quedan fuera de alcance.
 - ADR requerido: `docs/adr/ADR-0146-rcu.md`.
 ---

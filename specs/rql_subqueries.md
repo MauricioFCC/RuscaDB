@@ -93,9 +93,12 @@ dependientes. Es el bloqueante principal para compatibilidad con SQL.
 - Invariantes: escalar con >1 fila devuelve `SubqueryError::MultipleRows`;
   `IN` devuelve NULL si no hay match pero hay NULL.
 
-## Gap de wiring (auditoria 2026-11-02)
+## Estado de implementación (2026-11-02)
 
-**SPEC-0162 Subqueries**: `IN (SELECT ...)`, subconsulta escalar `(SELECT ...)` y `[NOT] EXISTS` no correlacionados ya estan cableados (materializacion unica en `executor/subquery.rs`). Solo queda `FROM (subquery) AS alias` (tabla derivada); por eso la spec sigue `accepted`/`stub`.
-
-Mientras no se cablee, esta spec se declara `accepted`/`stub` para no
-sobredeclarar madurez; el helper sigue disponible como API auxiliar.
+- `IN (SELECT ...)`, subconsulta escalar `(SELECT ...)` y `[NOT] EXISTS`
+  cableados en `executor/subquery.rs`.
+- `FROM (subquery) AS alias` implementado con `VirtualTable` y
+  `execute_select_at_ctx` (tabla derivada).
+- Tests SQL en `crates/ruscadb/tests/spec_0162_subquery.rs` y
+  `crates/ruscadb/tests/rql_frontier.rs` (AC-0162-04).
+- Estado: `implemented`/`real`; no queda wiring pendiente.

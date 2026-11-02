@@ -39,7 +39,7 @@ sandbox:
   canónicos (filas como objetos JSON).
 - Runner Rust que ejecuta el fixture y compara exacto.
 
-## Fase 2 (pendiente)
+## Fase 2 (fuera de alcance)
 
 - Ejecutar el mismo fixture desde `ruscadb-py`, `ruscadb-node` y `ruscadb-wasm`
   en CI y comparar un hash del JSON.

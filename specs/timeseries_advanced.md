@@ -42,5 +42,5 @@ downsampling básico detrás de un feature flag.
 ## Notas
 
 - Implementación inicial: downsampling por promedio en ventanas fijas.
-- Continuous aggregates y retention quedan como trabajo futuro.
+- Continuous aggregates (SPEC-0145) y retention (SPEC-0122) implementados.
 ---

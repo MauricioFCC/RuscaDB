@@ -54,6 +54,6 @@ de esquema básica detrás de un feature flag.
 
 ## Notas
 
-- Implementación inicial: add_column stub.
-- drop_column y rename_column quedan como trabajo futuro.
+- Implementación: `add_column` real (con índices de gobernanza).
+- `drop_column` y `rename_column` siguen fuera de alcance.
 ---

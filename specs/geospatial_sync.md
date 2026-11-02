@@ -26,7 +26,7 @@ exit_criteria:
   - cargo xtask contract
 ---
 
-# SPEC-0112 â€” Geoespacial + sync (stub)
+# SPEC-0112 â€” Geoespacial + sync
 
 ## Contexto
 

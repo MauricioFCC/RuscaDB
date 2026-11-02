@@ -41,5 +41,5 @@ RuscaDB usa HNSW puro. Esta spec añade IVF-PQ básico detrás de un feature fla
 ## Notas
 
 - Implementación inicial: cuantización por subespacios (PQ) sin IVF clustering.
-- IVF clustering y búsqueda ANN quedan como trabajo futuro.
+- IVF-PQ implementado; el clustering dedicado está en SPEC-0147.
 ---

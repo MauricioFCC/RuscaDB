@@ -48,7 +48,7 @@ merge de cambios concurrentes sin coordinador.
 
 - **Shapiro et al. 2011**: "Conflict-free Replicated Data Types".
 - **ElectricSQL / PowerSync**: sync engines sobre SQLite.
-- **RuscaDB actual**: stub (SPEC-0138).
+- **RuscaDB actual**: base de sync (SPEC-0138).
 
 ## Diseño propuesto
 

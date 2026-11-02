@@ -43,5 +43,5 @@ Esta spec añade backup a S3 detrás de un feature flag.
 ## Notas
 
 - Implementación inicial: manifiesto JSON de ficheros (sin upload real).
-- Upload real queda como trabajo futuro.
+- `upload`/`restore` implementados con `ObjectStore` local; el SDK S3 externo queda fuera de alcance.
 ---

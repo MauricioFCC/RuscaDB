@@ -38,7 +38,7 @@ preparaciÃ³n de sentencias detrÃ¡s de un feature flag.
 
 - Feature `prepared` en `ruscadb` (off por defecto).
 - `crates/ruscadb/src/prepared.rs` â€” `PreparedStatement` con `prepare` + `execute`.
-- IntegraciÃ³n futura: placeholders (`$1`, `?`), plan caching.
+- IntegraciÃ³n implementada en SPEC-0166: placeholders (`$1`, `?`), plan caching.
 
 ## Estado del arte
 
@@ -50,10 +50,10 @@ preparaciÃ³n de sentencias detrÃ¡s de un feature flag.
 
 1. **PreparedStatement**: parsea una vez, almacena el AST.
 2. **execute**: reutiliza el AST parseado.
-3. **Placeholders**: `$1`, `?` para parÃ¡metros (futuro).
+3. **Placeholders**: `$1`, `?` para parÃ¡metros (implementado en SPEC-0166).
 
 ## Notas
 
 - ImplementaciÃ³n inicial: preparaciÃ³n de SELECT sin placeholders.
-- Placeholders y plan caching quedan como trabajo futuro.
+- Placeholders implementados en SPEC-0166; el plan caching sigue fuera de alcance.
 ---

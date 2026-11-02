@@ -42,5 +42,5 @@ métricas en memoria detrás de un feature flag.
 ## Notas
 
 - Implementación inicial: contadores en memoria con formato texto Prometheus.
-- Exportador real queda como trabajo futuro.
+- Exportador Prometheus implementado; el exportador OTLP real está en SPEC-0155.
 ---

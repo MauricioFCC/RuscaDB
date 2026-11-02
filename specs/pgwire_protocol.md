@@ -42,6 +42,6 @@ Esta spec aÃ±ade un servidor pgwire opcional detrÃ¡s de un feature flag.
 
 ## Notas
 
-- ImplementaciÃ³n inicial: stub sin dependencia de `pgwire` crate.
-- La integraciÃ³n real con `pgwire` queda como trabajo futuro.
+- ImplementaciÃ³n inicial: implementación sin dependencia de `pgwire` crate.
+- La integraciÃ³n real con `pgwire` está implementada en SPEC-0127 (servidor real).
 ---

@@ -40,5 +40,5 @@ backup integrado. Esta spec añade un backup básico detrás de un feature flag.
 ## Notas
 
 - Implementación inicial: copia de ficheros (.data, .wal, .manifest).
-- Backup incremental y cifrado quedan como trabajo futuro.
+- Backup incremental implementado en SPEC-0120; el backup cifrado se cubre en SPEC-0105.
 ---

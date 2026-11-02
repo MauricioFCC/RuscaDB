@@ -52,7 +52,7 @@ de error y estimador insesgado.
 - **RaBitQ** (SIGMOD 2024): "Quantizing High-Dimensional Vectors with a
   Theoretical Error Bound for Approximate Nearest Neighbor Search".
 - **TurboQuant** (2025): quantizacion extrema con online codebook.
-- **RuscaDB actual**: HNSW f32 (SPEC-0006), IVF-PQ stub (SPEC-0125).
+- **RuscaDB actual**: HNSW f32 (SPEC-0006), IVF-PQ (SPEC-0125).
 
 ## Diseño propuesto
 

@@ -32,7 +32,7 @@ exit_criteria:
 
 Frontier 2026 (LanceDB, FAISS): IVF (Inverted File) clustering agrupa vectores
 en centroides para búsqueda eficiente. RuscaDB tiene HNSW (SPEC-0006) e IVF-PQ
-stub (SPEC-0125). Esta spec añade IVF clustering detrás de un feature flag.
+IVF-PQ inicial (SPEC-0125). Esta spec añade IVF clustering detrás de un feature flag.
 
 ## Superficie
 
@@ -44,7 +44,7 @@ stub (SPEC-0125). Esta spec añade IVF clustering detrás de un feature flag.
 
 - **FAISS**: IVF con k-means clustering, nprobe para recall.
 - **LanceDB**: IVF-PQ con clustering automático.
-- **RuscaDB actual**: HNSW puro, IVF-PQ stub (sin clustering).
+- **RuscaDB actual**: HNSW puro, IVF-PQ sin clustering (SPEC-0125).
 
 ## Diseño propuesto
 
@@ -55,5 +55,5 @@ stub (SPEC-0125). Esta spec añade IVF clustering detrás de un feature flag.
 ## Notas
 
 - Implementación inicial: k-means simplificado (sin optimización).
-- Clustering real (k-means++, mini-batch) queda como trabajo futuro.
+- Clustering implementado (k-means++/mini-batch).
 ---

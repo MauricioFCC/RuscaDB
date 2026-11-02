@@ -41,5 +41,5 @@ un R-tree simple detrás de un feature flag.
 ## Notas
 
 - Implementación inicial: R-tree lineal (sin splitting heurístico).
-- Proyecciones, KNN espacial y tiles quedan como trabajo futuro.
+- R-tree implementado; proyecciones WGS84 y tiles quedan fuera de alcance.
 ---

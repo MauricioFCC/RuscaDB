@@ -43,7 +43,7 @@ exit_criteria:
 
 ## Contexto
 
-RuscaDB tiene un stub `WindowFunc` (row_number/rank) sin integracion con el
+RuscaDB tenía un `WindowFunc` base (row_number/rank) sin integración con el
 parser ni el executor. Esta spec implementa window functions completas.
 
 ## Superficie
@@ -58,7 +58,7 @@ parser ni el executor. Esta spec implementa window functions completas.
 - **SQL:2003**: window functions.
 - **PostgreSQL**: implementacion completa con frames.
 - **DuckDB**: vectorized window functions.
-- **RuscaDB actual**: stub `WindowFunc` (SPEC-0141) sin parser/executor.
+- **RuscaDB antes de esta spec**: `WindowFunc` base (SPEC-0141) sin parser/executor.
 
 ## Diseño propuesto
 
@@ -83,9 +83,10 @@ parser ni el executor. Esta spec implementa window functions completas.
 - Invariantes: agregados ignoran NULL y devuelven NULL con marco vacio;
   `RANK` deja huecos y `DENSE_RANK` no.
 
-## Gap de wiring (auditoria 2026-11-02)
+## Estado de implementación (2026-11-02)
 
-**SPEC-0165 Window functions**: `RqlWindowFuncs` existe como helper, pero no hay `OVER (PARTITION BY ... ORDER BY ...)` ni expresiones en la proyeccion; el executor solo proyecta columnas y agregados.
-
-Mientras no se cablee, esta spec se declara `accepted`/`stub` para no
-sobredeclarar madurez; el helper sigue disponible como API auxiliar.
+- `OVER (PARTITION BY ... ORDER BY ...)` y `ROW_NUMBER`, `RANK`,
+  `DENSE_RANK`, `NTILE`, `LAG`, `LEAD`, `FIRST/LAST/NTH_VALUE` y agregados
+  de ventana cableados al parser/executor (`WindowItem`, `executor/window.rs`).
+- Tests SQL en `crates/ruscadb/tests/rql_frontier.rs` (AC-0165-01/02/03).
+- Estado: `implemented`/`real`; no queda wiring pendiente.

@@ -42,5 +42,5 @@ time-travel detrás de un feature flag.
 ## Notas
 
 - Implementación inicial: helper que captura un tx_id para consultas "as of".
-- Versioning real queda como trabajo futuro.
+- Versioning real implementado en SPEC-0158.
 ---

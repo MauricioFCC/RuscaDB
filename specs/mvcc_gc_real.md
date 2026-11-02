@@ -44,7 +44,7 @@ exit_criteria:
 
 ## Contexto
 
-RuscaDB tiene MVCC con `gc()`/`dead_versions()` y un stub RCU (SPEC-0146).
+RuscaDB tiene MVCC con `gc()`/`dead_versions()` y RCU base (SPEC-0146).
 Esta spec implementa reclaim real con atomics y sincronizacion.
 
 ## Superficie
@@ -58,7 +58,7 @@ Esta spec implementa reclaim real con atomics y sincronizacion.
 - **Linux kernel RCU**: readers no bloquean; writers sincronizan.
 - **redb**: epoch-based reclamation para paginas CoW.
 - **HyPer/Umbra**: MVCC con GC por watermark + version chains.
-- **RuscaDB actual**: stub (SPEC-0146) + `gc()` lineal.
+- **RuscaDB antes de esta spec**: RCU base (SPEC-0146) + `gc()` lineal.
 
 ## Diseño propuesto
 

@@ -54,5 +54,5 @@ básico detrás de un feature flag.
 ## Notas
 
 - Implementación inicial: checkpoint local (sin red).
-- Sync real queda como trabajo futuro.
+- `SyncProtocol` implementado (LWW + reloj vectorial); la replicación multi-nodo queda fuera de alcance.
 ---

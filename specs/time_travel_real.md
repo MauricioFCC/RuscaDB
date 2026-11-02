@@ -44,7 +44,7 @@ añade time-travel real detrás de un feature flag.
 
 - **Picovolt**: time-travel, opt-in crash-safe durability.
 - **CrepeDB**: fork desde cualquier snapshot, version history.
-- **RuscaDB actual**: MVCC con tx_id en records, time-travel stub (SPEC-0129).
+- **RuscaDB actual**: MVCC con tx_id en records, time-travel base (SPEC-0129).
 
 ## Diseño propuesto
 

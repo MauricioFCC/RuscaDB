@@ -30,7 +30,7 @@ exit_criteria:
 ## Contexto
 
 Frontier 2026 (pglite-oxide, libsql): compatibilidad con el ecosistema PostgreSQL.
-RuscaDB tiene un stub pgwire (SPEC-0113). Esta spec añade integración real
+RuscaDB tiene el codec base pgwire (SPEC-0113). Esta spec añade integración real
 detrás de un feature flag (pgwire crate).
 
 ## Superficie

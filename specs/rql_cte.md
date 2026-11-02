@@ -78,9 +78,11 @@ jerarquias). RuscaDB no los soporta.
 - Invariantes: `UNION ALL` conserva multiplicidades; `UNION` deduplica; un paso
   que reemite una fila marca `hit_cycle`; `max_iterations` evita no terminar.
 
-## Gap de wiring (auditoria 2026-11-02)
+## Estado de implementación (2026-11-02)
 
-**SPEC-0163 CTE**: `RqlCte` existe como helper (incluye punto fijo), pero no hay `WITH` en el parser ni resolucion de tablas virtuales en el executor.
-
-Mientras no se cablee, esta spec se declara `accepted`/`stub` para no
-sobredeclarar madurez; el helper sigue disponible como API auxiliar.
+- `WITH` y `WITH RECURSIVE` cableados en el parser (`Statement::With`), con
+  materialización en `VirtualTable` y resolución de nombres en el executor.
+- CTE recursivo por punto fijo con `UNION`/`UNION ALL`, dedupe y límite de
+  iteraciones.
+- Tests SQL en `crates/ruscadb/tests/rql_frontier.rs` (AC-0163-01/02).
+- Estado: `implemented`/`real`; no queda wiring pendiente.

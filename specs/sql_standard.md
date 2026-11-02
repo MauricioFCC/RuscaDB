@@ -53,6 +53,7 @@ detrás de un feature flag.
 
 ## Notas
 
-- Implementación inicial: row_number stub.
-- Window functions completas, CTEs y MERGE quedan como trabajo futuro.
+- Implementación: `ROW_NUMBER` inicial y, desde SPEC-0165, ventanas completas
+  (`OVER PARTITION/ORDER`, `RANK`, `LAG`, agregados); CTE desde SPEC-0163.
+- `MERGE` SQL:2003 sigue fuera de alcance.
 ---
