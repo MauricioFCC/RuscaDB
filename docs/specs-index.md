@@ -192,3 +192,4 @@
 | SPEC-0190 | `conformance_fixtures` | implemented | real | `conformance_fixtures.md` |
 | SPEC-0191 | `migrate_check` | implemented | real | `migrate_check.md` |
 | SPEC-0192 | `artifact_gc` | implemented | real | `artifact_gc.md` |
+| SPEC-0193 | `edge_properties` | proposed | stub | `edge_properties.md` |

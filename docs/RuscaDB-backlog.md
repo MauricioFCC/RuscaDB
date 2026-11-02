@@ -14,6 +14,7 @@
 | D4 | `RELATE` + paths `->label->` | SPEC-0185 | proposed/stub | no hay update genérico de `Record.edges`; falta índice `(in,out,label)` | diferido: fase 1 = tabla de aristas |
 | D5 | `LET`/`IF`/`RETURN` | SPEC-0186 | proposed/stub | `execute` es una sentencia; falta contexto de sesión | diferido: fase 1 = `execute_script` |
 | D6 | ML-KEM FIPS 203 | SPEC-0180 | proposed/placeholder | requiere crate auditado + ACVP (ADR-0180) | bloqueado por dependencia |
+| D7 | Payload JSON + `ts_unix` en aristas | SPEC-0193 | proposed/stub | `Edge` solo guarda `{label,node}`; falta store transaccional y política de conflicto | spec + scaffold RED listos; implementar `EdgeMetaStore` (REDG1 + WAL) |
 
 ## Diseño y complejidad por ítem
 
@@ -62,10 +63,19 @@ script  O(sentencias) con el mismo snapshot MVCC
 Fase 1: `execute_script`, `LET $x = literal`, `RETURN`.
 Fase 2: variables en `WHERE` (`Expr::Variable`) e `IF` en proyección.
 
-### D6 — ML-KEM
+### D6 - ML-KEM
 
 Bloqueado: `ml-kem` auditado + vectores ACVP. Sin red/credenciales no se
 simula seguridad. Permanece `placeholder` (feature off).
+
+### D7 - Payload JSON + `ts_unix` en aristas
+
+Spec `SPEC-0193` (`specs/edge_properties.md`) con scaffold RED en
+`crates/ruscadb/tests/edge_properties.rs`. Diseño elegido: `EdgeMetaStore`
+separado (`BTreeMap<(from,label,to), {payload, ts_unix}>`) con página `REDG1`
++ frames WAL; `Record.edges` no cambia. Idempotencia estricta con
+`ON CONFLICT DO NOTHING | DO UPDATE SET payload`; `ts_unix` inmutable.
+Pendiente: implementación y activación de los tests (quitar `#[ignore]`).
 
 ## Criterio de aceptación de este cierre
 

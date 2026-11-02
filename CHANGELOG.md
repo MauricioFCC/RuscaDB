@@ -18,6 +18,13 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **SPEC-0193 (2026-11-02)**: propuesta `edge_properties` — aristas con
+  payload JSON y `ts_unix` inmutable, idempotencia por `(from,label,to)` y
+  `ON CONFLICT DO NOTHING | DO UPDATE SET payload`; store `EdgeMetaStore`
+  (`REDG1` + WAL) sin cambiar el formato postcard de `Edge`. Research en
+  `docs/research/frontier-2026-11-02-edge-properties.md` y scaffold RED en
+  `crates/ruscadb/tests/edge_properties.rs` (tests `#[ignore]`).
+
 - **Ciclo 15 (2026-11-01)**:
   - **SPEC-0192**: `cargo xtask gc [--apply] [--all] [--max-age-hours N]
     [--json]` recolecta artefactos regenerables (`target/`, `mutants.out*`,
