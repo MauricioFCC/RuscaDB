@@ -1,8 +1,8 @@
 ---
 id: SPEC-0186
 feature: surreal_session_expressions
-status: proposed
-maturity: stub
+status: implemented
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:
@@ -18,6 +18,27 @@ fr:
   - { id: FR-0186-03, desc: "RETURN expr como sentencia de script" }
 nf:
   - { id: NF-0186-01, desc: "entorno por query; sin estado global ni red" }
+acceptance_criteria:
+  - id: AC-0186-01
+    given: un script con LET y una variable en WHERE
+    when: se ejecuta execute_script
+    then: el SELECT usa el valor de la variable
+    test: test_ac_0186_01_let_variable_sql
+  - id: AC-0186-02
+    given: una proyeccion con IF ... THEN ... ELSE ... END
+    when: se ejecuta el SELECT
+    then: cada fila recibe la rama elegida
+    test: test_ac_0186_02_if_projection_sql
+  - id: AC-0186-03
+    given: un script con RETURN de una variable
+    when: se ejecuta execute_script
+    then: se devuelve una fila con el valor
+    test: test_ac_0186_03_return_sql
+  - id: AC-0186-04
+    given: una variable definida en un script previo
+    when: otro script la usa sin definirla
+    then: error accionable (sin fugas de contexto)
+    test: test_ac_0186_04_variable_isolation_sql
 ---
 
 # SPEC-0186 — Variables y expresiones de sesión estilo SurrealQL (propuesta)
@@ -46,7 +67,18 @@ RETURN:   O(1) + evaluacion de la expresion
 script:   O(sentencias) con el mismo snapshot MVCC
 ```
 
-## Criterios de aceptación (pendientes de implementar)
+## Estado de implementación (2026-11-02)
+
+- `parse_script` + `Database::execute_script`: separa sentencias por `;` y
+  comparte un `BTreeMap<String, ScalarValue>` por llamada.
+- `Statement::Let`/`Statement::Return`; `$nombre` se lexa como
+  `Token::Variable` y se sustituye por su literal antes de ejecutar.
+- `IF ... THEN ... ELSE ... END` se normaliza a `Expr::Case` (sin variante
+  nueva de IR) y se proyecta por fila.
+- Variable no definida → `InvalidConfig` con el nombre de la variable.
+- Sin estado global: cada `execute_script` crea su propio contexto.
+
+## Criterios de aceptación
 
 - `LET $min = 10; SELECT * FROM t WHERE x > $min;` en un solo `execute_script`.
 - `IF x > 0 THEN 'up' ELSE 'down' END` en proyección.

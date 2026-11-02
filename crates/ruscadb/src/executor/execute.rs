@@ -15,24 +15,52 @@ use super::*;
 /// Errors:
 ///     [`RuscaError::TableNotFound`] / [`RuscaError::ColumnNotFound`] /
 ///     [`RuscaError::TypeMismatch`] ante errores de esquema.
+#[allow(dead_code)] // API interna histórica; el executor usa `_ctx`
 pub(crate) fn execute_select_at(
     database: &mut Database,
     select: &Select,
     snapshot: &Snapshot,
 ) -> Result<Vec<Row>, RuscaError> {
+    execute_select_at_ctx(database, select, snapshot, &BTreeMap::new())
+}
+
+/// Ejecuta un `SELECT` con un contexto de CTEs ya materializados (SPEC-0163).
+///
+/// Args:
+///     database: Base abierta.
+///     select: Consulta analizada.
+///     snapshot: Vista fija de visibilidad MVCC.
+///     ctes: Tablas virtuales visibles por nombre (`WITH ...`).
+///
+/// Returns:
+///     Filas visibles para `snapshot` (hasta `LIMIT`).
+///
+/// Errors:
+///     Los del executor (`TableNotFound`, `ColumnNotFound`, `TypeMismatch`).
+pub(crate) fn execute_select_at_ctx(
+    database: &mut Database,
+    select: &Select,
+    snapshot: &Snapshot,
+    ctes: &BTreeMap<String, VirtualTable>,
+) -> Result<Vec<Row>, RuscaError> {
     // Planner (SPEC-0054): budget pre-ejecución + LIMIT implícito + deadline.
     check_budget(select)?;
     let mut effective = select.clone();
     if let Some(filter) = effective.filter.clone() {
-        effective.filter = Some(materialize_subqueries(database, &filter, snapshot)?);
+        effective.filter = Some(materialize_subqueries_ctx(
+            database, &filter, snapshot, ctes,
+        )?);
     }
     if effective.limit.is_none() {
         effective.limit = Some(IMPLICIT_LIMIT);
     }
     let budget = database.query_budget();
+    if effective.from_derived.is_some() || ctes.contains_key(&effective.from) {
+        return execute_virtual_select(database, &effective, snapshot, &budget, ctes);
+    }
     let catalog = Catalog::load(database)?;
     let plan = plan_for(&effective, &catalog)?;
-    execute_with_plan_at(database, &effective, plan, snapshot, &budget)
+    execute_with_plan_at_ctx(database, &effective, plan, snapshot, &budget, ctes)
 }
 
 /// Ejecuta un `SELECT` con un plan fijado resolviendo cláusulas en orden.
@@ -96,6 +124,7 @@ pub(crate) fn execute_with_plan(
 ///     [`RuscaError::MissingGraph`] / [`RuscaError::DimensionMismatch`] ante
 ///     cláusulas que no encajan con los datos de la tabla;
 ///     [`RuscaError::QueryTimeout`] si vence el deadline del scan (SPEC-0054).
+#[allow(dead_code)] // usado por tests del planner; el executor usa `_ctx`
 pub(crate) fn execute_with_plan_at(
     database: &mut Database,
     select: &Select,
@@ -103,6 +132,21 @@ pub(crate) fn execute_with_plan_at(
     snapshot: &Snapshot,
     budget: &QueryBudget,
 ) -> Result<Vec<Row>, RuscaError> {
+    execute_with_plan_at_ctx(database, select, plan, snapshot, budget, &BTreeMap::new())
+}
+
+/// Igual que [`execute_with_plan_at`], con CTEs visibles por nombre.
+pub(crate) fn execute_with_plan_at_ctx(
+    database: &mut Database,
+    select: &Select,
+    plan: Plan,
+    snapshot: &Snapshot,
+    budget: &QueryBudget,
+    ctes: &BTreeMap<String, VirtualTable>,
+) -> Result<Vec<Row>, RuscaError> {
+    if select.from_derived.is_some() || ctes.contains_key(&select.from) {
+        return execute_virtual_select(database, select, snapshot, budget, ctes);
+    }
     if let Some(join) = &select.join {
         return crate::join::execute_join_at(database, select, join, snapshot);
     }
@@ -126,15 +170,13 @@ pub(crate) fn execute_with_plan_at(
         records = apply_traverse(database, &table, traverse, records)?;
     }
     if is_aggregate_query(select) {
+        reject_extras_with_aggregates(select)?;
         return aggregate_records(&table, select, &records);
     }
     if let Some(order_by) = &select.order_by {
         sort_records(&table, order_by, &mut records)?;
     }
-    let mut rows = Vec::with_capacity(records.len());
-    for record in &records {
-        rows.push(project_row(&table, &select.projection, &record.scalars)?);
-    }
+    let mut rows = project_records(database, &table, select, &records)?;
     if select.distinct {
         dedup_rows(&mut rows);
     }
@@ -142,6 +184,139 @@ pub(crate) fn execute_with_plan_at(
     let limit = select.limit.map_or(usize::MAX, |value| value as usize);
     Ok(rows.into_iter().skip(offset).take(limit).collect())
 }
+/// Ejecuta un `SELECT` sobre una tabla virtual (derivada o CTE).
+///
+/// Reutiliza el pipeline de filas (filtro, agregación, orden, proyección,
+/// ventanas, expresiones y paths) construyendo un [`TableDef`] sintético y
+/// registros efímeros. `JOIN`/`KNN`/`TRAVERSE`/`MATCH` quedan fuera de alcance
+/// sobre tablas virtuales (error accionable).
+///
+/// Args:
+///     database: Base abierta (para subconsultas y paths de grafo).
+///     select: Consulta analizada.
+///     snapshot: Vista fija de visibilidad MVCC.
+///     budget: Presupuesto de ejecución.
+///     ctes: CTEs visibles por nombre.
+///
+/// Returns:
+///     Filas proyectadas de la tabla virtual.
+///
+/// Errors:
+///     [`RuscaError::TableNotFound`] si el CTE no existe;
+///     [`RuscaError::TypeMismatch`] si se usa una cláusula no soportada.
+pub(crate) fn execute_virtual_select(
+    database: &mut Database,
+    select: &Select,
+    snapshot: &Snapshot,
+    budget: &QueryBudget,
+    ctes: &BTreeMap<String, VirtualTable>,
+) -> Result<Vec<Row>, RuscaError> {
+    if select.join.is_some() {
+        return Err(RuscaError::TypeMismatch {
+            message: "JOIN sobre tabla virtual no está soportado (SPEC-0162)".to_string(),
+        });
+    }
+    if select.knn.is_some() || select.traverse.is_some() {
+        return Err(RuscaError::TypeMismatch {
+            message: "KNN/TRAVERSE sobre tabla virtual no está soportado".to_string(),
+        });
+    }
+    let table = match &select.from_derived {
+        Some(derived) => VirtualTable::materialize_select(database, derived, snapshot, ctes)?,
+        None => ctes
+            .get(&select.from)
+            .cloned()
+            .ok_or_else(|| RuscaError::TableNotFound {
+                table: select.from.clone(),
+            })?,
+    };
+    let definition = table.table_def(&select.from);
+    let (matches, scalar_filter) = split_matches(select.filter.as_ref());
+    if !matches.is_empty() {
+        return Err(RuscaError::TypeMismatch {
+            message: "MATCH no aplica a tablas virtuales".to_string(),
+        });
+    }
+    let mut records = Vec::new();
+    for record in table.records() {
+        budget.check(records.len() as u64)?;
+        if keeps_row(&definition, scalar_filter.as_ref(), &record)? {
+            records.push(record);
+        }
+    }
+    if is_aggregate_query(select) {
+        reject_extras_with_aggregates(select)?;
+        return aggregate_records(&definition, select, &records);
+    }
+    if let Some(order_by) = &select.order_by {
+        sort_records(&definition, order_by, &mut records)?;
+    }
+    let mut rows = project_records(database, &definition, select, &records)?;
+    if select.distinct {
+        dedup_rows(&mut rows);
+    }
+    let offset = select.offset.unwrap_or(0) as usize;
+    let limit = select.limit.map_or(usize::MAX, |value| value as usize);
+    Ok(rows.into_iter().skip(offset).take(limit).collect())
+}
+
+/// Proyecta columnas, ventanas, expresiones y paths en una sola pasada.
+///
+/// Args:
+///     database: Base abierta (para resolver paths de grafo).
+///     table: Definición de la tabla (real o virtual).
+///     select: Consulta analizada.
+///     records: Registros ya filtrados y ordenados.
+///
+/// Returns:
+///     Una fila por registro con todas las columnas de salida.
+///
+/// Errors:
+///     [`RuscaError::ColumnNotFound`] si una columna proyectada no existe;
+///     errores de evaluación de expresiones o ventanas.
+pub(crate) fn project_records(
+    database: &mut Database,
+    table: &TableDef,
+    select: &Select,
+    records: &[Record],
+) -> Result<Vec<Row>, RuscaError> {
+    let windows = evaluate_windows(&select.windows, records, table)?;
+    let paths = evaluate_paths(database, &select.paths, records)?;
+    let mut rows = Vec::with_capacity(records.len());
+    for (index, record) in records.iter().enumerate() {
+        let mut row = project_row(table, &select.projection, &record.scalars)?;
+        for (window, values) in select.windows.iter().zip(&windows) {
+            row.insert(window.output_name(), values[index].clone());
+        }
+        for expression in &select.expressions {
+            let value = eval_scalar(&expression.expr, &record.scalars)?;
+            let name = expression
+                .alias
+                .clone()
+                .unwrap_or_else(|| expression.expr.to_string());
+            row.insert(name, value);
+        }
+        for (path, values) in select.paths.iter().zip(&paths) {
+            row.insert(path.output_name(), values[index].clone());
+        }
+        rows.push(row);
+    }
+    Ok(rows)
+}
+
+/// Rechaza ventanas/expresiones/paths combinados con agregación.
+///
+/// Errors:
+///     [`RuscaError::TypeMismatch`] si la consulta mezcla ambas formas.
+pub(crate) fn reject_extras_with_aggregates(select: &Select) -> Result<(), RuscaError> {
+    if select.windows.is_empty() && select.expressions.is_empty() && select.paths.is_empty() {
+        return Ok(());
+    }
+    Err(RuscaError::TypeMismatch {
+        message: "ventanas, expresiones y paths no se combinan con GROUP BY/agregados".to_string(),
+    })
+}
+
 /// Decide si un registro es visible para el snapshot MVCC (SPEC-0019).
 ///
 /// Traduce la metadata del registro (`created_tx`/`deleted_tx`) a una

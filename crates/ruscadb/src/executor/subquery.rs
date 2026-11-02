@@ -6,10 +6,21 @@ use super::*;
 ///
 /// Soporta `IN (SELECT ...)`, `(SELECT ...)` escalar y `[NOT] EXISTS`.
 /// No soporta subconsultas correlacionadas (se documenta como fuera de alcance).
+#[allow(dead_code)] // API interna histórica; el executor usa `_ctx`
 pub(crate) fn materialize_subqueries(
     database: &mut Database,
     expression: &Expr,
     snapshot: &Snapshot,
+) -> Result<Expr, RuscaError> {
+    materialize_subqueries_ctx(database, expression, snapshot, &BTreeMap::new())
+}
+
+/// Igual que [`materialize_subqueries`], con CTEs visibles por nombre.
+pub(crate) fn materialize_subqueries_ctx(
+    database: &mut Database,
+    expression: &Expr,
+    snapshot: &Snapshot,
+    ctes: &BTreeMap<String, VirtualTable>,
 ) -> Result<Expr, RuscaError> {
     match expression {
         Expr::InSubquery {
@@ -17,51 +28,51 @@ pub(crate) fn materialize_subqueries(
             query,
             negated,
         } => {
-            let rows = execute_select_at(database, query, snapshot)?;
+            let rows = execute_select_at_ctx(database, query, snapshot, ctes)?;
             let list = rows
                 .iter()
                 .filter_map(|row| row.values().next().cloned())
                 .map(|value| scalar_expr(&value))
                 .collect();
             Ok(Expr::InList {
-                expr: Box::new(materialize_subqueries(database, expr, snapshot)?),
+                expr: Box::new(materialize_subqueries_ctx(database, expr, snapshot, ctes)?),
                 list,
                 negated: *negated,
             })
         }
         Expr::ScalarSubquery(query) => {
-            let rows = execute_select_at(database, query, snapshot)?;
+            let rows = execute_select_at_ctx(database, query, snapshot, ctes)?;
             scalar_from_rows(&rows)
         }
         Expr::Exists { query, negated } => {
-            let rows = execute_select_at(database, query, snapshot)?;
+            let rows = execute_select_at_ctx(database, query, snapshot, ctes)?;
             Ok(Expr::Bool(!rows.is_empty() != *negated))
         }
         Expr::And(left, right) => Ok(Expr::And(
-            Box::new(materialize_subqueries(database, left, snapshot)?),
-            Box::new(materialize_subqueries(database, right, snapshot)?),
+            Box::new(materialize_subqueries_ctx(database, left, snapshot, ctes)?),
+            Box::new(materialize_subqueries_ctx(database, right, snapshot, ctes)?),
         )),
         Expr::Or(left, right) => Ok(Expr::Or(
-            Box::new(materialize_subqueries(database, left, snapshot)?),
-            Box::new(materialize_subqueries(database, right, snapshot)?),
+            Box::new(materialize_subqueries_ctx(database, left, snapshot, ctes)?),
+            Box::new(materialize_subqueries_ctx(database, right, snapshot, ctes)?),
         )),
-        Expr::Not(inner) => Ok(Expr::Not(Box::new(materialize_subqueries(
-            database, inner, snapshot,
+        Expr::Not(inner) => Ok(Expr::Not(Box::new(materialize_subqueries_ctx(
+            database, inner, snapshot, ctes,
         )?))),
         Expr::Compare { left, op, right } => Ok(Expr::Compare {
-            left: Box::new(materialize_subqueries(database, left, snapshot)?),
+            left: Box::new(materialize_subqueries_ctx(database, left, snapshot, ctes)?),
             op: *op,
-            right: Box::new(materialize_subqueries(database, right, snapshot)?),
+            right: Box::new(materialize_subqueries_ctx(database, right, snapshot, ctes)?),
         }),
         Expr::InList {
             expr,
             list,
             negated,
         } => Ok(Expr::InList {
-            expr: Box::new(materialize_subqueries(database, expr, snapshot)?),
+            expr: Box::new(materialize_subqueries_ctx(database, expr, snapshot, ctes)?),
             list: list
                 .iter()
-                .map(|item| materialize_subqueries(database, item, snapshot))
+                .map(|item| materialize_subqueries_ctx(database, item, snapshot, ctes))
                 .collect::<Result<_, _>>()?,
             negated: *negated,
         }),
@@ -71,9 +82,9 @@ pub(crate) fn materialize_subqueries(
             high,
             negated,
         } => Ok(Expr::Between {
-            expr: Box::new(materialize_subqueries(database, expr, snapshot)?),
-            low: Box::new(materialize_subqueries(database, low, snapshot)?),
-            high: Box::new(materialize_subqueries(database, high, snapshot)?),
+            expr: Box::new(materialize_subqueries_ctx(database, expr, snapshot, ctes)?),
+            low: Box::new(materialize_subqueries_ctx(database, low, snapshot, ctes)?),
+            high: Box::new(materialize_subqueries_ctx(database, high, snapshot, ctes)?),
             negated: *negated,
         }),
         Expr::Like {
@@ -82,8 +93,10 @@ pub(crate) fn materialize_subqueries(
             case_insensitive,
             negated,
         } => Ok(Expr::Like {
-            expr: Box::new(materialize_subqueries(database, expr, snapshot)?),
-            pattern: Box::new(materialize_subqueries(database, pattern, snapshot)?),
+            expr: Box::new(materialize_subqueries_ctx(database, expr, snapshot, ctes)?),
+            pattern: Box::new(materialize_subqueries_ctx(
+                database, pattern, snapshot, ctes,
+            )?),
             case_insensitive: *case_insensitive,
             negated: *negated,
         }),

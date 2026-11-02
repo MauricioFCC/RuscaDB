@@ -30,22 +30,27 @@ mod aggregate;
 mod budget;
 mod eval;
 mod execute;
+mod graph_paths;
 mod knn;
 mod plan;
 mod rows;
 mod subquery;
 mod vtable;
+mod window;
 
 pub(crate) use aggregate::*;
 pub(crate) use budget::*;
 pub(crate) use eval::*;
 pub(crate) use execute::*;
+pub(crate) use graph_paths::*;
 pub(crate) use knn::*;
 pub use plan::Plan;
 pub(crate) use plan::full_scan_warning;
 pub(crate) use plan::plan_for;
 pub(crate) use rows::*;
 pub(crate) use subquery::*;
+pub(crate) use vtable::*;
+pub(crate) use window::*;
 
 /// Fila proyectada: nombre de columna → valor escalar.
 pub type Row = BTreeMap<String, ScalarValue>;

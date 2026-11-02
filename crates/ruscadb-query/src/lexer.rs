@@ -121,6 +121,18 @@ pub enum Keyword {
     Else,
     /// `END` (cierre de `CASE`).
     End,
+    /// `WITH` (CTE, SPEC-0163).
+    With,
+    /// `RECURSIVE` (`WITH RECURSIVE`, SPEC-0163).
+    Recursive,
+    /// `RELATE` (arista de grafo, SPEC-0185).
+    Relate,
+    /// `LET` (variable de script, SPEC-0186).
+    Let,
+    /// `RETURN` (resultado de script, SPEC-0186).
+    Return,
+    /// `IF` (expresión condicional, SPEC-0186).
+    If,
 }
 
 impl Keyword {
@@ -185,6 +197,12 @@ impl Keyword {
             Self::Then => "THEN",
             Self::Else => "ELSE",
             Self::End => "END",
+            Self::With => "WITH",
+            Self::Recursive => "RECURSIVE",
+            Self::Relate => "RELATE",
+            Self::Let => "LET",
+            Self::Return => "RETURN",
+            Self::If => "IF",
         }
     }
 
@@ -255,6 +273,12 @@ impl Keyword {
             "then" => Some(Self::Then),
             "else" => Some(Self::Else),
             "end" => Some(Self::End),
+            "with" => Some(Self::With),
+            "recursive" => Some(Self::Recursive),
+            "relate" => Some(Self::Relate),
+            "let" => Some(Self::Let),
+            "return" => Some(Self::Return),
+            "if" => Some(Self::If),
             _ => None,
         }
     }
@@ -309,6 +333,14 @@ pub enum Token {
     AtGt,
     /// `.` (separador de referencia cualificada `tabla.columna`, SPEC-0052).
     Dot,
+    /// `;` (separador de sentencias de un script, SPEC-0186).
+    Semicolon,
+    /// `<-` (navegación de grafo entrante, SPEC-0185).
+    LtArrow,
+    /// `$nombre` (variable de sesión, SPEC-0186).
+    Variable(String),
+    /// Identificador de registro tras `:` (ULID; puede empezar por dígito).
+    RecordId(String),
 }
 
 /// Token con su posición (byte) en el texto original.
@@ -417,6 +449,9 @@ impl<'a> Lexer<'a> {
             b']' => self.single(Token::RBracket),
             b'(' => self.single(Token::LParen),
             b')' => self.single(Token::RParen),
+            b';' => self.single(Token::Semicolon),
+            b':' => self.consume_colon(position)?,
+            b'$' => self.read_variable(position)?,
             b'.' => self.consume_dot(position)?,
             b'\'' => Token::Text(self.read_string(position)?),
             b'0'..=b'9' => self.read_number(position)?,
@@ -457,9 +492,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Consume `<|` (KNN), `<=` o `<` según el byte siguiente.
+    /// Consume `<-` (path entrante), `<|` (KNN), `<=` o `<` según el byte.
     fn consume_lt(&mut self) -> Token {
         match self.peek_next() {
+            Some(b'-') => {
+                self.index += 2;
+                Token::LtArrow
+            }
             Some(b'|') => {
                 self.index += 2;
                 Token::KnnOpen
@@ -473,6 +512,50 @@ impl<'a> Lexer<'a> {
                 Token::Lt
             }
         }
+    }
+
+    /// Consume `:id` de una referencia `tabla:id` (SPEC-0185).
+    ///
+    /// El identificador puede empezar por dígito (ULID), por lo que no se
+    /// reutiliza [`Lexer::read_word`].
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si `:` no va seguido de un identificador.
+    fn consume_colon(&mut self, position: usize) -> Result<Token, RuscaError> {
+        let start = self.index + 1;
+        let mut end = start;
+        while end < self.bytes.len()
+            && (self.bytes[end].is_ascii_alphanumeric() || self.bytes[end] == b'_')
+        {
+            end += 1;
+        }
+        if end == start {
+            return Err(parse_error(
+                "se esperaba un identificador tras ':'",
+                position,
+            ));
+        }
+        self.index = end;
+        Ok(Token::RecordId(self.input[start..end].to_string()))
+    }
+
+    /// Consume `$nombre` como [`Token::Variable`] (SPEC-0186).
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si `$` no va seguido de un nombre.
+    fn read_variable(&mut self, position: usize) -> Result<Token, RuscaError> {
+        let start = self.index + 1;
+        let mut end = start;
+        while end < self.bytes.len()
+            && (self.bytes[end].is_ascii_alphanumeric() || self.bytes[end] == b'_')
+        {
+            end += 1;
+        }
+        if end == start {
+            return Err(parse_error("se esperaba un nombre tras '$'", position));
+        }
+        self.index = end;
+        Ok(Token::Variable(self.input[start..end].to_string()))
     }
 
     /// Consume `<=`/`>=` si el siguiente byte es `=`, o `<`/`>` si no.

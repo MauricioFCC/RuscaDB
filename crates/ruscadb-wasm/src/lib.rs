@@ -213,6 +213,31 @@ fn statement_json(statement: &Statement) -> Value {
             "left": statement_json(left),
             "right": statement_json(right),
         }),
+        Statement::With { ctes, body } => json!({
+            "kind": "with",
+            "ctes": ctes.iter().map(|cte| json!({
+                "name": &cte.name,
+                "columns": &cte.columns,
+                "recursive": cte.recursive,
+                "query": statement_json(&cte.query),
+            })).collect::<Vec<_>>(),
+            "body": statement_json(body),
+        }),
+        Statement::Relate { from, edge, to } => json!({
+            "kind": "relate",
+            "from": from.to_string(),
+            "edge": edge,
+            "to": to.to_string(),
+        }),
+        Statement::Let { name, expr } => json!({
+            "kind": "let",
+            "name": name,
+            "expr": expr_json(expr),
+        }),
+        Statement::Return(expr) => json!({
+            "kind": "return",
+            "expr": expr_json(expr),
+        }),
     }
 }
 

@@ -1,13 +1,26 @@
 //! Parser recursive-descent de RQL sobre los tokens del lexer.
 
 use crate::ast::{
-    AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Delete, Explain, Expr,
-    HavingCondition, Insert, JoinClause, JoinKind, KnnClause, KnnMode, OnConflict, OrderBy,
-    Projection, Select, SetOpKind, Statement, TraverseClause, Update,
+    AggFunc, Aggregate, ColumnRef, CompareOp, ConflictAction, ConflictValue, Cte, Delete, Explain,
+    Expr, FrameBound, FrameKind, FrameSpec, GraphPath, HavingCondition, Insert, JoinClause,
+    JoinKind, KnnClause, KnnMode, OnConflict, OrderBy, PathDirection, PathHop, ProjectedExpr,
+    Projection, RecordRef, Select, SetOpKind, Statement, TraverseClause, Update, WindowFunc,
+    WindowItem, WindowSpec,
 };
 use crate::lexer::{Keyword, Spanned, Token, tokenize};
 use crate::limits::check_depth;
 use ruscadb_core::RuscaError;
+
+/// Resultado de `FROM`: alias, tabla derivada y `JOIN` opcional.
+type FromClause = (String, Option<Box<Select>>, Option<JoinClause>);
+/// Resultado de la proyección: columnas, agregados, ventanas, expresiones y paths.
+type ProjectionParts = (
+    Projection,
+    Vec<Aggregate>,
+    Vec<WindowItem>,
+    Vec<ProjectedExpr>,
+    Vec<GraphPath>,
+);
 
 /// Prefijo común de los mensajes de error de sintaxis.
 const EXPECTED_PREFIX: &str = "se esperaba ";
@@ -61,11 +74,47 @@ pub fn parse(input: &str) -> Result<Select, RuscaError> {
         Statement::Insert(_)
         | Statement::Update(_)
         | Statement::Delete(_)
-        | Statement::SetOp { .. } => Err(crate::lexer::parse_error(
+        | Statement::SetOp { .. }
+        | Statement::With { .. }
+        | Statement::Relate { .. }
+        | Statement::Let { .. }
+        | Statement::Return(_) => Err(crate::lexer::parse_error(
             "la sentencia no es un SELECT simple; usa parse_statement",
             0,
         )),
     }
+}
+
+/// Analiza un script RQL de una o más sentencias separadas por `;`.
+///
+/// Args:
+///     input: Texto del script (`LET ...; SELECT ...; RETURN ...`).
+///
+/// Returns:
+///     Las sentencias en orden, sin el `;` final opcional.
+///
+/// Errors:
+///     [`RuscaError::ParseError`] si una sentencia está mal formada o el
+///     script está vacío.
+pub fn parse_script(input: &str) -> Result<Vec<Statement>, RuscaError> {
+    let tokens = tokenize(input)?;
+    let mut parser = Parser::new(tokens, input.len());
+    let mut statements = Vec::new();
+    while parser.position < parser.tokens.len() {
+        statements.push(parser.parse_statement()?);
+        if parser.peek() == Some(&Token::Semicolon) {
+            parser.advance();
+        } else if parser.position < parser.tokens.len() {
+            return Err(parser.error("se esperaba ';' entre sentencias del script"));
+        }
+    }
+    if statements.is_empty() {
+        return Err(crate::lexer::parse_error(
+            "el script está vacío: se esperaba al menos una sentencia",
+            0,
+        ));
+    }
+    Ok(statements)
 }
 
 /// Comprueba que cada fila de `VALUES` tenga tantos valores como columnas.
@@ -232,8 +281,115 @@ impl Parser {
             Some(Token::Keyword(Keyword::Insert)) => Ok(Statement::Insert(self.parse_insert()?)),
             Some(Token::Keyword(Keyword::Update)) => Ok(Statement::Update(self.parse_update()?)),
             Some(Token::Keyword(Keyword::Delete)) => Ok(Statement::Delete(self.parse_delete()?)),
+            Some(Token::Keyword(Keyword::With)) => self.parse_with(),
+            Some(Token::Keyword(Keyword::Relate)) => self.parse_relate(),
+            Some(Token::Keyword(Keyword::Let)) => self.parse_let(),
+            Some(Token::Keyword(Keyword::Return)) => {
+                self.advance();
+                Ok(Statement::Return(self.parse_expr()?))
+            }
             _ => self.parse_set_statement(),
         }
+    }
+
+    /// Parsea `WITH [RECURSIVE] nombre [(cols)] AS (sentencia) [, ...] cuerpo`.
+    ///
+    /// Returns:
+    ///     [`Statement::With`] con los CTEs y la sentencia que los consume.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si falta un nombre, `AS`, los paréntesis
+    ///     o el cuerpo.
+    fn parse_with(&mut self) -> Result<Statement, RuscaError> {
+        self.expect_keyword(Keyword::With)?;
+        let recursive = self.match_keyword(Keyword::Recursive);
+        let mut ctes = Vec::new();
+        loop {
+            let name = self.expect_ident()?;
+            let columns = if self.peek() == Some(&Token::LParen) {
+                self.advance();
+                let columns = self.parse_ident_list()?;
+                self.expect_token(
+                    &Token::RParen,
+                    &format!("{EXPECTED_PREFIX}')' para cerrar las columnas del CTE"),
+                )?;
+                columns
+            } else {
+                Vec::new()
+            };
+            self.expect_keyword(Keyword::As)?;
+            self.expect_token(
+                &Token::LParen,
+                &format!("{EXPECTED_PREFIX}'(' tras AS en el CTE"),
+            )?;
+            let query = Box::new(self.parse_statement()?);
+            self.expect_token(
+                &Token::RParen,
+                &format!("{EXPECTED_PREFIX}')' para cerrar el CTE"),
+            )?;
+            ctes.push(Cte {
+                name,
+                columns,
+                query,
+                recursive,
+            });
+            if self.peek() == Some(&Token::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let body = Box::new(self.parse_statement()?);
+        Ok(Statement::With { ctes, body })
+    }
+
+    /// Parsea `RELATE tabla:id->etiqueta->tabla:id` (SPEC-0185).
+    fn parse_relate(&mut self) -> Result<Statement, RuscaError> {
+        self.expect_keyword(Keyword::Relate)?;
+        let from = self.parse_record_ref()?;
+        self.expect_token(
+            &Token::Arrow,
+            &format!("{EXPECTED_PREFIX}'->' tras el registro origen de RELATE"),
+        )?;
+        let edge = self.expect_ident()?;
+        self.expect_token(
+            &Token::Arrow,
+            &format!("{EXPECTED_PREFIX}'->' tras la etiqueta de RELATE"),
+        )?;
+        let to = self.parse_record_ref()?;
+        Ok(Statement::Relate { from, edge, to })
+    }
+
+    /// Parsea `tabla:id` de una sentencia `RELATE`.
+    fn parse_record_ref(&mut self) -> Result<RecordRef, RuscaError> {
+        let table = self.expect_ident()?;
+        match self.peek().cloned() {
+            Some(Token::RecordId(id)) => {
+                self.advance();
+                Ok(RecordRef { table, id })
+            }
+            _ => Err(self.error(format!(
+                "{EXPECTED_PREFIX}la referencia '{table}:id' (identificador tras ':')"
+            ))),
+        }
+    }
+
+    /// Parsea `LET $nombre = expr` (SPEC-0186).
+    fn parse_let(&mut self) -> Result<Statement, RuscaError> {
+        self.expect_keyword(Keyword::Let)?;
+        let name = match self.peek().cloned() {
+            Some(Token::Variable(name)) => {
+                self.advance();
+                name
+            }
+            _ => return Err(self.error(format!("{EXPECTED_PREFIX}'$nombre' tras LET"))),
+        };
+        self.expect_token(
+            &Token::Eq,
+            &format!("{EXPECTED_PREFIX}'=' tras la variable de LET"),
+        )?;
+        let expr = self.parse_expr()?;
+        Ok(Statement::Let { name, expr })
     }
 
     /// Parsea `SELECT ... [UNION|INTERSECT|EXCEPT [ALL] SELECT ...]*`
@@ -491,9 +647,9 @@ impl Parser {
     fn parse_select(&mut self) -> Result<Select, RuscaError> {
         self.expect_keyword(Keyword::Select)?;
         let distinct = self.match_keyword(Keyword::Distinct);
-        let (projection, aggregates) = self.parse_projection()?;
+        let (projection, aggregates, windows, expressions, paths) = self.parse_projection()?;
         self.expect_keyword(Keyword::From)?;
-        let (from, join) = self.parse_from()?;
+        let (from, from_derived, join) = self.parse_from()?;
         let filter = if self.match_keyword(Keyword::Where) {
             Some(self.parse_filter()?)
         } else {
@@ -544,7 +700,11 @@ impl Parser {
             distinct,
             projection,
             aggregates,
+            windows,
+            expressions,
+            paths,
             from,
+            from_derived,
             join,
             filter,
             knn,
@@ -561,15 +721,32 @@ impl Parser {
         Ok(select)
     }
 
-    /// Parsea la cláusula `FROM`: tabla exterior + `JOIN` opcional (SPEC-0052).
+    /// Parsea la cláusula `FROM`: tabla o tabla derivada + `JOIN` opcional.
     ///
     /// Returns:
-    ///     `(tabla, join)`: la tabla de `FROM` y la cláusula `JOIN`, si la hay.
+    ///     `(alias, derived, join)`: el nombre de la tabla (o alias de la
+    ///     subconsulta), la tabla derivada `FROM (subquery) AS alias`
+    ///     (SPEC-0162) y la cláusula `JOIN`, si la hay.
     ///
     /// Errors:
-    ///     [`RuscaError::ParseError`] si el `JOIN` está mal formado.
-    fn parse_from(&mut self) -> Result<(String, Option<JoinClause>), RuscaError> {
-        let from = self.expect_ident()?;
+    ///     [`RuscaError::ParseError`] si el `JOIN` está mal formado o si se
+    ///     intenta unir una tabla derivada (fuera de alcance de SPEC-0162).
+    fn parse_from(&mut self) -> Result<FromClause, RuscaError> {
+        let (from, derived) = if self.peek() == Some(&Token::LParen)
+            && matches!(self.peek_at(1), Some(Token::Keyword(Keyword::Select)))
+        {
+            self.advance();
+            let query = self.parse_select()?;
+            self.expect_token(
+                &Token::RParen,
+                &format!("{EXPECTED_PREFIX}')' para cerrar la tabla derivada"),
+            )?;
+            self.expect_keyword(Keyword::As)?;
+            let alias = self.expect_ident()?;
+            (alias, Some(Box::new(query)))
+        } else {
+            (self.expect_ident()?, None)
+        };
         // Tipo de JOIN (SPEC-0099/SPEC-0103).
         let kind = if self.match_keyword(Keyword::Left) {
             self.match_keyword(Keyword::Outer);
@@ -587,6 +764,12 @@ impl Parser {
             JoinKind::Inner
         };
         let join = if self.match_keyword(Keyword::Join) {
+            if derived.is_some() {
+                return Err(self.error(
+                    "JOIN sobre una tabla derivada queda fuera de alcance de SPEC-0162: materialízala con WITH o una subconsulta independiente"
+                        .to_string(),
+                ));
+            }
             Some(self.parse_join(&from, kind)?)
         } else if kind != JoinKind::Inner {
             return Err(self.error(
@@ -596,7 +779,7 @@ impl Parser {
         } else {
             None
         };
-        Ok((from, join))
+        Ok((from, derived, join))
     }
 
     /// Parsea `JOIN <tabla> ON <a.x> = <b.y>` (solo INNER, una igualdad).
@@ -672,21 +855,49 @@ impl Parser {
         Ok(ColumnRef { table, column })
     }
 
-    /// Parsea la proyección: `*` o una lista de columnas y agregados.
+    /// Parsea la proyección: `*` o una lista de columnas, agregados, ventanas,
+    /// expresiones y paths de grafo.
     ///
     /// Returns:
-    ///     `(proyección, agregados)`; las columnas y los agregados se separan
-    ///     pero conservan su orden relativo dentro de cada grupo.
-    fn parse_projection(&mut self) -> Result<(Projection, Vec<Aggregate>), RuscaError> {
+    ///     `(proyección, agregados, ventanas, expresiones, paths)`; cada grupo
+    ///     conserva su orden relativo y el executor los concatena en el orden
+    ///     columnas → ventanas → expresiones → paths → agregados.
+    fn parse_projection(&mut self) -> Result<ProjectionParts, RuscaError> {
         if self.peek() == Some(&Token::Star) {
             self.advance();
-            return Ok((Projection::All, Vec::new()));
+            return Ok((
+                Projection::All,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            ));
         }
         let mut columns = Vec::new();
         let mut aggregates = Vec::new();
+        let mut windows = Vec::new();
+        let mut expressions = Vec::new();
+        let mut paths = Vec::new();
         loop {
-            if self.is_aggregate_function() {
+            if matches!(self.peek(), Some(Token::Arrow | Token::LtArrow)) {
+                paths.push(self.parse_graph_path()?);
+            } else if self.window_ahead() {
+                windows.push(self.parse_window_item()?);
+            } else if self.is_aggregate_function() {
                 aggregates.push(self.parse_aggregate()?);
+            } else if matches!(
+                self.peek(),
+                Some(Token::Keyword(
+                    Keyword::If | Keyword::Case | Keyword::Coalesce | Keyword::Nullif
+                ))
+            ) {
+                let expr = self.parse_expr()?;
+                let alias = if self.match_keyword(Keyword::As) {
+                    Some(self.expect_ident()?)
+                } else {
+                    None
+                };
+                expressions.push(ProjectedExpr { expr, alias });
             } else {
                 columns.push(self.parse_column_name()?);
             }
@@ -696,7 +907,275 @@ impl Parser {
                 break;
             }
         }
-        Ok((Projection::Columns(columns), aggregates))
+        Ok((
+            Projection::Columns(columns),
+            aggregates,
+            windows,
+            expressions,
+            paths,
+        ))
+    }
+
+    /// Indica si la función actual va seguida de `OVER (...)`, sin consumir.
+    ///
+    /// Busca el paréntesis de cierre de la llamada y comprueba que el token
+    /// siguiente es el identificador contextual `OVER` (SPEC-0165).
+    fn window_ahead(&self) -> bool {
+        let is_window_name = match self.peek() {
+            Some(Token::Keyword(
+                Keyword::Count | Keyword::Sum | Keyword::Avg | Keyword::Min | Keyword::Max,
+            )) => true,
+            Some(Token::Ident(name)) => matches!(
+                name.to_ascii_lowercase().as_str(),
+                "row_number"
+                    | "rank"
+                    | "dense_rank"
+                    | "ntile"
+                    | "lag"
+                    | "lead"
+                    | "first_value"
+                    | "last_value"
+                    | "nth_value"
+            ),
+            _ => false,
+        };
+        if !is_window_name || self.peek_at(1) != Some(&Token::LParen) {
+            return false;
+        }
+        let mut depth = 0usize;
+        for offset in 1..self.tokens.len().saturating_sub(self.position) {
+            match self.peek_at(offset) {
+                Some(Token::LParen) => depth += 1,
+                Some(Token::RParen) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return matches!(
+                            self.peek_at(offset + 1),
+                            Some(Token::Ident(name)) if name.eq_ignore_ascii_case("over")
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// Parsea una función de ventana completa `func(args) OVER (...)`.
+    fn parse_window_item(&mut self) -> Result<WindowItem, RuscaError> {
+        let func = self.parse_window_func()?;
+        self.expect_token(
+            &Token::LParen,
+            &format!("{EXPECTED_PREFIX}'(' tras {}", func.as_str()),
+        )?;
+        let (arg, offset) = self.parse_window_args(func)?;
+        self.expect_token(
+            &Token::RParen,
+            &format!("{EXPECTED_PREFIX}')' para cerrar {}", func.as_str()),
+        )?;
+        if !self.match_word("over") {
+            return Err(self.error(format!("{EXPECTED_PREFIX}OVER tras {}", func.as_str())));
+        }
+        self.expect_token(&Token::LParen, &format!("{EXPECTED_PREFIX}'(' tras OVER"))?;
+        let over = self.parse_window_spec()?;
+        let alias = if self.match_keyword(Keyword::As) {
+            Some(self.expect_ident()?)
+        } else {
+            None
+        };
+        Ok(WindowItem {
+            func,
+            arg,
+            offset,
+            over,
+            alias,
+        })
+    }
+
+    /// Resuelve el nombre de una función de ventana y avanza el cursor.
+    fn parse_window_func(&mut self) -> Result<WindowFunc, RuscaError> {
+        let func = match self.peek() {
+            Some(Token::Keyword(Keyword::Count)) => WindowFunc::Count,
+            Some(Token::Keyword(Keyword::Sum)) => WindowFunc::Sum,
+            Some(Token::Keyword(Keyword::Avg)) => WindowFunc::Avg,
+            Some(Token::Keyword(Keyword::Min)) => WindowFunc::Min,
+            Some(Token::Keyword(Keyword::Max)) => WindowFunc::Max,
+            Some(Token::Ident(name)) => match name.to_ascii_lowercase().as_str() {
+                "row_number" => WindowFunc::RowNumber,
+                "rank" => WindowFunc::Rank,
+                "dense_rank" => WindowFunc::DenseRank,
+                "ntile" => WindowFunc::Ntile,
+                "lag" => WindowFunc::Lag,
+                "lead" => WindowFunc::Lead,
+                "first_value" => WindowFunc::FirstValue,
+                "last_value" => WindowFunc::LastValue,
+                "nth_value" => WindowFunc::NthValue,
+                _ => {
+                    return Err(
+                        self.error(format!("{EXPECTED_PREFIX}una función de ventana válida"))
+                    );
+                }
+            },
+            _ => return Err(self.error(format!("{EXPECTED_PREFIX}una función de ventana"))),
+        };
+        self.advance();
+        Ok(func)
+    }
+
+    /// Parsea los argumentos `(arg[, n])` de una función de ventana.
+    fn parse_window_args(
+        &mut self,
+        func: WindowFunc,
+    ) -> Result<(Option<String>, Option<u64>), RuscaError> {
+        match func {
+            WindowFunc::RowNumber | WindowFunc::Rank | WindowFunc::DenseRank => Ok((None, None)),
+            WindowFunc::Ntile => {
+                let buckets =
+                    self.parse_unsigned::<u64>("se esperaba un entero positivo en NTILE(n)")?;
+                Ok((None, Some(buckets)))
+            }
+            WindowFunc::Lag | WindowFunc::Lead => {
+                let arg = self.expect_ident()?;
+                let offset = if self.peek() == Some(&Token::Comma) {
+                    self.advance();
+                    Some(self.parse_unsigned::<u64>(
+                        "se esperaba un entero no negativo como offset de LAG/LEAD",
+                    )?)
+                } else {
+                    None
+                };
+                Ok((Some(arg), offset))
+            }
+            WindowFunc::NthValue => {
+                let arg = self.expect_ident()?;
+                self.expect_token(
+                    &Token::Comma,
+                    &format!("{EXPECTED_PREFIX}',' entre columna y n en NTH_VALUE"),
+                )?;
+                let position = self
+                    .parse_unsigned::<u64>("se esperaba un entero positivo como n de NTH_VALUE")?;
+                Ok((Some(arg), Some(position)))
+            }
+            WindowFunc::FirstValue
+            | WindowFunc::LastValue
+            | WindowFunc::Sum
+            | WindowFunc::Avg
+            | WindowFunc::Count
+            | WindowFunc::Min
+            | WindowFunc::Max => {
+                let arg = self.expect_ident()?;
+                Ok((Some(arg), None))
+            }
+        }
+    }
+
+    /// Parsea la especificación interior de `OVER (...)`.
+    fn parse_window_spec(&mut self) -> Result<WindowSpec, RuscaError> {
+        let mut spec = WindowSpec::default();
+        if self.match_word("partition") {
+            self.expect_keyword(Keyword::By)?;
+            spec.partition_by = self.parse_ident_list()?;
+        }
+        if self.match_keyword(Keyword::Order) {
+            spec.order_by = Some(self.parse_order_by()?);
+        }
+        if self.match_word("rows") {
+            spec.frame = Some(self.parse_frame(FrameKind::Rows)?);
+        } else if self.match_word("range") {
+            spec.frame = Some(self.parse_frame(FrameKind::Range)?);
+        }
+        self.expect_token(
+            &Token::RParen,
+            &format!("{EXPECTED_PREFIX}')' para cerrar OVER"),
+        )?;
+        Ok(spec)
+    }
+
+    /// Parsea el marco `[BETWEEN] <bound> [AND <bound>]`.
+    fn parse_frame(&mut self, kind: FrameKind) -> Result<FrameSpec, RuscaError> {
+        let between = self.match_word("between");
+        let start = self.parse_frame_bound()?;
+        let end = if between {
+            if !self.match_keyword(Keyword::And) {
+                return Err(self.error(format!("{EXPECTED_PREFIX}AND en el marco de la ventana")));
+            }
+            self.parse_frame_bound()?
+        } else {
+            FrameBound::CurrentRow
+        };
+        Ok(FrameSpec { kind, start, end })
+    }
+
+    /// Parsea un límite de marco (`UNBOUNDED PRECEDING`, `n FOLLOWING`, ...).
+    fn parse_frame_bound(&mut self) -> Result<FrameBound, RuscaError> {
+        if self.match_word("unbounded") {
+            if self.match_word("preceding") {
+                return Ok(FrameBound::UnboundedPreceding);
+            }
+            if self.match_word("following") {
+                return Ok(FrameBound::UnboundedFollowing);
+            }
+            return Err(self.error(format!(
+                "{EXPECTED_PREFIX}PRECEDING o FOLLOWING tras UNBOUNDED"
+            )));
+        }
+        if self.match_word("current") {
+            if self.match_word("row") {
+                return Ok(FrameBound::CurrentRow);
+            }
+            return Err(self.error(format!("{EXPECTED_PREFIX}ROW tras CURRENT")));
+        }
+        let value =
+            self.parse_unsigned::<u64>("se esperaba un entero en el marco de la ventana")?;
+        if self.match_word("preceding") {
+            return Ok(FrameBound::Preceding(value));
+        }
+        if self.match_word("following") {
+            return Ok(FrameBound::Following(value));
+        }
+        Err(self.error(format!(
+            "{EXPECTED_PREFIX}PRECEDING o FOLLOWING tras {value}"
+        )))
+    }
+
+    /// Parsea un path de grafo de uno o más saltos:
+    /// `->label->tabla[->label->tabla...]` o `<-label<-tabla[...]`.
+    fn parse_graph_path(&mut self) -> Result<GraphPath, RuscaError> {
+        let mut hops = vec![self.parse_path_hop()?];
+        while matches!(self.peek(), Some(Token::Arrow | Token::LtArrow)) {
+            hops.push(self.parse_path_hop()?);
+        }
+        let alias = if self.match_keyword(Keyword::As) {
+            Some(self.expect_ident()?)
+        } else {
+            None
+        };
+        Ok(GraphPath { hops, alias })
+    }
+
+    /// Parsea un salto `->label->tabla` o `<-label<-tabla`.
+    fn parse_path_hop(&mut self) -> Result<PathHop, RuscaError> {
+        let direction = if self.peek() == Some(&Token::Arrow) {
+            PathDirection::Out
+        } else {
+            PathDirection::In
+        };
+        let arrow = match direction {
+            PathDirection::Out => Token::Arrow,
+            PathDirection::In => Token::LtArrow,
+        };
+        self.expect_token(&arrow, &format!("{EXPECTED_PREFIX}'->' o '<-' en el path"))?;
+        let label = self.expect_ident()?;
+        self.expect_token(
+            &arrow,
+            &format!("{EXPECTED_PREFIX}la flecha de cierre del path '{label}'"),
+        )?;
+        let table = self.expect_ident()?;
+        Ok(PathHop {
+            direction,
+            label,
+            table,
+        })
     }
 
     /// Parsea un nombre de columna proyectada: `col` o `tabla.col` (SPEC-0052).
@@ -849,6 +1328,32 @@ impl Parser {
         Ok(Expr::Case {
             operand,
             branches,
+            otherwise,
+        })
+    }
+
+    /// Parsea `IF <condición> THEN <expr> [ELSE <expr>] END` como `CASE`
+    /// (SPEC-0186).
+    ///
+    /// Returns:
+    ///     [`Expr::Case`] con una rama y el `ELSE` opcional.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si falta `THEN` o `END`.
+    fn parse_if(&mut self) -> Result<Expr, RuscaError> {
+        self.expect_keyword(Keyword::If)?;
+        let condition = self.parse_filter()?;
+        self.expect_keyword(Keyword::Then)?;
+        let then = self.parse_expr()?;
+        let otherwise = if self.match_keyword(Keyword::Else) {
+            Some(Box::new(self.parse_expr()?))
+        } else {
+            None
+        };
+        self.expect_keyword(Keyword::End)?;
+        Ok(Expr::Case {
+            operand: None,
+            branches: vec![(condition, then)],
             otherwise,
         })
     }
@@ -1151,6 +1656,8 @@ impl Parser {
         }
         let expr = match self.peek().cloned() {
             Some(Token::Keyword(Keyword::Case)) => return self.parse_case(),
+            Some(Token::Keyword(Keyword::If)) => return self.parse_if(),
+            Some(Token::Variable(name)) => Expr::Column(format!("${name}")),
             Some(Token::Keyword(Keyword::Coalesce)) => {
                 self.advance();
                 return self.parse_call_list().map(Expr::Coalesce);

@@ -6,7 +6,6 @@
 use super::*;
 
 /// Tabla virtual materializada (no persistente).
-#[allow(dead_code)] // fase 1: conectores FROM(subquery)/CTE pendientes
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct VirtualTable {
     /// Columnas en orden de primera aparición.
@@ -15,7 +14,6 @@ pub(crate) struct VirtualTable {
     rows: Vec<Row>,
 }
 
-#[allow(dead_code)] // fase 1
 impl VirtualTable {
     /// Materializa filas alineadas a un esquema explícito.
     ///
@@ -25,6 +23,7 @@ impl VirtualTable {
     ///
     /// Returns:
     ///     Tabla virtual lista para escanear.
+    #[allow(dead_code)] // helper de tests y de futuras fases
     pub(crate) fn from_rows(columns: Vec<String>, rows: Vec<Row>) -> Self {
         Self { columns, rows }
     }
@@ -45,9 +44,55 @@ impl VirtualTable {
         database: &mut Database,
         select: &ruscadb_query::Select,
         snapshot: &Snapshot,
+        ctes: &std::collections::BTreeMap<String, VirtualTable>,
     ) -> Result<Self, RuscaError> {
-        let rows = crate::executor::execute_select_at(database, select, snapshot)?;
+        let rows = crate::executor::execute_select_at_ctx(database, select, snapshot, ctes)?;
         Ok(Self::infer_from_rows(rows))
+    }
+
+    /// Construye un [`TableDef`] sintético para validar columnas y proyectar.
+    ///
+    /// Args:
+    ///     name: Nombre/alias con el que se referencia la tabla virtual.
+    ///
+    /// Returns:
+    ///     Definición con todas las columnas como `TEXT` (el tipo real se
+    ///     conserva en cada [`ScalarValue`]).
+    pub(crate) fn table_def(&self, name: &str) -> crate::catalog::TableDef {
+        crate::catalog::TableDef {
+            name: name.to_string(),
+            columns: self
+                .columns
+                .iter()
+                .map(|column| crate::catalog::ColumnDef {
+                    name: column.clone(),
+                    col_type: crate::catalog::ColumnType::Text,
+                })
+                .collect(),
+            heap_start: ruscadb_storage::PageId(0),
+            pages: Vec::new(),
+            row_count: self.rows.len() as u64,
+            indexes: Vec::new(),
+        }
+    }
+
+    /// Convierte las filas en registros efímeros para reutilizar el pipeline.
+    ///
+    /// Returns:
+    ///     Un [`Record`] por fila, con metadata neutra (no persistente).
+    pub(crate) fn records(&self) -> Vec<ruscadb_core::Record> {
+        self.rows
+            .iter()
+            .map(|row| ruscadb_core::Record {
+                id: ruscadb_core::RecordId::new(),
+                scalars: row.clone(),
+                doc: None,
+                edges: ruscadb_core::EdgeSet::default(),
+                vector: None,
+                blob: None,
+                meta: ruscadb_core::RecordMeta::default(),
+            })
+            .collect()
     }
 
     /// Materializa infiriendo el esquema de la primera fila.
@@ -66,21 +111,25 @@ impl VirtualTable {
     }
 
     /// Columnas del esquema.
+    #[allow(dead_code)] // helper de tests y de futuras fases
     pub(crate) fn columns(&self) -> &[String] {
         &self.columns
     }
 
     /// Filas materializadas.
+    #[allow(dead_code)] // helper de tests y de futuras fases
     pub(crate) fn rows(&self) -> &[Row] {
         &self.rows
     }
 
     /// Cardinalidad.
+    #[allow(dead_code)] // helper de tests y de futuras fases
     pub(crate) fn len(&self) -> usize {
         self.rows.len()
     }
 
     /// Indica si no hay filas.
+    #[allow(dead_code)] // helper de tests y de futuras fases
     pub(crate) fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
@@ -116,8 +165,13 @@ mod tests {
         }
         let select = ruscadb_query::parse("SELECT x FROM t WHERE x > 1").expect("parse");
         let snapshot = database.snapshot();
-        let table = VirtualTable::materialize_select(&mut database, &select, &snapshot)
-            .expect("materializa");
+        let table = VirtualTable::materialize_select(
+            &mut database,
+            &select,
+            &snapshot,
+            &std::collections::BTreeMap::new(),
+        )
+        .expect("materializa");
         assert_eq!(table.len(), 2);
         assert_eq!(table.columns(), &["x".to_string()]);
         assert_eq!(table.rows()[0].get("x"), Some(&ScalarValue::Int(2)));

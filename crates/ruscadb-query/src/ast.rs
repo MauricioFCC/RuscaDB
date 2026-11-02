@@ -429,6 +429,224 @@ pub struct JoinClause {
     pub right: Option<ColumnRef>,
 }
 
+/// Expresión proyectada `expr [AS alias]` evaluada por fila (SPEC-0186).
+///
+/// Complementa [`Projection::Columns`] para no romper la variante pública que
+/// consumen los adaptadores: las expresiones se evalúan después de las
+/// columnas y los agregados, en su orden de aparición.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProjectedExpr {
+    /// Expresión evaluada por fila (p. ej. un `CASE` proveniente de `IF`).
+    pub expr: Expr,
+    /// Alias de salida (`AS nombre`); si falta se usa `expr`.
+    pub alias: Option<String>,
+}
+
+/// Función de ventana soportada por RQL (SPEC-0165).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowFunc {
+    /// `ROW_NUMBER()`: posición 1..n dentro de la partición ordenada.
+    RowNumber,
+    /// `RANK()`: posición con huecos en empates.
+    Rank,
+    /// `DENSE_RANK()`: posición sin huecos en empates.
+    DenseRank,
+    /// `NTILE(n)`: reparto en `n` cubos.
+    Ntile,
+    /// `LAG(col[, offset])`: valor de una fila anterior.
+    Lag,
+    /// `LEAD(col[, offset])`: valor de una fila posterior.
+    Lead,
+    /// `FIRST_VALUE(col)`: primer valor de la ventana.
+    FirstValue,
+    /// `LAST_VALUE(col)`: último valor de la ventana.
+    LastValue,
+    /// `NTH_VALUE(col, n)`: n-ésimo valor de la ventana (1-based).
+    NthValue,
+    /// `SUM(col) OVER (...)`.
+    Sum,
+    /// `AVG(col) OVER (...)`.
+    Avg,
+    /// `COUNT(col) OVER (...)`.
+    Count,
+    /// `MIN(col) OVER (...)`.
+    Min,
+    /// `MAX(col) OVER (...)`.
+    Max,
+}
+
+impl WindowFunc {
+    /// Nombre canónico de la función (minúsculas).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RowNumber => "row_number",
+            Self::Rank => "rank",
+            Self::DenseRank => "dense_rank",
+            Self::Ntile => "ntile",
+            Self::Lag => "lag",
+            Self::Lead => "lead",
+            Self::FirstValue => "first_value",
+            Self::LastValue => "last_value",
+            Self::NthValue => "nth_value",
+            Self::Sum => "sum",
+            Self::Avg => "avg",
+            Self::Count => "count",
+            Self::Min => "min",
+            Self::Max => "max",
+        }
+    }
+
+    /// Indica si la función es un agregado de ventana.
+    pub fn is_aggregate(self) -> bool {
+        matches!(
+            self,
+            Self::Sum | Self::Avg | Self::Count | Self::Min | Self::Max
+        )
+    }
+}
+
+/// Tipo de marco (`ROWS` o `RANGE`) de una ventana (SPEC-0165).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameKind {
+    /// Marco por número de filas.
+    Rows,
+    /// Marco por rango de valores (se evalúa como la partición completa).
+    Range,
+}
+
+/// Límite de un marco de ventana.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameBound {
+    /// `UNBOUNDED PRECEDING`.
+    UnboundedPreceding,
+    /// `n PRECEDING`.
+    Preceding(u64),
+    /// `CURRENT ROW`.
+    CurrentRow,
+    /// `n FOLLOWING`.
+    Following(u64),
+    /// `UNBOUNDED FOLLOWING`.
+    UnboundedFollowing,
+}
+
+/// Marco de ventana `ROWS|RANGE BETWEEN <start> AND <end>`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameSpec {
+    /// Tipo de marco.
+    pub kind: FrameKind,
+    /// Límite inicial.
+    pub start: FrameBound,
+    /// Límite final.
+    pub end: FrameBound,
+}
+
+/// Especificación `OVER ([PARTITION BY ...] [ORDER BY ...] [frame])`.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct WindowSpec {
+    /// Columnas de partición.
+    pub partition_by: Vec<String>,
+    /// Orden dentro de la partición.
+    pub order_by: Option<OrderBy>,
+    /// Marco explícito (por defecto, la partición completa).
+    pub frame: Option<FrameSpec>,
+}
+
+/// Elemento de ventana de la proyección (SPEC-0165).
+#[derive(Clone, Debug, PartialEq)]
+pub struct WindowItem {
+    /// Función de ventana.
+    pub func: WindowFunc,
+    /// Columna de entrada (`None` en `ROW_NUMBER`, `RANK`, ...).
+    pub arg: Option<String>,
+    /// Desplazamiento de `LAG`/`LEAD` (por defecto 1).
+    pub offset: Option<u64>,
+    /// Especificación `OVER`.
+    pub over: WindowSpec,
+    /// Alias de salida.
+    pub alias: Option<String>,
+}
+
+impl WindowItem {
+    /// Nombre de la columna de salida (alias o nombre canónico).
+    pub fn output_name(&self) -> String {
+        self.alias.clone().unwrap_or_else(|| {
+            self.arg.as_ref().map_or_else(
+                || self.func.as_str().to_string(),
+                |arg| format!("{}({arg})", self.func.as_str()),
+            )
+        })
+    }
+}
+
+/// Expresión de tabla común `WITH name [(cols)] AS (query)` (SPEC-0163).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Cte {
+    /// Nombre con el que se referencia en `FROM`.
+    pub name: String,
+    /// Columnas explícitas (vacío = las del `SELECT` interno).
+    pub columns: Vec<String>,
+    /// Consulta que materializa el CTE.
+    pub query: Box<Statement>,
+    /// `true` si el CTE es recursivo (`WITH RECURSIVE`).
+    pub recursive: bool,
+}
+
+/// Dirección de navegación de un path de grafo (SPEC-0185).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PathDirection {
+    /// `->label->`: aristas salientes.
+    Out,
+    /// `<-label<-`: aristas entrantes.
+    In,
+}
+
+/// Salto de un path de grafo (`->label->tabla` o `<-label<-tabla`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PathHop {
+    /// Dirección de las aristas.
+    pub direction: PathDirection,
+    /// Etiqueta de la arista.
+    pub label: String,
+    /// Tabla destino (filtra los nodos vecinos).
+    pub table: String,
+}
+
+/// Path de grafo de uno o más saltos, con alias opcional (SPEC-0185).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphPath {
+    /// Saltos en orden (BFS por niveles).
+    pub hops: Vec<PathHop>,
+    /// Alias de la columna de salida.
+    pub alias: Option<String>,
+}
+
+impl GraphPath {
+    /// Nombre de la columna de salida (alias o `label.tabla` del último salto).
+    pub fn output_name(&self) -> String {
+        self.alias.clone().unwrap_or_else(|| {
+            self.hops.last().map_or_else(
+                || "path".to_string(),
+                |hop| format!("{}.{}", hop.label, hop.table),
+            )
+        })
+    }
+}
+
+/// Referencia a un registro concreto `tabla:id` (SPEC-0185).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordRef {
+    /// Tabla del registro.
+    pub table: String,
+    /// Identificador textual (ULID).
+    pub id: String,
+}
+
+impl fmt::Display for RecordRef {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}:{}", self.table, self.id)
+    }
+}
+
 /// Sentencia `SELECT` analizada.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Select {
@@ -442,8 +660,16 @@ pub struct Select {
     /// pública `Projection::Columns` (consumida por adaptadores como
     /// `ruscadb-wasm`); el orden canónico los serializa tras las columnas.
     pub aggregates: Vec<Aggregate>,
-    /// Tabla de origen.
+    /// Ventanas de la proyección (`ROW_NUMBER() OVER (...)`, SPEC-0165).
+    pub windows: Vec<WindowItem>,
+    /// Expresiones de la proyección (`IF ... THEN ... ELSE ... END`, SPEC-0186).
+    pub expressions: Vec<ProjectedExpr>,
+    /// Paths de grafo de la proyección (`->label->tabla`, SPEC-0185).
+    pub paths: Vec<GraphPath>,
+    /// Tabla de origen (o alias de la tabla derivada).
     pub from: String,
+    /// Tabla derivada `FROM (subquery) AS alias` (SPEC-0162).
+    pub from_derived: Option<Box<Select>>,
     /// JOIN interior con igualdad simple (SPEC-0052; `None` sin `JOIN`).
     pub join: Option<JoinClause>,
     /// Filtro `WHERE` (opcional).
@@ -500,6 +726,31 @@ pub enum Statement {
         /// `true` para `ALL` (conserva duplicados).
         all: bool,
     },
+    /// `WITH [RECURSIVE] nombre AS (query) [, ...] <sentencia>` (SPEC-0163).
+    With {
+        /// CTEs en orden de evaluación.
+        ctes: Vec<Cte>,
+        /// Sentencia que consume los CTEs.
+        body: Box<Statement>,
+    },
+    /// `RELATE tabla:id->etiqueta->tabla:id` (SPEC-0185).
+    Relate {
+        /// Registro origen.
+        from: RecordRef,
+        /// Etiqueta de la arista.
+        edge: String,
+        /// Registro destino.
+        to: RecordRef,
+    },
+    /// `LET $nombre = expr` en un script (SPEC-0186).
+    Let {
+        /// Nombre sin el prefijo `$`.
+        name: String,
+        /// Expresión evaluada.
+        expr: Expr,
+    },
+    /// `RETURN expr` en un script (SPEC-0186).
+    Return(Expr),
 }
 
 /// Operador de conjuntos de RQL (SPEC-0164).
@@ -756,7 +1007,19 @@ impl fmt::Display for Select {
             write!(formatter, "DISTINCT ")?;
         }
         write_projection(formatter, &self.projection, &self.aggregates)?;
-        write!(formatter, " FROM {}", self.from)?;
+        for window in &self.windows {
+            write!(formatter, ", {window}")?;
+        }
+        for expression in &self.expressions {
+            write!(formatter, ", {expression}")?;
+        }
+        for path in &self.paths {
+            write!(formatter, ", {path}")?;
+        }
+        match &self.from_derived {
+            Some(derived) => write!(formatter, " FROM ({derived}) AS {}", self.from)?,
+            None => write!(formatter, " FROM {}", self.from)?,
+        }
         if let Some(join) = &self.join {
             write!(formatter, " {join}")?;
         }
@@ -835,6 +1098,103 @@ fn write_projection(
         wrote = true;
     }
     Ok(())
+}
+
+impl fmt::Display for ProjectedExpr {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.alias {
+            Some(alias) => write!(formatter, "{} AS {alias}", self.expr),
+            None => write!(formatter, "{}", self.expr),
+        }
+    }
+}
+
+impl fmt::Display for FrameBound {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnboundedPreceding => write!(formatter, "UNBOUNDED PRECEDING"),
+            Self::Preceding(value) => write!(formatter, "{value} PRECEDING"),
+            Self::CurrentRow => write!(formatter, "CURRENT ROW"),
+            Self::Following(value) => write!(formatter, "{value} FOLLOWING"),
+            Self::UnboundedFollowing => write!(formatter, "UNBOUNDED FOLLOWING"),
+        }
+    }
+}
+
+impl fmt::Display for FrameSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let kind = match self.kind {
+            FrameKind::Rows => "ROWS",
+            FrameKind::Range => "RANGE",
+        };
+        write!(formatter, "{kind} BETWEEN {} AND {}", self.start, self.end)
+    }
+}
+
+impl fmt::Display for WindowItem {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}(", self.func.as_str())?;
+        match (&self.arg, self.offset) {
+            (Some(arg), Some(offset)) => write!(formatter, "{arg}, {offset}")?,
+            (Some(arg), None) => write!(formatter, "{arg}")?,
+            (None, Some(offset)) => write!(formatter, "{offset}")?,
+            (None, None) => {}
+        }
+        write!(formatter, ") OVER (")?;
+        let mut wrote = false;
+        if !self.over.partition_by.is_empty() {
+            write!(
+                formatter,
+                "PARTITION BY {}",
+                self.over.partition_by.join(", ")
+            )?;
+            wrote = true;
+        }
+        if let Some(order_by) = &self.over.order_by {
+            if wrote {
+                write!(formatter, " ")?;
+            }
+            write!(formatter, "{order_by}")?;
+            wrote = true;
+        }
+        if let Some(frame) = &self.over.frame {
+            if wrote {
+                write!(formatter, " ")?;
+            }
+            write!(formatter, "{frame}")?;
+        }
+        write!(formatter, ")")?;
+        match &self.alias {
+            Some(alias) => write!(formatter, " AS {alias}"),
+            None => Ok(()),
+        }
+    }
+}
+
+impl fmt::Display for GraphPath {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for hop in &self.hops {
+            let arrow = match hop.direction {
+                PathDirection::Out => "->",
+                PathDirection::In => "<-",
+            };
+            write!(formatter, "{arrow}{}{arrow}{}", hop.label, hop.table)?;
+        }
+        match &self.alias {
+            Some(alias) => write!(formatter, " AS {alias}"),
+            None => Ok(()),
+        }
+    }
+}
+
+impl fmt::Display for Cte {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.name)?;
+        if !self.columns.is_empty() {
+            write!(formatter, " ({})", self.columns.join(", "))?;
+        }
+        write!(formatter, " AS ({})", self.query)
+    }
 }
 
 impl fmt::Display for Explain {
@@ -976,6 +1336,24 @@ impl fmt::Display for Statement {
                 op.as_str(),
                 if *all { " ALL" } else { "" }
             ),
+            Self::With { ctes, body } => {
+                write!(formatter, "WITH ")?;
+                if ctes.iter().any(|cte| cte.recursive) {
+                    write!(formatter, "RECURSIVE ")?;
+                }
+                for (index, cte) in ctes.iter().enumerate() {
+                    if index > 0 {
+                        write!(formatter, ", ")?;
+                    }
+                    write!(formatter, "{cte}")?;
+                }
+                write!(formatter, " {body}")
+            }
+            Self::Relate { from, edge, to } => {
+                write!(formatter, "RELATE {from}->{edge}->{to}")
+            }
+            Self::Let { name, expr } => write!(formatter, "LET ${name} = {expr}"),
+            Self::Return(expr) => write!(formatter, "RETURN {expr}"),
         }
     }
 }

@@ -1,8 +1,8 @@
 ---
 id: SPEC-0165
 feature: rql_window_functions
-status: accepted
-maturity: stub
+status: implemented
+maturity: real
 owner: query-team
 appetite_days: 8
 boundaries:
@@ -21,17 +21,17 @@ acceptance_criteria:
     given: SELECT con ROW_NUMBER() OVER (ORDER BY col)
     when: se ejecuta
     then: se asigna numero secuencial por orden
-    test: test_ac_0165_01_row_number
+    test: test_ac_0165_01_row_number_sql
   - id: AC-0165-02
     given: SELECT con SUM(col) OVER (PARTITION BY g)
     when: se ejecuta
     then: se devuelve la suma por particion
-    test: test_ac_0165_02_sum_over
+    test: test_ac_0165_02_sum_over_sql
   - id: AC-0165-03
     given: SELECT con LAG(col, 1)
     when: se ejecuta
     then: se devuelve el valor de la fila anterior
-    test: test_ac_0165_03_lag
+    test: test_ac_0165_03_lag_sql
 exit_criteria:
   - cargo test -p ruscadb --all-features
   - cargo test -p ruscadb-query --all-features

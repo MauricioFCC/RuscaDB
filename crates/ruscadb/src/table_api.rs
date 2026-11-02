@@ -7,16 +7,22 @@
 //! desde la página 0 en cada operación: reabrir la base recupera tablas,
 //! filas e índices sin estado en memoria.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use ruscadb_core::{
-    EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError, ScalarMap,
-    ScalarValue,
+    Edge, EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError,
+    ScalarMap, ScalarValue,
 };
-use ruscadb_query::{Statement, parse_statement};
+use ruscadb_query::{
+    Cte, Expr, RecordRef, Select, SetOpKind, Statement, parse_script, parse_statement,
+};
 use ruscadb_txn::Snapshot;
 
 use crate::catalog::{Catalog, ColumnDef, ColumnType, TableDef};
 use crate::database::Database;
-use crate::executor::{Plan, Row, execute_select_at, full_scan_warning, plan_for};
+use crate::executor::{
+    Plan, Row, VirtualTable, execute_select_at_ctx, full_scan_warning, plan_for,
+};
 use crate::heap::{blank_slotted_page, heap_insert, heap_scan};
 use crate::index::index_insert;
 use crate::indexes::TableIndexes;
@@ -386,8 +392,34 @@ impl Database {
         statement: Statement,
         snapshot: &Snapshot,
     ) -> Result<Vec<Row>, RuscaError> {
+        self.execute_statement_with(statement, snapshot, &mut BTreeMap::new(), &BTreeMap::new())
+    }
+
+    /// Ejecuta una sentencia con variables de sesión y CTEs visibles.
+    ///
+    /// Args:
+    ///     statement: Sentencia analizada.
+    ///     snapshot: Vista fija de visibilidad MVCC.
+    ///     vars: Variables `LET` (`nombre` sin `$`) acumuladas en el script.
+    ///     ctes: CTEs ya materializados, visibles por nombre.
+    ///
+    /// Returns:
+    ///     Filas del resultado (`{"value": ...}` para `LET`/`RETURN`).
+    ///
+    /// Errors:
+    ///     Los del executor o un error accionable para variables no definidas.
+    fn execute_statement_with(
+        &mut self,
+        statement: Statement,
+        snapshot: &Snapshot,
+        vars: &mut BTreeMap<String, ScalarValue>,
+        ctes: &BTreeMap<String, VirtualTable>,
+    ) -> Result<Vec<Row>, RuscaError> {
         match statement {
-            Statement::Select(select) => execute_select_at(self, &select, snapshot),
+            Statement::Select(select) => {
+                let select = substitute_select_vars(&select, vars)?;
+                execute_select_at_ctx(self, &select, snapshot, ctes)
+            }
             Statement::Insert(insert) => self.execute_insert(&insert),
             Statement::Update(update) => self.execute_update(&update, snapshot),
             Statement::Delete(delete) => self.execute_delete(&delete, snapshot),
@@ -397,12 +429,12 @@ impl Database {
                 right,
                 all,
             } => {
-                let left_rows = self.execute_statement(*left, snapshot)?;
-                let right_rows = self.execute_statement(*right, snapshot)?;
-                let right_keys: std::collections::BTreeSet<Vec<u8>> =
+                let left_rows = self.execute_statement_with(*left, snapshot, vars, ctes)?;
+                let right_rows = self.execute_statement_with(*right, snapshot, vars, ctes)?;
+                let right_keys: BTreeSet<Vec<u8>> =
                     right_rows.iter().map(crate::executor::row_key).collect();
                 let mut rows = match op {
-                    ruscadb_query::SetOpKind::Union => {
+                    SetOpKind::Union => {
                         let mut rows = left_rows;
                         rows.extend(right_rows);
                         if !all {
@@ -410,7 +442,7 @@ impl Database {
                         }
                         rows
                     }
-                    ruscadb_query::SetOpKind::Intersect => {
+                    SetOpKind::Intersect => {
                         let mut rows: Vec<Row> = left_rows
                             .into_iter()
                             .filter(|row| right_keys.contains(&crate::executor::row_key(row)))
@@ -420,7 +452,7 @@ impl Database {
                         }
                         rows
                     }
-                    ruscadb_query::SetOpKind::Except => {
+                    SetOpKind::Except => {
                         let mut rows: Vec<Row> = left_rows
                             .into_iter()
                             .filter(|row| !right_keys.contains(&crate::executor::row_key(row)))
@@ -434,6 +466,29 @@ impl Database {
                 rows.shrink_to_fit();
                 Ok(rows)
             }
+            Statement::With {
+                ctes: declarations,
+                body,
+            } => {
+                let mut scope = ctes.clone();
+                for cte in declarations {
+                    let table = self.materialize_cte(&cte, snapshot, vars, &scope)?;
+                    scope.insert(cte.name.clone(), table);
+                }
+                self.execute_statement_with(*body, snapshot, vars, &scope)
+            }
+            Statement::Relate { from, edge, to } => self.execute_relate(&from, &edge, &to),
+            Statement::Let { name, expr } => {
+                let expr = substitute_expr_vars(&expr, vars)?;
+                let value = crate::executor::eval_scalar(&expr, &ScalarMap::new())?;
+                vars.insert(name, value.clone());
+                Ok(vec![Row::from([("value".to_string(), value)])])
+            }
+            Statement::Return(expr) => {
+                let expr = substitute_expr_vars(&expr, vars)?;
+                let value = crate::executor::eval_scalar(&expr, &ScalarMap::new())?;
+                Ok(vec![Row::from([("value".to_string(), value)])])
+            }
             Statement::Explain(_) => Err(RuscaError::ParseError {
                 message:
                     "EXPLAIN no es una sentencia ejecutable; inspecciónala con parse_statement"
@@ -441,6 +496,257 @@ impl Database {
                 position: 0,
             }),
         }
+    }
+
+    /// Materializa un CTE (no recursivo o recursivo) en una tabla virtual.
+    ///
+    /// Args:
+    ///     cte: Declaración `WITH ... AS (...)`.
+    ///     snapshot: Vista fija de visibilidad MVCC.
+    ///     vars: Variables de sesión.
+    ///     scope: CTEs visibles antes de este.
+    ///
+    /// Returns:
+    ///     La tabla virtual con el resultado del CTE.
+    ///
+    /// Errors:
+    ///     [`RuscaError::InvalidConfig`] si el CTE recursivo no tiene la forma
+    ///     `<base> UNION [ALL] <recursivo>` o si declara columnas explícitas
+    ///     (fuera de alcance).
+    fn materialize_cte(
+        &mut self,
+        cte: &Cte,
+        snapshot: &Snapshot,
+        vars: &mut BTreeMap<String, ScalarValue>,
+        scope: &BTreeMap<String, VirtualTable>,
+    ) -> Result<VirtualTable, RuscaError> {
+        if !cte.columns.is_empty() {
+            return Err(RuscaError::InvalidConfig(
+                "la lista explícita de columnas del CTE está fuera de alcance; aliasa las columnas en el SELECT interno"
+                    .to_string(),
+            ));
+        }
+        if !cte.recursive {
+            let rows = self.execute_statement_with((*cte.query).clone(), snapshot, vars, scope)?;
+            return Ok(VirtualTable::infer_from_rows(rows));
+        }
+        let Statement::SetOp {
+            left,
+            op,
+            right,
+            all,
+        } = &*cte.query
+        else {
+            return Err(RuscaError::InvalidConfig(
+                "WITH RECURSIVE exige la forma '<base> UNION [ALL] <término recursivo>'"
+                    .to_string(),
+            ));
+        };
+        if *op != SetOpKind::Union {
+            return Err(RuscaError::InvalidConfig(
+                "WITH RECURSIVE solo admite UNION o UNION ALL".to_string(),
+            ));
+        }
+        let base = self.execute_statement_with((**left).clone(), snapshot, vars, scope)?;
+        let mut rows = base.clone();
+        let mut delta = base;
+        let mut seen: BTreeSet<Vec<u8>> = rows.iter().map(crate::executor::row_key).collect();
+        let mut local = scope.clone();
+        local.insert(
+            cte.name.clone(),
+            VirtualTable::infer_from_rows(delta.clone()),
+        );
+        const MAX_ITERATIONS: usize = 1000;
+        for _ in 0..MAX_ITERATIONS {
+            if delta.is_empty() {
+                break;
+            }
+            let step = self.execute_statement_with((**right).clone(), snapshot, vars, &local)?;
+            let mut fresh = Vec::new();
+            for row in step {
+                if *all || seen.insert(crate::executor::row_key(&row)) {
+                    fresh.push(row);
+                }
+            }
+            if fresh.is_empty() {
+                break;
+            }
+            rows.extend(fresh.clone());
+            delta = fresh;
+            local.insert(
+                cte.name.clone(),
+                VirtualTable::infer_from_rows(delta.clone()),
+            );
+        }
+        Ok(VirtualTable::infer_from_rows(rows))
+    }
+
+    /// Ejecuta `RELATE tabla:id->etiqueta->tabla:id`.
+    ///
+    /// Returns:
+    ///     `{"affected": 1}` si creó la arista, `{"affected": 0}` si ya existía.
+    fn execute_relate(
+        &mut self,
+        from: &RecordRef,
+        edge: &str,
+        to: &RecordRef,
+    ) -> Result<Vec<Row>, RuscaError> {
+        let created = self.relate(&from.table, &from.id, edge, &to.table, &to.id)?;
+        Ok(vec![Row::from([(
+            "affected".to_string(),
+            ScalarValue::Int(i64::from(created)),
+        )])])
+    }
+
+    /// Ejecuta un script RQL (`LET ...; SELECT ...; RETURN ...`) con un
+    /// contexto de variables aislado por llamada (SPEC-0186).
+    ///
+    /// Args:
+    ///     script: Una o más sentencias separadas por `;`.
+    ///
+    /// Returns:
+    ///     Las filas de la última sentencia ejecutada.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si el script no parsea;
+    ///     los del executor en otro caso.
+    pub fn execute_script(&mut self, script: &str) -> Result<Vec<Row>, RuscaError> {
+        if Self::is_write_statement(script) {
+            self.ensure_writable("execute_script")?;
+        }
+        let snapshot = self.snapshot();
+        let statements = parse_script(script)?;
+        let mut vars = BTreeMap::new();
+        let mut rows = Vec::new();
+        for statement in statements {
+            if is_write_statement(&statement) {
+                self.require_write("execute_script")?;
+            }
+            rows =
+                self.execute_statement_with(statement, &snapshot, &mut vars, &BTreeMap::new())?;
+        }
+        Ok(rows)
+    }
+
+    /// Crea (idempotentemente) una arista etiquetada entre dos registros.
+    ///
+    /// Actualiza `edges.out` del origen y `edges.incoming` del destino en una
+    /// sola transacción (auto-commit o la activa). Si la arista ya existe no
+    /// escribe nada.
+    ///
+    /// Args:
+    ///     from_table: Tabla del registro origen.
+    ///     from_id: ULID del origen.
+    ///     label: Etiqueta de la arista.
+    ///     to_table: Tabla del registro destino.
+    ///     to_id: ULID del destino.
+    ///
+    /// Returns:
+    ///     `Ok(true)` si creó la arista; `Ok(false)` si ya existía.
+    ///
+    /// Errors:
+    ///     [`RuscaError::InvalidId`] si un id no es un ULID o no existe;
+    ///     [`RuscaError::TableNotFound`] si una tabla no existe;
+    ///     [`RuscaError::InvalidConfig`] si la etiqueta está vacía.
+    pub fn relate(
+        &mut self,
+        from_table: &str,
+        from_id: &str,
+        label: &str,
+        to_table: &str,
+        to_id: &str,
+    ) -> Result<bool, RuscaError> {
+        self.ensure_writable("relate")?;
+        self.require_write("relate")?;
+        if label.is_empty() {
+            return Err(RuscaError::InvalidConfig(
+                "la etiqueta de RELATE no puede estar vacía".to_string(),
+            ));
+        }
+        let from_id = RecordId::from_string(from_id)?;
+        let to_id = RecordId::from_string(to_id)?;
+        let mut catalog = Catalog::load(self)?;
+        let from_def = catalog.get(from_table)?.clone();
+        let to_def = catalog.get(to_table)?.clone();
+        let Some((from_locator, from_record)) =
+            crate::delete::locate_row(self, &from_def, &from_id)?
+        else {
+            return Err(RuscaError::InvalidId(format!(
+                "no existe el registro {from_table}:{from_id}"
+            )));
+        };
+        let Some((to_locator, to_record)) = crate::delete::locate_row(self, &to_def, &to_id)?
+        else {
+            return Err(RuscaError::InvalidId(format!(
+                "no existe el registro {to_table}:{to_id}"
+            )));
+        };
+        if from_record
+            .edges
+            .out
+            .iter()
+            .any(|edge| edge.label == label && edge.node == to_id)
+        {
+            return Ok(false);
+        }
+        let (tx, is_auto_commit) = match self.active_tx {
+            Some(tx) => (tx, false),
+            None => (self.txn.begin(), true),
+        };
+        let mut updated_from = from_record.clone();
+        updated_from.edges.out.push(Edge {
+            label: label.to_string(),
+            node: to_id,
+        });
+        updated_from.meta.created_tx = tx;
+        updated_from.meta.deleted_tx = None;
+        updated_from.meta.lsn = self.wal.next_lsn();
+        if from_table == to_table && from_id == to_id {
+            updated_from.edges.incoming.push(Edge {
+                label: label.to_string(),
+                node: from_id,
+            });
+            crate::dml::persist_row_update(
+                self,
+                &mut catalog,
+                &from_def,
+                &from_record,
+                &updated_from,
+                from_locator,
+            )?;
+        } else {
+            let mut updated_to = to_record.clone();
+            updated_to.edges.incoming.push(Edge {
+                label: label.to_string(),
+                node: from_id,
+            });
+            updated_to.meta.created_tx = tx;
+            updated_to.meta.deleted_tx = None;
+            updated_to.meta.lsn = self.wal.next_lsn();
+            crate::dml::persist_row_update(
+                self,
+                &mut catalog,
+                &from_def,
+                &from_record,
+                &updated_from,
+                from_locator,
+            )?;
+            crate::dml::persist_row_update(
+                self,
+                &mut catalog,
+                &to_def,
+                &to_record,
+                &updated_to,
+                to_locator,
+            )?;
+        }
+        catalog.save(self)?;
+        if is_auto_commit {
+            self.txn.commit(tx)?;
+        }
+        self.note_audit("relate", label);
+        self.invalidate_semantic_cache();
+        Ok(true)
     }
 
     /// Carga el catálogo actual (instantánea para planificar e inspeccionar).
@@ -480,7 +786,11 @@ impl Database {
             Statement::Insert(_)
             | Statement::Update(_)
             | Statement::Delete(_)
-            | Statement::SetOp { .. } => {
+            | Statement::SetOp { .. }
+            | Statement::With { .. }
+            | Statement::Relate { .. }
+            | Statement::Let { .. }
+            | Statement::Return(_) => {
                 return Err(RuscaError::ParseError {
                     message: "EXPLAIN solo admite SELECT".to_string(),
                     position: 0,
@@ -701,6 +1011,193 @@ pub(crate) fn maintain_index(
         index_insert(database, catalog, table, &column, &value, locator)?;
     }
     Ok(())
+}
+
+/// Indica si una sentencia escribe datos (para RBAC y `ensure_writable`).
+fn is_write_statement(statement: &Statement) -> bool {
+    match statement {
+        Statement::Insert(_)
+        | Statement::Update(_)
+        | Statement::Delete(_)
+        | Statement::Relate { .. } => true,
+        Statement::SetOp { left, right, .. } => {
+            is_write_statement(left) || is_write_statement(right)
+        }
+        Statement::With { ctes, body } => {
+            ctes.iter().any(|cte| is_write_statement(&cte.query)) || is_write_statement(body)
+        }
+        Statement::Select(_)
+        | Statement::Explain(_)
+        | Statement::Let { .. }
+        | Statement::Return(_) => false,
+    }
+}
+
+/// Sustituye variables `$nombre` por sus valores en una expresión.
+///
+/// Args:
+///     expression: Expresión del IR.
+///     vars: Variables de sesión (`nombre` sin `$`).
+///
+/// Returns:
+///     La expresión con las variables ya resueltas.
+///
+/// Errors:
+///     [`RuscaError::InvalidConfig`] si una variable no está definida.
+fn substitute_expr_vars(
+    expression: &Expr,
+    vars: &BTreeMap<String, ScalarValue>,
+) -> Result<Expr, RuscaError> {
+    Ok(match expression {
+        Expr::Column(name) if name.starts_with('$') => {
+            let variable = &name[1..];
+            let value = vars.get(variable).ok_or_else(|| {
+                RuscaError::InvalidConfig(format!(
+                    "variable de sesión no definida: '${variable}' (defínela con LET antes de usarla)"
+                ))
+            })?;
+            crate::executor::scalar_expr(value)
+        }
+        Expr::Case {
+            operand,
+            branches,
+            otherwise,
+        } => Expr::Case {
+            operand: match operand {
+                Some(operand) => Some(Box::new(substitute_expr_vars(operand, vars)?)),
+                None => None,
+            },
+            branches: branches
+                .iter()
+                .map(|(condition, result)| {
+                    Ok((
+                        substitute_expr_vars(condition, vars)?,
+                        substitute_expr_vars(result, vars)?,
+                    ))
+                })
+                .collect::<Result<_, RuscaError>>()?,
+            otherwise: match otherwise {
+                Some(otherwise) => Some(Box::new(substitute_expr_vars(otherwise, vars)?)),
+                None => None,
+            },
+        },
+        Expr::Compare { left, op, right } => Expr::Compare {
+            left: Box::new(substitute_expr_vars(left, vars)?),
+            op: *op,
+            right: Box::new(substitute_expr_vars(right, vars)?),
+        },
+        Expr::And(left, right) => Expr::And(
+            Box::new(substitute_expr_vars(left, vars)?),
+            Box::new(substitute_expr_vars(right, vars)?),
+        ),
+        Expr::Or(left, right) => Expr::Or(
+            Box::new(substitute_expr_vars(left, vars)?),
+            Box::new(substitute_expr_vars(right, vars)?),
+        ),
+        Expr::Not(inner) => Expr::Not(Box::new(substitute_expr_vars(inner, vars)?)),
+        Expr::IsNull { expr, negated } => Expr::IsNull {
+            expr: Box::new(substitute_expr_vars(expr, vars)?),
+            negated: *negated,
+        },
+        Expr::InList {
+            expr,
+            list,
+            negated,
+        } => Expr::InList {
+            expr: Box::new(substitute_expr_vars(expr, vars)?),
+            list: list
+                .iter()
+                .map(|item| substitute_expr_vars(item, vars))
+                .collect::<Result<_, _>>()?,
+            negated: *negated,
+        },
+        Expr::InSubquery {
+            expr,
+            query,
+            negated,
+        } => Expr::InSubquery {
+            expr: Box::new(substitute_expr_vars(expr, vars)?),
+            query: Box::new(substitute_select_vars(query, vars)?),
+            negated: *negated,
+        },
+        Expr::ScalarSubquery(query) => {
+            Expr::ScalarSubquery(Box::new(substitute_select_vars(query, vars)?))
+        }
+        Expr::Exists { query, negated } => Expr::Exists {
+            query: Box::new(substitute_select_vars(query, vars)?),
+            negated: *negated,
+        },
+        Expr::Between {
+            expr,
+            low,
+            high,
+            negated,
+        } => Expr::Between {
+            expr: Box::new(substitute_expr_vars(expr, vars)?),
+            low: Box::new(substitute_expr_vars(low, vars)?),
+            high: Box::new(substitute_expr_vars(high, vars)?),
+            negated: *negated,
+        },
+        Expr::Like {
+            expr,
+            pattern,
+            case_insensitive,
+            negated,
+        } => Expr::Like {
+            expr: Box::new(substitute_expr_vars(expr, vars)?),
+            pattern: Box::new(substitute_expr_vars(pattern, vars)?),
+            case_insensitive: *case_insensitive,
+            negated: *negated,
+        },
+        Expr::Coalesce(items) => Expr::Coalesce(
+            items
+                .iter()
+                .map(|item| substitute_expr_vars(item, vars))
+                .collect::<Result<_, _>>()?,
+        ),
+        Expr::Nullif(left, right) => Expr::Nullif(
+            Box::new(substitute_expr_vars(left, vars)?),
+            Box::new(substitute_expr_vars(right, vars)?),
+        ),
+        other => other.clone(),
+    })
+}
+
+/// Sustituye variables `$nombre` en un `SELECT` completo.
+///
+/// Args:
+///     select: Consulta analizada.
+///     vars: Variables de sesión.
+///
+/// Returns:
+///     La consulta con variables resueltas (incluidas subconsultas y tablas
+///     derivadas).
+///
+/// Errors:
+///     [`RuscaError::InvalidConfig`] si una variable no está definida.
+fn substitute_select_vars(
+    select: &Select,
+    vars: &BTreeMap<String, ScalarValue>,
+) -> Result<Select, RuscaError> {
+    let mut cloned = select.clone();
+    if let Some(filter) = &cloned.filter {
+        cloned.filter = Some(substitute_expr_vars(filter, vars)?);
+    }
+    for aggregate in &mut cloned.aggregates {
+        if let Some(expr) = &aggregate.expr {
+            aggregate.expr = Some(substitute_expr_vars(expr, vars)?);
+        }
+    }
+    for condition in &mut cloned.having {
+        condition.literal = substitute_expr_vars(&condition.literal, vars)?;
+    }
+    for expression in &mut cloned.expressions {
+        expression.expr = substitute_expr_vars(&expression.expr, vars)?;
+    }
+    if let Some(derived) = &cloned.from_derived {
+        cloned.from_derived = Some(Box::new(substitute_select_vars(derived, vars)?));
+    }
+    Ok(cloned)
 }
 
 #[cfg(test)]
