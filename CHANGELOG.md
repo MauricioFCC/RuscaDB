@@ -9,6 +9,12 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 13 (2026-11-02)**:
+  - **SPEC-0189 AC-02**: `query_timeout_ms` aplicado al `QueryBudget`
+    (0 = deadline inmediato); `max_memory_bytes` documentado como pendiente.
+  - **SPEC-0191**: `ruscadb migrate --db <ruta> check` compara
+    `schema_version` con `CURRENT_SCHEMA_VERSION`; test CLI.
+
 - **Ciclo 12 (2026-11-02)**:
   - **SPEC-0189**: `DbConfig::max_result_rows` (truncado real); `query_timeout_ms`
     y `max_memory_bytes` reservados/documentados.

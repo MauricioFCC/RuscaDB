@@ -190,3 +190,4 @@
 | SPEC-0188 | `doctor_metrics` | implemented | real | `doctor_metrics.md` |
 | SPEC-0189 | `resource_limits` | implemented | real | `resource_limits.md` |
 | SPEC-0190 | `conformance_fixtures` | implemented | real | `conformance_fixtures.md` |
+| SPEC-0191 | `migrate_check` | implemented | real | `migrate_check.md` |
