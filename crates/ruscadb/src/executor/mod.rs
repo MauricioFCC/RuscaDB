@@ -34,6 +34,7 @@ mod knn;
 mod plan;
 mod rows;
 mod subquery;
+mod vtable;
 
 pub(crate) use aggregate::*;
 pub(crate) use budget::*;
