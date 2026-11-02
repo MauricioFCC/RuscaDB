@@ -7,6 +7,15 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Guardrail COST-001 (presupuesto)**: el agente avisaba "No se definio
+  presupuesto de costo/tokens" en cada turno. Ahora resuelve
+  `defaults.base_budget` de `.opencode/config/token_budgets.yaml` (2048) y
+  reporta INFO; el WARN solo queda si no hay budget explicito ni default.
+- **COST-002**: separa unidades (`max_tokens` vs `max_cost_usd`) y verifica el
+  uso contra el default en vez de saltarse la comprobacion.
+
 ### Added
 
 - **Ciclo 13 (2026-11-02)**:
