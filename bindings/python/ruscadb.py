@@ -21,6 +21,7 @@ La ruta de la biblioteca se toma de ``RUSCADB_FFI_LIB`` o de
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import sys
 from ctypes import POINTER, c_char_p, c_int, c_size_t, c_uint32, c_uint64, c_void_p
@@ -141,6 +142,10 @@ def load_library(path: str | os.PathLike[str] | None = None) -> ctypes.CDLL:
     library.ruscadb_execute_len.restype = c_size_t
     library.ruscadb_execute.argtypes = [c_void_p, c_char_p, c_char_p, c_size_t]
     library.ruscadb_execute.restype = c_int
+    library.ruscadb_create_table.argtypes = [c_void_p, c_char_p, c_char_p]
+    library.ruscadb_create_table.restype = c_int
+    library.ruscadb_insert_record.argtypes = [c_void_p, c_char_p, c_char_p]
+    library.ruscadb_insert_record.restype = c_int
     library.ruscadb_last_error.argtypes = [c_char_p, c_size_t]
     library.ruscadb_last_error.restype = c_size_t
     return library
@@ -301,6 +306,18 @@ def execute(handle: c_void_p, sql: str) -> str:
     return buffer.value.decode("utf-8", errors="replace")
 
 
+def create_table(handle: c_void_p, name: str, columns: list[dict[str, str]]) -> None:
+    """Crea una tabla con columnas ``{"name","type"}``."""
+    payload = json.dumps(columns, separators=(",", ":")).encode("utf-8")
+    _check(_lib().ruscadb_create_table(handle, name.encode("utf-8"), payload))
+
+
+def insert_record(handle: c_void_p, table: str, record: dict) -> None:
+    """Inserta un registro ``{"scalars": {...}}``."""
+    payload = json.dumps(record, separators=(",", ":")).encode("utf-8")
+    _check(_lib().ruscadb_insert_record(handle, table.encode("utf-8"), payload))
+
+
 __all__ = [
     "PAGE_SIZE",
     "RC_OK",
@@ -318,4 +335,6 @@ __all__ = [
     "commit",
     "close",
     "execute",
+    "create_table",
+    "insert_record",
 ]

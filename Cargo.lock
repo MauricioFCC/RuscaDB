@@ -4423,6 +4423,7 @@ dependencies = [
 name = "ruscadb-wasm"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "pretty_assertions",
  "ruscadb-core",
  "ruscadb-crypto",
@@ -4432,6 +4433,7 @@ dependencies = [
  "ruscadb-vector",
  "serde",
  "serde_json",
+ "sha2",
  "wasm-bindgen",
 ]
 

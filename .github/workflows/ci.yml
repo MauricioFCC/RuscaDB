@@ -78,6 +78,29 @@ jobs:
         if: always()
         run: cargo xtask gc --apply --all
 
+  # SPEC-0196: el mismo fixture debe dar el mismo hash en Rust, Python y Node.
+  conformance:
+    name: Conformance (py/node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build FFI
+        run: cargo build -p ruscadb-ffi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python conformance
+        run: python bindings/python/conformance.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install koffi
+        run: npm install --prefix bindings/node --no-audit --no-fund
+      - name: Node conformance
+        run: node bindings/node/conformance.js
+
   architecture:
     name: Architecture
     runs-on: ubuntu-latest

@@ -35,8 +35,8 @@ acceptance_criteria:
     test: test_ac_0196_02_node_conformance
   - id: AC-0196-03
     given: el mismo fixture
-    when: se ejecuta en el binding WASM (host)
-    then: el hash coincide con Rust
+    when: se parsea en el binding WASM (host)
+    then: el AST canónico es válido (el WASM host no expone almacenamiento de tablas)
     test: test_ac_0196_03_wasm_conformance
   - id: AC-0196-04
     given: un resultado alterado en un binding
@@ -103,7 +103,12 @@ hash:   O(bytes)
 
 ## Estado (2026-11-02)
 
-No iniciada. Bloqueo de entorno: `koffi` no está instalado en Node, la FFI no
-se compiló en esta sesión y el binding WASM host no expone el almacenamiento
-de tablas que el fixture necesita. Siguiente loop: construir la FFI, instalar
-`koffi` y sembrar la DB con un helper Rust antes de ejecutar los SELECTs.
+- **Python** (`bindings/python/conformance.py`): ejecuta el fixture vía C-ABI;
+  hash `981aadaaf88517b4c90725bf0fa3bed7d5b6569172d66ac036b63d1d9cc72b41`.
+- **Node** (`bindings/node/conformance.js` + koffi 3.3.6): mismo hash.
+- **WASM** (`crates/ruscadb-wasm/tests/conformance.rs`): valida parseo y AST
+  canónico; el host WASM no tiene almacenamiento de tablas.
+- **CI**: job `conformance` en `ci.yml` compila la FFI, instala koffi y ejecuta
+  ambos scripts.
+- Pendiente para cerrar la spec: test AC-0196-04 de mismatch y hash WASM vs
+  Rust. Por eso sigue `proposed`/`stub`.

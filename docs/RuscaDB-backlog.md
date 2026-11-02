@@ -85,9 +85,9 @@ Spec `SPEC-0193` (`specs/edge_properties.md`) **implementada**. Tabla interna
 |---|---|---|---|---|
 | G1 | `O(n²)` por `Vec::contains` en gc/free-list/columnar | SPEC-0194 | ✅ implementado (`BTreeSet`/`HashSet`) | Alta |
 | G2 | `TxnManager::aborted` sin reclaim | SPEC-0195 | ✅ implementado (reap purga y olvida) | Alta |
-| G3 | py/node sin conformance (fase 2) | SPEC-0196 | ⏳ bloqueado por entorno (koffi/FFI/WASM) | Media |
+| G3 | py/node sin conformance (fase 2) | SPEC-0196 | 🟡 parcial: scripts py/node con hash común + CI; WASM parse; AC-04 pendiente | Media |
 | G4 | Métricas sin endpoint HTTP | SPEC-0197 | ✅ implementado (`metrics-http`) | Media |
-| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | SPEC-0198 | ⏳ siguiente loop | Media |
+| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | SPEC-0198 | 🟡 parcial: recall/build/graph/SQL activos; gate AC-04 pendiente | Media |
 
 Informe de madurez: `docs/RuscaDB-maturity.md`. Research:
 `docs/research/frontier-2026-11-02-ruscadb-maturity.md`.

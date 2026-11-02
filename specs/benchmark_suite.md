@@ -104,6 +104,10 @@ SQL scan: O(N); group: O(N); join hash: O(N + M)
 
 ## Estado (2026-11-02)
 
-No iniciada. Requiere fixtures deterministas, benches de grafos/SQL y el
-subcomando `xtask bench-gate`; se deja para el siguiente loop para no mezclar
-datasets con el cierre de G1/G2/G4.
+- **AC-0198-01** activo: `crates/ruscadb-vector/tests/benchmarks.rs` mide
+  recall@10 >= 0.95 sobre 2k vectores dim 16 (LCG determinista).
+- **AC-0198-02** activo: `crates/ruscadb-graph/tests/benchmarks.rs` valida BFS,
+  componentes y PageRank contra oráculo.
+- **AC-0198-03** activo: workload SQL canónico (filter/group/join/order/limit)
+  en `crates/ruscadb/tests/gap_specs.rs`.
+- Pendiente: AC-0198-04 (`xtask bench-gate`) y benches criterion formales.

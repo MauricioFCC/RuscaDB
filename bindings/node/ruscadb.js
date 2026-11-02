@@ -107,7 +107,7 @@ function loadSymbols(explicitPath) {
     open: library.func('ruscadb_open', 'int', [
       'str',
       'uint32',
-      koffi.out(koffi.pointer('void')),
+      koffi.out(koffi.pointer('void', 2)),
     ]),
     readPage: library.func('ruscadb_read_page', 'int', [
       koffi.pointer('void'),
@@ -123,6 +123,16 @@ function loadSymbols(explicitPath) {
     ]),
     commit: library.func('ruscadb_commit', 'int', [koffi.pointer('void')]),
     close: library.func('ruscadb_close', 'int', [koffi.pointer('void')]),
+    createTable: library.func('ruscadb_create_table', 'int', [
+      koffi.pointer('void'),
+      'str',
+      'str',
+    ]),
+    insertRecord: library.func('ruscadb_insert_record', 'int', [
+      koffi.pointer('void'),
+      'str',
+      'str',
+    ]),
     executeLen: library.func('ruscadb_execute_len', 'size_t', [
       koffi.pointer('void'),
       'str',
@@ -252,6 +262,28 @@ function buildApi(symbols) {
       check(symbols.execute(handle, sql, buffer, buffer.length));
       return buffer.toString('utf8', 0, required);
     },
+
+    /**
+     * Crea una tabla con columnas `{name,type}`.
+     *
+     * @param {object} handle Handle devuelto por `open`.
+     * @param {string} name Nombre de la tabla.
+     * @param {Array<{name:string,type:string}>} columns Columnas.
+     */
+    createTable(handle, name, columns) {
+      check(symbols.createTable(handle, name, JSON.stringify(columns)));
+    },
+
+    /**
+     * Inserta un registro `{scalars: {...}}`.
+     *
+     * @param {object} handle Handle devuelto por `open`.
+     * @param {string} table Tabla destino.
+     * @param {object} record Registro JSON.
+     */
+    insertRecord(handle, table, record) {
+      check(symbols.insertRecord(handle, table, JSON.stringify(record)));
+    },
   };
 }
 
@@ -291,6 +323,8 @@ const api = {
   commit: (handle) => load().commit(handle),
   close: (handle) => load().close(handle),
   execute: (handle, sql) => load().execute(handle, sql),
+  createTable: (handle, name, columns) => load().createTable(handle, name, columns),
+  insertRecord: (handle, table, record) => load().insertRecord(handle, table, record),
 };
 
 module.exports = api;

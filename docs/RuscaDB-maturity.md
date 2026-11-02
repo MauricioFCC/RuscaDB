@@ -47,9 +47,9 @@ benchmarks macro, conformance multi-binding y auditoría externa).
 |---|---|---|---|---|
 | G1 | `O(n²)` por `Vec::contains` en `gc`, free-list y columnar | `gc.rs`, `paged_file.rs`, `columnar.rs` | ✅ implementado | SPEC-0194 |
 | G2 | `TxnManager::aborted` crece sin límite | `mvcc.rs` (SPEC-0193) | ✅ implementado (reap) | SPEC-0195 |
-| G3 | py/node sin conformance; solo Rust ejecuta el fixture | `crates/ruscadb-py`, `ruscadb-node` | ⏳ bloqueado por entorno | SPEC-0196 |
+| G3 | py/node sin conformance; solo Rust ejecuta el fixture | `bindings/python/conformance.py`, `bindings/node/conformance.js`, `ruscadb-wasm/tests/conformance.rs` | 🟡 parcial (py/node hash OK + CI; WASM parse; AC-04 pendiente) | SPEC-0196 |
 | G4 | Métricas sin endpoint HTTP de scrape | `observability.rs` | ✅ implementado | SPEC-0197 |
-| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | `benches/` (3 micro) | ⏳ siguiente loop | SPEC-0198 |
+| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | tests de recall/build/graph/SQL | 🟡 parcial (AC-01/02/03; gate AC-04 pendiente) | SPEC-0198 |
 
 ## 4. Verificación de algoritmos (hot paths)
 

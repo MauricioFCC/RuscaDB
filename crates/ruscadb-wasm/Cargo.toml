@@ -37,3 +37,5 @@ wasm-bindgen = { version = "0.2", optional = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }

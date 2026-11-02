@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "conformance": "node conformance.js"
+  },
+  "dependencies": {
+    "koffi": "^3.3.6"
+  }
+}
