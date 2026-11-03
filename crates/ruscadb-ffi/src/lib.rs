@@ -175,7 +175,13 @@ fn guard_ffi(operation: impl FnOnce() -> c_int) -> c_int {
 
 /// Variante de [`guard_ffi`] para funciones que retornan una longitud `usize`.
 fn guard_ffi_usize(operation: impl FnOnce() -> usize) -> usize {
-    catch_unwind(AssertUnwindSafe(operation)).unwrap_or(0)
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(value) => value,
+        Err(_) => {
+            set_last_error("panic capturado en la frontera FFI (longitud)");
+            0
+        }
+    }
 }
 
 /// Abre (o crea) una base y devuelve un handle opaco.

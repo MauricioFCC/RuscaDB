@@ -15,14 +15,16 @@ impl MetricsRegistry {
         Self::default()
     }
 
-    /// Incrementa un contador.
+    /// Incrementa un contador (satura en `u64::MAX`, no hace panic).
     pub fn inc(&mut self, name: &str) {
-        *self.counters.entry(name.to_string()).or_insert(0) += 1;
+        let counter = self.counters.entry(name.to_string()).or_insert(0);
+        *counter = counter.saturating_add(1);
     }
 
-    /// Incrementa un contador por un valor.
+    /// Incrementa un contador por un valor (satura en `u64::MAX`).
     pub fn inc_by(&mut self, name: &str, value: u64) {
-        *self.counters.entry(name.to_string()).or_insert(0) += value;
+        let counter = self.counters.entry(name.to_string()).or_insert(0);
+        *counter = counter.saturating_add(value);
     }
 
     /// Obtiene el valor de un contador.
@@ -218,6 +220,18 @@ mod tests {
         assert!(exported.contains("errors_total 3"));
         assert_eq!(reg.get("queries_total"), 2);
         assert_eq!(reg.len(), 2);
+    }
+
+    /// Los contadores saturan: un proceso de larga vida no puede romper el
+    /// endpoint de métricas por overflow.
+    #[test]
+    fn metrics_counters_saturate() {
+        let mut reg = MetricsRegistry::new();
+        reg.inc_by("hits", u64::MAX);
+        reg.inc("hits");
+        assert_eq!(reg.get("hits"), u64::MAX);
+        reg.inc_by("hits", 5);
+        assert_eq!(reg.get("hits"), u64::MAX);
     }
 
     #[cfg(feature = "metrics-http")]

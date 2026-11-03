@@ -32,6 +32,27 @@ impl Default for BenchThresholds {
     }
 }
 
+impl BenchThresholds {
+    /// Valida que los umbrales sean porcentajes finitos en `0..=100`.
+    ///
+    /// Returns:
+    ///     `Ok(())` si ambos umbrales son válidos.
+    ///
+    /// Errors:
+    ///     Texto con el umbral inválido (NaN, infinito, negativo o > 100).
+    pub fn validate(&self) -> Result<(), String> {
+        for (name, value) in [
+            ("max_qps_drop_pct", self.max_qps_drop_pct),
+            ("max_p95_increase_pct", self.max_p95_increase_pct),
+        ] {
+            if !value.is_finite() || !(0.0..=100.0).contains(&value) {
+                return Err(format!("umbral '{name}' fuera de rango (0..=100): {value}"));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Métrica de un benchmark.
 #[derive(Debug, Clone, Copy)]
 pub struct BenchMetric {
@@ -58,6 +79,7 @@ pub fn evaluate(
     head: &Value,
     thresholds: &BenchThresholds,
 ) -> Result<String, String> {
+    thresholds.validate()?;
     let baseline = metrics(baseline)?;
     let head = metrics(head)?;
     let mut failures = Vec::new();
@@ -242,6 +264,27 @@ mod tests {
         )
         .expect_err("reporte vacío");
         assert!(empty.contains("vacío"), "{empty}");
+    }
+
+    /// Umbrales inválidos (NaN, negativos o > 100) se rechazan antes de
+    /// comparar: un `NaN` haría que todas las comparaciones fueran falsas.
+    #[test]
+    fn benchmark_thresholds_are_validated() {
+        for invalid in [f64::NAN, f64::INFINITY, -1.0, 100.1] {
+            let thresholds = BenchThresholds {
+                max_qps_drop_pct: invalid,
+                max_p95_increase_pct: 10.0,
+            };
+            assert!(
+                evaluate(&report(1.0, 1.0), &report(1.0, 1.0), &thresholds).is_err(),
+                "umbral {invalid} aceptado"
+            );
+        }
+        let thresholds = BenchThresholds {
+            max_qps_drop_pct: 0.0,
+            max_p95_increase_pct: 100.0,
+        };
+        assert!(evaluate(&report(1.0, 1.0), &report(1.0, 1.0), &thresholds).is_ok());
     }
 
     /// El umbral es configurable: una caída del 15 % pasa con límite 20 %.

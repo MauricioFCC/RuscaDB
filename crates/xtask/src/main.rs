@@ -288,8 +288,7 @@ fn bench_gate_cmd(args: Vec<String>) -> ExitCode {
             }
             "--max-qps-drop" => {
                 index += 1;
-                let Some(value) = args.get(index).and_then(|value| value.parse::<f64>().ok())
-                else {
+                let Some(value) = parse_pct(args.get(index)) else {
                     eprintln!("{USAGE}");
                     return ExitCode::from(2);
                 };
@@ -297,8 +296,7 @@ fn bench_gate_cmd(args: Vec<String>) -> ExitCode {
             }
             "--max-p95-increase" => {
                 index += 1;
-                let Some(value) = args.get(index).and_then(|value| value.parse::<f64>().ok())
-                else {
+                let Some(value) = parse_pct(args.get(index)) else {
                     eprintln!("{USAGE}");
                     return ExitCode::from(2);
                 };
@@ -339,6 +337,12 @@ fn bench_gate_cmd(args: Vec<String>) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Parsea un porcentaje finito en `0..=100` (umbrales del `bench-gate`).
+fn parse_pct(value: Option<&String>) -> Option<f64> {
+    let parsed = value?.parse::<f64>().ok()?;
+    (parsed.is_finite() && (0.0..=100.0).contains(&parsed)).then_some(parsed)
 }
 
 /// Lee y parsea un JSON de un path.
@@ -1150,5 +1154,23 @@ mod tests {
             source.contains("--max-qps-drop") && source.contains("--max-p95-increase"),
             "main.rs no expone los umbrales del gate"
         );
+    }
+
+    /// Los umbrales del `bench-gate` se validan al parsear: NaN, infinito,
+    /// negativos o > 100 se rechazan en vez de desactivar el gate.
+    #[test]
+    fn bench_gate_pct_parser_rejects_invalid() {
+        for raw in ["NaN", "inf", "-1", "101", "abc"] {
+            assert!(
+                super::parse_pct(Some(&raw.to_string())).is_none(),
+                "'{raw}' aceptado como umbral"
+            );
+        }
+        for raw in ["0", "5", "100"] {
+            assert!(
+                super::parse_pct(Some(&raw.to_string())).is_some(),
+                "'{raw}' rechazado como umbral"
+            );
+        }
     }
 }
