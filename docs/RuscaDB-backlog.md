@@ -85,19 +85,19 @@ Spec `SPEC-0193` (`specs/edge_properties.md`) **implementada**. Tabla interna
 |---|---|---|---|---|
 | G1 | `O(n²)` por `Vec::contains` en gc/free-list/columnar | SPEC-0194 | ✅ implementado (`BTreeSet`/`HashSet`) | Alta |
 | G2 | `TxnManager::aborted` sin reclaim | SPEC-0195 | ✅ implementado (reap purga y olvida) | Alta |
-| G3 | py/node sin conformance (fase 2) | SPEC-0196 | 🟡 parcial: scripts py/node con hash común + CI; WASM parse; AC-04 pendiente | Media |
+| G3 | py/node sin conformance (fase 2) | SPEC-0196 | ✅ implementado (hash común + tamper gate en CI; WASM parse) | Media |
 | G4 | Métricas sin endpoint HTTP | SPEC-0197 | ✅ implementado (`metrics-http`) | Media |
-| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | SPEC-0198 | 🟡 parcial: recall/build/graph/SQL activos; gate AC-04 pendiente | Media |
+| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | SPEC-0198 | ✅ implementado (recall@10, grafos, SQL y `bench-gate`) | Media |
 
 Informe de madurez: `docs/RuscaDB-maturity.md`. Research:
 `docs/research/frontier-2026-11-02-ruscadb-maturity.md`.
 
 ## Criterio de aceptación de este cierre
 
-- **193 specs**: 191 `implemented` + 2 `proposed` (SPEC-0196/0198);
+- **193 specs**: 193 `implemented` (0 `proposed`);
   `cargo xtask audit` en 0 ACs sin test y **636 ACs trazados**.
-- Cada fase conserva ACs, complejidad y tests SQL; las specs implementadas
-  tienen gates verdes y las propuestas tienen scaffold RED (`#[ignore]`).
+- Cada fase conserva ACs, complejidad y tests SQL; todas las specs
+  implementadas tienen gates verdes y tests activos (sin scaffolds `#[ignore]`).
 - Lo no aplicado sigue aquí con motivo (auditoría externa PQC, KMS/HSM,
   TLS, LIVE SELECT), no como deuda invisible.
 

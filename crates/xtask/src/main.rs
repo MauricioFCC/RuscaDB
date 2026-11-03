@@ -19,6 +19,7 @@
 //! Sin dependencias externas en runtime (solo `std` + `serde_json`) para
 //! mantener el bootstrap liviano.
 
+mod bench;
 mod gc;
 mod guards;
 mod judge;
@@ -46,11 +47,12 @@ fn main() -> ExitCode {
         "check-changelog" => check_changelog_cmd(args.collect()),
         "audit" => guard_cmd(guards::audit),
         "gc" => gc_cmd(args.collect()),
+        "bench-gate" => bench_gate_cmd(args.collect()),
         other => {
             eprintln!(
                 "comando desconocido: {other} (disponibles: trace, contract, judge, red, \
                  check-architecture, check-unsafe, check-specs, gen-specs-index, mutation-score, \
-                 check-commits, check-changelog, audit, gc)"
+                 check-commits, check-changelog, audit, gc, bench-gate)"
             );
             ExitCode::FAILURE
         }
@@ -253,6 +255,98 @@ fn mutation_score_cmd(args: Vec<String>) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// `bench-gate --baseline <json> --head <json> [--max-qps-drop PCT] [--max-p95-increase PCT]`.
+///
+/// Compara dos reportes JSON de benchmarks (SPEC-0198) y falla si el QPS cae
+/// más del umbral o si p95 sube más del umbral.
+fn bench_gate_cmd(args: Vec<String>) -> ExitCode {
+    const USAGE: &str = "uso: cargo xtask bench-gate --baseline <json> --head <json> \
+                         [--max-qps-drop PCT] [--max-p95-increase PCT]";
+    let mut baseline = None;
+    let mut head = None;
+    let mut thresholds = bench::BenchThresholds::default();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--baseline" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                };
+                baseline = Some(PathBuf::from(value));
+            }
+            "--head" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                };
+                head = Some(PathBuf::from(value));
+            }
+            "--max-qps-drop" => {
+                index += 1;
+                let Some(value) = args.get(index).and_then(|value| value.parse::<f64>().ok())
+                else {
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                };
+                thresholds.max_qps_drop_pct = value;
+            }
+            "--max-p95-increase" => {
+                index += 1;
+                let Some(value) = args.get(index).and_then(|value| value.parse::<f64>().ok())
+                else {
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                };
+                thresholds.max_p95_increase_pct = value;
+            }
+            other => {
+                eprintln!("argumento desconocido: {other}");
+                return ExitCode::from(2);
+            }
+        }
+        index += 1;
+    }
+    let (Some(baseline), Some(head)) = (baseline, head) else {
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
+    };
+    let baseline = match read_json(&baseline) {
+        Ok(value) => value,
+        Err(detail) => {
+            eprintln!("[FAIL] {detail}");
+            return ExitCode::from(2);
+        }
+    };
+    let head = match read_json(&head) {
+        Ok(value) => value,
+        Err(detail) => {
+            eprintln!("[FAIL] {detail}");
+            return ExitCode::from(2);
+        }
+    };
+    match bench::evaluate(&baseline, &head, &thresholds) {
+        Ok(detail) => {
+            println!("{detail}");
+            ExitCode::SUCCESS
+        }
+        Err(detail) => {
+            eprintln!("{detail}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Lee y parsea un JSON de un path.
+fn read_json(path: &Path) -> Result<serde_json::Value, String> {
+    let text = fs::read_to_string(path)
+        .map_err(|error| format!("no se pudo leer '{}': {error}", path.display()))?;
+    serde_json::from_str(&text)
+        .map_err(|error| format!("JSON inválido en '{}': {error}", path.display()))
 }
 
 /// Ejecuta el gate RED-first sobre un spec en curso (`cargo xtask red <spec>`).
@@ -993,6 +1087,68 @@ mod tests {
         assert!(
             script.contains("min-line") && script.contains("min_line"),
             "coverage_gate.py sin umbrales configurables"
+        );
+    }
+
+    /// AC-0196-01: el script Python ejecuta el fixture con hash canónico y CI
+    /// lo exige junto al tamper gate (SPEC-0196).
+    #[test]
+    // @spec AC-0196-01
+    fn test_ac_0196_01_python_conformance() {
+        let script = read_root_file("bindings/python/conformance.py");
+        for needle in ["canonical_rows", "sha256", "--tamper", "ruscadb.execute"] {
+            assert!(
+                script.contains(needle),
+                "conformance.py sin '{needle}' (contrato canónico)"
+            );
+        }
+        let ci = read_root_file(".github/workflows/ci.yml");
+        assert!(
+            ci.contains("python bindings/python/conformance.py"),
+            "ci.yml no ejecuta la conformance de Python"
+        );
+        assert!(
+            ci.contains("python bindings/python/conformance.py --tamper"),
+            "ci.yml no ejecuta el tamper gate de Python"
+        );
+    }
+
+    /// AC-0196-02: el script Node ejecuta el fixture con hash canónico y CI lo
+    /// exige junto al tamper gate (SPEC-0196).
+    #[test]
+    // @spec AC-0196-02
+    fn test_ac_0196_02_node_conformance() {
+        let script = read_root_file("bindings/node/conformance.js");
+        for needle in ["canonicalRows", "createHash('sha256')", "--tamper"] {
+            assert!(
+                script.contains(needle),
+                "conformance.js sin '{needle}' (contrato canónico)"
+            );
+        }
+        let ci = read_root_file(".github/workflows/ci.yml");
+        assert!(
+            ci.contains("node bindings/node/conformance.js"),
+            "ci.yml no ejecuta la conformance de Node"
+        );
+        assert!(
+            ci.contains("node bindings/node/conformance.js --tamper"),
+            "ci.yml no ejecuta el tamper gate de Node"
+        );
+    }
+
+    /// AC-0198-04: el comando `bench-gate` está cableado en la CLI y rechaza
+    /// argumentos incompletos (SPEC-0198).
+    #[test]
+    // @spec AC-0198-04
+    fn test_ac_0198_04_bench_gate_wired() {
+        let source = read_root_file("crates/xtask/src/main.rs");
+        assert!(
+            source.contains("\"bench-gate\" => bench_gate_cmd"),
+            "main.rs no despacha 'bench-gate'"
+        );
+        assert!(
+            source.contains("--max-qps-drop") && source.contains("--max-p95-increase"),
+            "main.rs no expone los umbrales del gate"
         );
     }
 }

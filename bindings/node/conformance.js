@@ -69,12 +69,22 @@ function main() {
     for (const value of [1, 2, 3]) {
       ruscadb.insertRecord(handle, 't', { scalars: { x: { Int: value } } });
     }
-    for (const testCase of fixture.cases) {
+    for (const [index, testCase] of fixture.cases.entries()) {
       const rows = JSON.parse(ruscadb.execute(handle, testCase.sql));
       const got = canonicalRows(rows);
+      if (process.argv.includes('--tamper') && index === 0 && got.length > 0) {
+        for (const key of Object.keys(got[0])) {
+          if (typeof got[0][key] === 'number') {
+            got[0][key] += 1;
+            break;
+          }
+        }
+      }
       const expected = canonicalRows(testCase.expect);
       if (JSON.stringify(got) !== JSON.stringify(expected)) {
-        console.error(`FAIL ${testCase.name}: got=${JSON.stringify(got)}`);
+        console.error(
+          `FAIL node/${testCase.name}: got=${JSON.stringify(got)} expected=${JSON.stringify(expected)}`,
+        );
         process.exitCode = 1;
         return;
       }

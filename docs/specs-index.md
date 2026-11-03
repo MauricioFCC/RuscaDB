@@ -195,6 +195,6 @@
 | SPEC-0193 | `edge_properties` | implemented | real | `edge_properties.md` |
 | SPEC-0194 | `set_membership_hotpaths` | implemented | real | `set_membership_hotpaths.md` |
 | SPEC-0195 | `mvcc_aborted_reclamation` | implemented | real | `mvcc_aborted_reclamation.md` |
-| SPEC-0196 | `bindings_conformance` | proposed | stub | `bindings_conformance.md` |
+| SPEC-0196 | `bindings_conformance` | implemented | real | `bindings_conformance.md` |
 | SPEC-0197 | `metrics_http` | implemented | real | `metrics_http.md` |
-| SPEC-0198 | `benchmark_suite` | proposed | stub | `benchmark_suite.md` |
+| SPEC-0198 | `benchmark_suite` | implemented | real | `benchmark_suite.md` |

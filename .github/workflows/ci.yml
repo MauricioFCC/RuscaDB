@@ -93,6 +93,13 @@ jobs:
           python-version: "3.12"
       - name: Python conformance
         run: python bindings/python/conformance.py
+      - name: Python tamper gate
+        run: |
+          if python bindings/python/conformance.py --tamper; then
+            echo "tamper no detectado"; exit 1
+          else
+            echo "tamper detectado"
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -100,6 +107,13 @@ jobs:
         run: npm install --prefix bindings/node --no-audit --no-fund
       - name: Node conformance
         run: node bindings/node/conformance.js
+      - name: Node tamper gate
+        run: |
+          if node bindings/node/conformance.js --tamper; then
+            echo "tamper no detectado"; exit 1
+          else
+            echo "tamper detectado"
+          fi
 
   architecture:
     name: Architecture

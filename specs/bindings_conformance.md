@@ -1,8 +1,8 @@
 ---
 id: SPEC-0196
 feature: bindings_conformance
-status: proposed
-maturity: stub
+status: implemented
+maturity: real
 owner: bindings-team
 appetite_days: 4
 boundaries:
@@ -44,10 +44,14 @@ acceptance_criteria:
     then: el gate falla con el binding y el caso divergente
     test: test_ac_0196_04_hash_mismatch
 exit_criteria:
-  - cargo test -p ruscadb --test spec_0190_conformance
-  - python bindings/python/ruscadb.py --conformance
-  - node bindings/node/ruscadb.js --conformance
-  - cargo test -p ruscadb-wasm --features wasm
+  - cargo build -p ruscadb-ffi
+  - python bindings/python/conformance.py
+  - node bindings/node/conformance.js
+  - python bindings/python/conformance.py --tamper  # debe fallar (exit 1)
+  - node bindings/node/conformance.js --tamper      # debe fallar (exit 1)
+  - cargo test -p ruscadb-wasm --test conformance
+  - cargo test -p xtask test_ac_0196_01_python_conformance
+  - cargo test -p xtask test_ac_0196_02_node_conformance
   - cargo xtask trace
   - cargo xtask contract
   - cargo xtask audit
@@ -108,7 +112,11 @@ hash:   O(bytes)
 - **Node** (`bindings/node/conformance.js` + koffi 3.3.6): mismo hash.
 - **WASM** (`crates/ruscadb-wasm/tests/conformance.rs`): valida parseo y AST
   canónico; el host WASM no tiene almacenamiento de tablas.
-- **CI**: job `conformance` en `ci.yml` compila la FFI, instala koffi y ejecuta
-  ambos scripts.
-- Pendiente para cerrar la spec: test AC-0196-04 de mismatch y hash WASM vs
-  Rust. Por eso sigue `proposed`/`stub`.
+- **CI**: job `conformance` en `ci.yml` compila la FFI, instala koffi, ejecuta
+  ambos scripts y sus tamper gates (`--tamper` debe fallar con `FAIL
+  python/filter_gte` o `FAIL node/filter_gte`).
+- **Contrato Rust**: `crates/ruscadb/src/conformance.rs` define
+  `canonical_rows`/`compare`; un mismatch devuelve `FAIL <binding>/<caso>`.
+- **AC-0196-04** activo en `test_ac_0196_04_hash_mismatch`; AC-0196-01/02
+  verifican en `crates/xtask/src/main.rs` el contrato del script y su cableado
+  en CI. Cerrada.

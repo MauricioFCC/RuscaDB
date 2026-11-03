@@ -15,6 +15,7 @@ mod blob_pipeline;
 mod builder;
 mod cache;
 mod catalog;
+mod conformance;
 pub mod contract;
 mod database;
 mod delete;
@@ -343,6 +344,7 @@ pub use features::FEATURES;
 pub use metrics::Metrics;
 
 pub use catalog::{Catalog, ColumnDef, ColumnType, IndexDef, TableDef};
+pub use conformance::{canonical_rows, compare};
 pub use database::{Database, DbConfig};
 pub use edge_meta::{EDGE_META_TABLE, EdgeMeta, MAX_PAYLOAD_BYTES};
 pub use encryption::EncryptionConfig;

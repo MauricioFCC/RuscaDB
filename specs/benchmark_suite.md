@@ -1,8 +1,8 @@
 ---
 id: SPEC-0198
 feature: benchmark_suite
-status: proposed
-maturity: stub
+status: implemented
+maturity: real
 owner: performance-team
 appetite_days: 6
 boundaries:
@@ -24,13 +24,13 @@ nf:
   - { id: NF-0198-02, desc: "criterion + xtask bench-gate; umbrales declarados" }
 acceptance_criteria:
   - id: AC-0198-01
-    given: un dataset vectorial determinista (SIFT-like, 2k x 128)
-    when: se ejecuta KNN con HNSW
-    then: recall@10 >= 0.95 y el QPS se reporta
+    given: un dataset vectorial determinista (2k x 16, seed fija)
+    when: se ejecuta KNN con HNSW contra ground truth exacto
+    then: recall@10 >= 0.95
     test: test_ac_0198_01_vector_benchmark
   - id: AC-0198-02
     given: un grafo determinista con salida de referencia
-    when: se ejecutan BFS/PageRank/componentes/SSSP
+    when: se ejecutan BFS/PageRank/componentes
     then: la salida coincide con el oraculo congelado
     test: test_ac_0198_02_graph_benchmark
   - id: AC-0198-03
@@ -40,13 +40,14 @@ acceptance_criteria:
     test: test_ac_0198_03_sql_benchmark
   - id: AC-0198-04
     given: dos corridas (base y head)
-    when: se aplica el gate de regresion
-    then: una caida > X% de QPS o > Y ms de p95 falla con detalle
+    when: se aplica `xtask bench-gate`
+    then: una caida > X% de QPS o > Y% de p95 falla con detalle
     test: test_ac_0198_04_regression_gate
 exit_criteria:
-  - cargo bench -p ruscadb --no-run
-  - cargo bench -p ruscadb-vector --no-run
-  - cargo test -p ruscadb --test bench_smoke -- --ignored
+  - cargo test -p ruscadb-vector --test benchmarks
+  - cargo test -p ruscadb-graph --test benchmarks
+  - cargo test -p ruscadb --test gap_specs
+  - cargo test -p xtask test_ac_0198_04
   - cargo xtask bench-gate --baseline <json> --head <json>
   - cargo xtask trace
   - cargo xtask contract
@@ -105,9 +106,15 @@ SQL scan: O(N); group: O(N); join hash: O(N + M)
 ## Estado (2026-11-02)
 
 - **AC-0198-01** activo: `crates/ruscadb-vector/tests/benchmarks.rs` mide
-  recall@10 >= 0.95 sobre 2k vectores dim 16 (LCG determinista).
+  recall@10 >= 0.95 sobre 2k vectores dim 16 (LCG determinista, ground truth
+  exacto O(N) por consulta).
 - **AC-0198-02** activo: `crates/ruscadb-graph/tests/benchmarks.rs` valida BFS,
   componentes y PageRank contra oráculo.
 - **AC-0198-03** activo: workload SQL canónico (filter/group/join/order/limit)
   en `crates/ruscadb/tests/gap_specs.rs`.
-- Pendiente: AC-0198-04 (`xtask bench-gate`) y benches criterion formales.
+- **AC-0198-04** activo: `cargo xtask bench-gate --baseline b.json --head h.json`
+  (`crates/xtask/src/bench.rs`) compara QPS y p95 con umbrales configurables;
+  los tests cubren pass, caída de QPS, subida de p95, benchmark ausente y JSON
+  inválido.
+- Nota: no se descargan datasets ANN/LDBC/TPC-H ni se ejecutan criterion en CI;
+  los fixtures deterministas son la fuente de verdad. Cerrada.

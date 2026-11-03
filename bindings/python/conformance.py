@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import sys
 import tempfile
 
 import ruscadb
@@ -56,12 +57,17 @@ def main() -> int:
             ruscadb.create_table(handle, "t", [{"name": "x", "type": "Int"}])
             for value in (1, 2, 3):
                 ruscadb.insert_record(handle, "t", {"scalars": {"x": {"Int": value}}})
-            for case in fixture["cases"]:
+            for index, case in enumerate(fixture["cases"]):
                 rows = json.loads(ruscadb.execute(handle, case["sql"]))
                 got = canonical_rows(rows)
+                if "--tamper" in sys.argv and index == 0 and got:
+                    for key, value in list(got[0].items()):
+                        if isinstance(value, int):
+                            got[0][key] = value + 1
+                            break
                 expected = canonical_rows(case["expect"])
                 if got != expected:
-                    print(f"FAIL {case['name']}: got={got!r} expected={expected!r}")
+                    print(f"FAIL python/{case['name']}: got={got!r} expected={expected!r}")
                     return 1
                 digest.update(case["name"].encode("utf-8"))
                 digest.update(json.dumps(got, sort_keys=True, separators=(",", ":")).encode("utf-8"))
