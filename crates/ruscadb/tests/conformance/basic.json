@@ -19,6 +19,24 @@
       "name": "count",
       "sql": "SELECT COUNT(*) FROM t",
       "expect": [{ "count": 3 }]
+    },
+    {
+      "name": "typed_rows",
+      "sql": "SELECT f, s, b, n FROM typed ORDER BY f",
+      "expect": [
+        { "f": 1.5, "s": "uno", "b": false, "n": null },
+        { "f": 2.0, "s": "dos", "b": true, "n": null }
+      ]
+    },
+    {
+      "name": "float_projection",
+      "sql": "SELECT f FROM typed ORDER BY f",
+      "expect": [{ "f": 1.5 }, { "f": 2.0 }]
+    },
+    {
+      "name": "missing_column",
+      "sql": "SELECT nope FROM t",
+      "expect_error": true
     }
   ]
 }

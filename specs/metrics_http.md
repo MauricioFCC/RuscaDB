@@ -35,6 +35,16 @@ acceptance_criteria:
     when: se solicita shutdown
     then: el accept loop termina y el puerto se libera
     test: test_ac_0197_03_metrics_shutdown
+  - id: AC-0197-04
+    given: una petición con método distinto de GET/HEAD
+    when: se envía POST /metrics
+    then: responde 405 con Allow y sin cuerpo de métricas
+    test: test_ac_0197_04_metrics_method_not_allowed
+  - id: AC-0197-05
+    given: un registry compartido enlazado con bind_shared
+    when: se incrementan contadores después del bind y se hace scrape
+    then: el scrape refleja los valores actuales (registry vivo)
+    test: test_ac_0197_05_metrics_live_registry
 exit_criteria:
   - cargo test -p ruscadb --features metrics-http
   - cargo clippy -p ruscadb --all-targets --features metrics-http -- -D warnings
@@ -89,9 +99,14 @@ accept: O(1) por conexión
 - No exponer en `0.0.0.0` por defecto; bind explícito.
 - Sin auth; se documenta que es un adapter local/operador.
 
-## Estado de implementación (2026-11-02)
+## Estado de implementación (2026-11-03)
 
 - Feature `metrics-http` (OFF por defecto) y `MetricsServer` con `std::net`.
 - `GET /metrics` → 200 `text/plain; version=0.0.4` con `registry.export()`;
-  otras rutas → 404; shutdown con `AtomicBool`.
-- Tests activos: AC-0197-01..03 en `observability.rs`.
+  otras rutas → 404; métodos distintos de GET/HEAD → 405 con `Allow: GET, HEAD`;
+  shutdown con `AtomicBool`.
+- `bind_shared` acepta un `Arc<RwLock<MetricsRegistry>>` vivo: los scrapes
+  reflejan incrementos posteriores al bind.
+- Concurrencia acotada a `MAX_IN_FLIGHT = 8` handlers; el exceso recibe
+  `503 Service Unavailable` sin crear hilos (anti-slowloris).
+- Tests activos: AC-0197-01..05 en `observability.rs`.

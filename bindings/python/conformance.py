@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import pathlib
 import sys
 import tempfile
@@ -18,11 +19,29 @@ import tempfile
 import ruscadb
 
 
+def canonical_number(value):
+    """Normaliza números como RFC 8785 para flotantes integrales."""
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        if value.is_integer() and abs(value) <= 2**53:
+            return int(value)
+    return value
+
+
 def normalize(value):
     """Convierte la forma externa de ScalarValue a JSON plano."""
+    if value == "Null":
+        # Variante unitaria externa de ScalarValue::Null (Text("Null") llega
+        # como {"Text":"Null"} y no se confunde).
+        return None
     if isinstance(value, dict) and len(value) == 1:
         key, inner = next(iter(value.items()))
-        if key in {"Int", "UInt", "Float", "Text", "Bool", "TimestampMillis"}:
+        if key in {"Int", "UInt", "TimestampMillis"}:
+            return inner
+        if key == "Float":
+            return canonical_number(inner)
+        if key in {"Text", "Bool"}:
             return inner
         if key == "Null":
             return None
@@ -32,7 +51,7 @@ def normalize(value):
         return [normalize(item) for item in value]
     if isinstance(value, dict):
         return {key: normalize(item) for key, item in value.items()}
-    return value
+    return canonical_number(value)
 
 
 def canonical_rows(rows):
@@ -42,6 +61,37 @@ def canonical_rows(rows):
         normalized,
         key=lambda row: json.dumps(row, sort_keys=True, separators=(",", ":")),
     )
+
+
+def seed(handle):
+    """Crea y puebla las tablas `t` y `typed` del fixture."""
+    ruscadb.create_table(handle, "t", [{"name": "x", "type": "Int"}])
+    for value in (1, 2, 3):
+        ruscadb.insert_record(handle, "t", {"scalars": {"x": {"Int": value}}})
+
+    ruscadb.create_table(
+        handle,
+        "typed",
+        [
+            {"name": "f", "type": "Float"},
+            {"name": "s", "type": "Text"},
+            {"name": "b", "type": "Bool"},
+            {"name": "n", "type": "Int"},
+        ],
+    )
+    for f, s, b in ((1.5, "uno", False), (2.0, "dos", True)):
+        ruscadb.insert_record(
+            handle,
+            "typed",
+            {
+                "scalars": {
+                    "f": {"Float": f},
+                    "s": {"Text": s},
+                    "b": {"Bool": b},
+                    "n": {"Null": None},
+                }
+            },
+        )
 
 
 def main() -> int:
@@ -54,10 +104,17 @@ def main() -> int:
         path = pathlib.Path(tmp) / "conformance.db"
         handle = ruscadb.open(path, pool_capacity=64)
         try:
-            ruscadb.create_table(handle, "t", [{"name": "x", "type": "Int"}])
-            for value in (1, 2, 3):
-                ruscadb.insert_record(handle, "t", {"scalars": {"x": {"Int": value}}})
+            seed(handle)
             for index, case in enumerate(fixture["cases"]):
+                if case.get("expect_error"):
+                    try:
+                        ruscadb.execute(handle, case["sql"])
+                    except Exception:  # noqa: BLE001 - el fixture espera error
+                        digest.update(case["name"].encode("utf-8"))
+                        digest.update(b"error")
+                        continue
+                    print(f"FAIL python/{case['name']}: se esperaba error")
+                    return 1
                 rows = json.loads(ruscadb.execute(handle, case["sql"]))
                 got = canonical_rows(rows)
                 if "--tamper" in sys.argv and index == 0 and got:

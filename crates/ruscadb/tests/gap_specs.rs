@@ -7,11 +7,63 @@
 #![allow(missing_docs)]
 #![allow(clippy::panic)]
 
+use std::cmp::Ordering as CmpOrdering;
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ruscadb::{ColumnDef, ColumnType, Database, DbConfig, ScalarMap, ScalarValue};
 
-/// AC-0194-04 — equivalencia set vs oráculo Vec en N/2N/4N.
+/// Contador global de comparaciones para medir el escalado sin reloj.
+static COMPARISONS: AtomicUsize = AtomicUsize::new(0);
+
+/// Entero que cuenta cada comparación (proxy determinista de coste).
+#[derive(Clone, Copy)]
+struct Counted(u64);
+
+impl PartialEq for Counted {
+    fn eq(&self, other: &Self) -> bool {
+        COMPARISONS.fetch_add(1, Ordering::Relaxed);
+        self.0 == other.0
+    }
+}
+
+impl Eq for Counted {}
+
+impl PartialOrd for Counted {
+    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Counted {
+    fn cmp(&self, other: &Self) -> CmpOrdering {
+        COMPARISONS.fetch_add(1, Ordering::Relaxed);
+        self.0.cmp(&other.0)
+    }
+}
+
+/// Comparaciones del oráculo `Vec::contains` (O(N²)).
+fn vec_comparisons(n: usize) -> usize {
+    COMPARISONS.store(0, Ordering::Relaxed);
+    let pages: Vec<Counted> = (0..n).map(|value| Counted(value as u64)).collect();
+    for value in &pages {
+        let _ = pages.contains(value);
+    }
+    COMPARISONS.load(Ordering::Relaxed)
+}
+
+/// Comparaciones de `BTreeSet::contains` (O(N log N)).
+fn set_comparisons(n: usize) -> usize {
+    COMPARISONS.store(0, Ordering::Relaxed);
+    let pages: BTreeSet<Counted> = (0..n).map(|value| Counted(value as u64)).collect();
+    for value in &pages {
+        let _ = pages.contains(value);
+    }
+    COMPARISONS.load(Ordering::Relaxed)
+}
+
+/// AC-0194-04 — equivalencia set vs oráculo Vec en N/2N/4N y gate de escalado
+/// determinista (comparaciones, no reloj).
 #[test] // @spec AC-0194-04
 fn test_ac_0194_04_equivalence_gate() {
     for n in [1_000usize, 2_000, 4_000] {
@@ -21,6 +73,23 @@ fn test_ac_0194_04_equivalence_gate() {
         let expected: Vec<u64> = (0..n as u64).filter(|value| *value % 3 != 0).collect();
         assert_eq!(got, expected);
     }
+
+    let base = 500usize;
+    let quadruple = base * 4;
+    let vec_ratio = vec_comparisons(quadruple) as f64 / vec_comparisons(base) as f64;
+    let set_ratio = set_comparisons(quadruple) as f64 / set_comparisons(base) as f64;
+    assert!(
+        vec_ratio > 12.0,
+        "el oráculo Vec debería escalar ~cuadrático (ratio={vec_ratio:.1})"
+    );
+    assert!(
+        set_ratio < 8.0,
+        "BTreeSet debería escalar ~N log N (ratio={set_ratio:.1})"
+    );
+    assert!(
+        set_ratio * 2.0 < vec_ratio,
+        "mejora insuficiente: set={set_ratio:.1} vs vec={vec_ratio:.1}"
+    );
 }
 
 // SPEC-0198 — benchmarks macro.

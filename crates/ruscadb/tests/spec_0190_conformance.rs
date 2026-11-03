@@ -1,27 +1,95 @@
-//! Conformance baseline compartido (SPEC-0190, P2.7).
+//! Conformance baseline compartido (SPEC-0190, P2.7; tipado en SPEC-0196-05).
 
 #![allow(clippy::expect_used)]
 
-use ruscadb::{ColumnDef, ColumnType, Database, DbConfig, Row, ScalarValue};
-use serde_json::{Value, json};
+use ruscadb::{
+    ColumnDef, ColumnType, Database, DbConfig, Row, ScalarMap, ScalarValue, canonical_number,
+    scalar_json,
+};
+use serde_json::Value;
 
-/// Convierte una fila a JSON canónico.
+/// Aplica la normalización JCS a los números de un JSON esperado.
+fn canonical_json(value: &Value) -> Value {
+    match value {
+        Value::Number(number) => number
+            .as_f64()
+            .map_or_else(|| value.clone(), canonical_number),
+        Value::Array(items) => Value::Array(items.iter().map(canonical_json).collect()),
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .map(|(key, item)| (key.clone(), canonical_json(item)))
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
+/// Convierte una fila a JSON canónico usando el contrato de SPEC-0196.
 fn row_json(row: &Row) -> Value {
     let mut object = serde_json::Map::new();
     for (key, value) in row {
-        let json_value = match value {
-            ScalarValue::Null => Value::Null,
-            ScalarValue::Bool(flag) => json!(flag),
-            ScalarValue::Int(number) => json!(number),
-            ScalarValue::UInt(number) => json!(number),
-            ScalarValue::Float(number) => json!(number),
-            ScalarValue::Text(text) => json!(text),
-            ScalarValue::TimestampMillis(millis) => json!(millis),
-            ScalarValue::Bytes(bytes) => json!(format!("{bytes:?}")),
-        };
-        object.insert(key.clone(), json_value);
+        object.insert(key.clone(), scalar_json(value));
     }
     Value::Object(object)
+}
+
+/// Siembra las tablas `t(x Int)` y `typed(f Float, s Text, b Bool, n Int)`.
+fn seed(database: &mut Database) {
+    database
+        .create_table(
+            "t",
+            vec![ColumnDef {
+                name: "x".to_string(),
+                col_type: ColumnType::Int,
+            }],
+        )
+        .expect("create t");
+    for value in 1..=3i64 {
+        database
+            .insert(
+                "t",
+                ScalarMap::from([("x".to_string(), ScalarValue::Int(value))]),
+            )
+            .expect("insert t");
+    }
+
+    database
+        .create_table(
+            "typed",
+            vec![
+                ColumnDef {
+                    name: "f".to_string(),
+                    col_type: ColumnType::Float,
+                },
+                ColumnDef {
+                    name: "s".to_string(),
+                    col_type: ColumnType::Text,
+                },
+                ColumnDef {
+                    name: "b".to_string(),
+                    col_type: ColumnType::Bool,
+                },
+                ColumnDef {
+                    name: "n".to_string(),
+                    col_type: ColumnType::Int,
+                },
+            ],
+        )
+        .expect("create typed");
+    for (f, s, b) in [(1.5_f64, "uno", false), (2.0_f64, "dos", true)] {
+        database
+            .insert(
+                "typed",
+                ScalarMap::from([
+                    ("f".to_string(), ScalarValue::Float(f)),
+                    ("s".to_string(), ScalarValue::Text(s.to_string())),
+                    ("b".to_string(), ScalarValue::Bool(b)),
+                    ("n".to_string(), ScalarValue::Null),
+                ]),
+            )
+            .expect("insert typed");
+    }
 }
 
 #[test] // @spec AC-0190-01
@@ -33,34 +101,25 @@ fn test_ac_0190_01_conformance_fixtures() {
     let dir = tempfile::tempdir().expect("dir");
     let path = dir.path().join("conformance.db");
     let mut database = Database::open(DbConfig::new(&path, 64)).expect("open");
-    database
-        .create_table(
-            "t",
-            vec![ColumnDef {
-                name: "x".to_string(),
-                col_type: ColumnType::Int,
-            }],
-        )
-        .expect("create");
-    for value in 1..=3i64 {
-        database
-            .insert(
-                "t",
-                ruscadb::ScalarMap::from([("x".to_string(), ScalarValue::Int(value))]),
-            )
-            .expect("insert");
-    }
+    seed(&mut database);
 
     for case in cases {
         let sql = case["sql"].as_str().expect("sql");
+        let name = case["name"].as_str().unwrap_or("?");
+        if case.get("expect_error").and_then(Value::as_bool) == Some(true) {
+            assert!(
+                database.execute(sql).is_err(),
+                "caso {name}: se esperaba error para '{sql}'"
+            );
+            continue;
+        }
         let expected = case["expect"].as_array().expect("expect");
         let rows = database.execute(sql).expect(sql);
         let actual: Vec<Value> = rows.iter().map(row_json).collect();
         assert_eq!(
             Value::Array(actual),
-            Value::Array(expected.clone()),
-            "caso {} ({sql})",
-            case["name"].as_str().unwrap_or("?")
+            canonical_json(&Value::Array(expected.clone())),
+            "caso {name} ({sql})"
         );
     }
 }

@@ -6,12 +6,15 @@ maturity: real
 owner: bindings-team
 appetite_days: 4
 boundaries:
-  crates: [ruscadb-py, ruscadb-node, ruscadb-wasm, ruscadb]
+  crates: [ruscadb, ruscadb-wasm]
   files:
     - crates/ruscadb/tests/conformance/basic.json
     - bindings/python/ruscadb.py
+    - bindings/python/conformance.py
     - bindings/node/ruscadb.js
-    - crates/ruscadb-wasm/src/lib.rs
+    - bindings/node/conformance.js
+    - crates/ruscadb/src/conformance.rs
+    - crates/ruscadb-wasm/tests/conformance.rs
     - .github/workflows/ci.yml
   out_of_scope: [publicación en PyPI/npm, WASM en navegador real]
 fr:
@@ -21,7 +24,7 @@ fr:
   - { id: FR-0196-04, desc: "CI compara un hash canonico del resultado en los tres bindings" }
 nf:
   - { id: NF-0196-01, desc: "sin dependencias nuevas de runtime; usar ctypes/koffi/wasm-bindgen existentes" }
-  - { id: NF-0196-02, desc: "determinista: mismo hash en cada ejecucion" }
+  - { id: NF-0196-02, desc: "determinista: mismo hash en cada ejecucion; numeros normalizados estilo RFC 8785 para flotantes integrales" }
 acceptance_criteria:
   - id: AC-0196-01
     given: el fixture conformance/basic.json y la libreria FFI compilada
@@ -43,6 +46,11 @@ acceptance_criteria:
     when: se compara el hash
     then: el gate falla con el binding y el caso divergente
     test: test_ac_0196_04_hash_mismatch
+  - id: AC-0196-05
+    given: un fixture con Float/Text/Bool/NULL y un caso de error
+    when: se ejecuta en Rust, Python y Node
+    then: el hash canónico coincide (números JCS) y el error esperado se detecta
+    test: test_ac_0196_05_typed_fixture
 exit_criteria:
   - cargo build -p ruscadb-ffi
   - python bindings/python/conformance.py
@@ -107,16 +115,20 @@ hash:   O(bytes)
 
 ## Estado (2026-11-02)
 
-- **Python** (`bindings/python/conformance.py`): ejecuta el fixture vía C-ABI;
-  hash `981aadaaf88517b4c90725bf0fa3bed7d5b6569172d66ac036b63d1d9cc72b41`.
+- **Python** (`bindings/python/conformance.py`): ejecuta el fixture tipado vía
+  C-ABI; hash `c66d25c5ef0156859120d5cfbe663baf9434ea966580a859bcad4fae3708d15e`.
 - **Node** (`bindings/node/conformance.js` + koffi 3.3.6): mismo hash.
+- **Fixture tipado**: `typed_rows` (Float/Text/Bool/NULL), `float_projection`
+  y `missing_column` (error esperado). Los flotantes integrales se normalizan
+  a entero (RFC 8785/JCS) para que Python `2.0`, Node `2` y Rust `2` coincidan.
 - **WASM** (`crates/ruscadb-wasm/tests/conformance.rs`): valida parseo y AST
   canónico; el host WASM no tiene almacenamiento de tablas.
 - **CI**: job `conformance` en `ci.yml` compila la FFI, instala koffi, ejecuta
   ambos scripts y sus tamper gates (`--tamper` debe fallar con `FAIL
   python/filter_gte` o `FAIL node/filter_gte`).
 - **Contrato Rust**: `crates/ruscadb/src/conformance.rs` define
-  `canonical_rows`/`compare`; un mismatch devuelve `FAIL <binding>/<caso>`.
-- **AC-0196-04** activo en `test_ac_0196_04_hash_mismatch`; AC-0196-01/02
-  verifican en `crates/xtask/src/main.rs` el contrato del script y su cableado
-  en CI. Cerrada.
+  `canonical_number`, `scalar_json`, `canonical_rows` y `compare`; un mismatch
+  devuelve `FAIL <binding>/<caso>`.
+- **AC-0196-04/05** activos: mismatch y fixture tipado. AC-0196-01/02 verifican
+  en `crates/xtask/src/main.rs` el contrato del script y su cableado en CI.
+  Cerrada.

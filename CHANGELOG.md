@@ -18,6 +18,15 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 19 (2026-11-03)**: auditoría frontier de SPEC-0194..0198
+  (`docs/research/frontier-2026-11-03-spec-audit.md`). Aplicados los huecos:
+  fixture de conformance tipado (Float/Text/Bool/NULL + error) con
+  normalización JCS de flotantes integrales (AC-0196-05), gate `bench-gate`
+  endurecido contra cobertura reducida y reportes inválidos (AC-0198-05) y
+  gate determinista N/2N/4N por conteo de comparaciones para
+  `O(N²)→O(N log N)` (AC-0194-04). Hash común py/node actualizado a
+  `c66d25c5…`. **SPEC-0197** endurecida: 405 con `Allow`, registry vivo vía
+  `bind_shared` y límite de 8 handlers concurrentes con 503 (AC-0197-04/05).
 - **Ciclo 18 (2026-11-02)**: implementadas SPEC-0194 (`BTreeSet`/`HashSet` en
   gc/free-list/columnar), SPEC-0195 (`reap` purga versiones abortadas y acota
   `aborted`), SPEC-0196 (conformance Python/Node con hash común

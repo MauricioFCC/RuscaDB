@@ -1,8 +1,9 @@
-# RuscaDB — Informe de madurez por funcionalidad (2026-11-02)
+# RuscaDB — Informe de madurez por funcionalidad (2026-11-03)
 
 > Medición basada en evidencia: specs/ACs, suite completa, benchmarks,
 > bindings, mutación y revisión de hot paths. Rúbrica y fuentes en
-> `docs/research/frontier-2026-11-02-ruscadb-maturity.md`.
+> `docs/research/frontier-2026-11-02-ruscadb-maturity.md` y auditoría de cierre
+> en `docs/research/frontier-2026-11-03-spec-audit.md`.
 >
 > `M(área) = min(ejes)` para no sobredeclarar. L0 ausente, L1 API/stub,
 > L2 funcional, L3 verificado, L4 producción.
@@ -11,35 +12,35 @@
 
 | Métrica | Valor |
 |---|---|
-| Specs | **188**, todas `implemented` |
-| ACs | **618** (46 specs con 1 AC; 68 con ≤2) |
-| Madurez declarada | **58 `real`**, 130 sin `maturity` |
-| Suite completa | **209 suites / 1212 tests / 0 fallos** (`-j 2`) |
-| Benchmarks | **3** (`facade_smoke`, `knn_latency`, `wal_commit`) |
-| Bindings | py **0 tests**, node **0**, wasm **14** |
+| Specs | **193**, todas `implemented` |
+| ACs | **640** (46 specs con 1 AC; 68 con ≤2) |
+| Madurez declarada | **63 `real`**, 130 sin `maturity` |
+| Suite completa | **213 suites / 1236 tests / 0 fallos** (`-j 4`) |
+| Benchmarks | **3 micro** + tests deterministas de recall, grafos y SQL |
+| Bindings | py/node conformance con hash común + CI; wasm **14 tests** |
 | Mutación medida | `gc` **85.3 %**, `segmented_wal` **85.7 %** |
 | `unsafe` | solo `ruscadb-ffi` (presupuesto controlado) |
 | Dependencias default | pure-Rust; PQC/ONNX/pgwire/S3 opcionales |
 
 **Madurez global**: L2/L3 por área; **ningún área L4** todavía (faltan
-benchmarks macro, conformance multi-binding y auditoría externa).
+auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 
 ## 2. Madurez por área
 
 | Área | L | Evidencia | Gap principal | Spec |
 |---|---|---|---|---|
 | Core record/catalog | **L3** | 4 archivos, 7 tests; catálogo v1–v4 con overflow | `drop_column`/`rename_column` ausentes | — |
-| Storage/page/buffer | **L3** | 4 archivos, 27 tests; LRU-K, free-list, checksums | `O(N²)` al sembrar free-list | SPEC-0194 |
+| Storage/page/buffer | **L3** | 4 archivos, 27 tests; LRU-K, free-list, checksums, sets en hot paths | compactación de páginas | SPEC-0194 |
 | WAL/MVCC | **L3** | 7 archivos, 148 marcadores; group commit, segmented, cifrado, crash harness, loom, SSI | sin Jepsen externo | SPEC-0195 (reclaim) |
 | Query/RQL | **L3** | 6 archivos, 105 marcadores; SELECT/DML/joins/CTE/ventanas/subconsultas/set-ops | `MERGE`, plan cache, correlacionadas/laterales | — |
-| Índices B-tree/HNSW/IVF/FVS/FTS | **L3** | 13 archivos, 187 marcadores; recall, ACORN, RaBitQ, BM25 | sin ANN-Benchmarks (recall/QPS) | SPEC-0198 |
+| Índices B-tree/HNSW/IVF/FVS/FTS | **L3** | 13 archivos, 187 marcadores; recall, ACORN, RaBitQ, BM25; recall@10 determinista | sin ANN-Benchmarks externo | SPEC-0198 |
 | Grafo | **L2** | CSR, algoritmos, `RELATE`, BFS; 50 marcadores | sin LDBC Graphalytics ni edge delete | SPEC-0198 |
 | Multimodal/AI | **L2** | CAS blobs, embeddings estáticos, MLP ONNX-like | sin runtime ONNX real/GPU | — |
 | Crypto | **L2** | AEAD L3; ML-KEM verificado + KAT ACVP | auditoría externa PQC pendiente | — |
 | Bindings | **L1** | py/node wrappers finos, 0 tests unitarios; wasm 14 tests; scripts de conformance py/node con hash común + CI | cobertura unitaria de wrappers | SPEC-0196 |
 | Ops/observabilidad | **L3** | `doctor`, métricas texto, scrape HTTP opt-in, backup/restore, S3 local, OTLP local | sin TLS/auth ni OTLP remoto | SPEC-0197 |
 | CI/calidad | **L3** | fmt/clippy/doc, trace/contract/audit, fuzz, loom, MSRV, SBOM, mutación | cobertura no medible local | — |
-| Docs/specs | **L2** | 188 specs, 618 ACs; 130 sin `maturity` | profundidad de ACs y metadata | — |
+| Docs/specs | **L2** | 193 specs, 640 ACs; 130 sin `maturity` | profundidad de ACs y metadata | — |
 
 ## 3. Gaps priorizados
 
@@ -47,9 +48,9 @@ benchmarks macro, conformance multi-binding y auditoría externa).
 |---|---|---|---|---|
 | G1 | `O(n²)` por `Vec::contains` en `gc`, free-list y columnar | `gc.rs`, `paged_file.rs`, `columnar.rs` | ✅ implementado | SPEC-0194 |
 | G2 | `TxnManager::aborted` crece sin límite | `mvcc.rs` (SPEC-0193) | ✅ implementado (reap) | SPEC-0195 |
-| G3 | py/node sin conformance; solo Rust ejecuta el fixture | `bindings/python/conformance.py`, `bindings/node/conformance.js`, `ruscadb-wasm/tests/conformance.rs` | ✅ implementado (hash común + tamper gate en CI; WASM parse) | SPEC-0196 |
-| G4 | Métricas sin endpoint HTTP de scrape | `observability.rs` | ✅ implementado | SPEC-0197 |
-| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | tests de recall/build/graph/SQL + `xtask bench-gate` | ✅ implementado | SPEC-0198 |
+| G3 | py/node sin conformance; solo Rust ejecuta el fixture | `bindings/python/conformance.py`, `bindings/node/conformance.js`, `ruscadb-wasm/tests/conformance.rs` | ✅ implementado (fixture tipado + hash JCS común + tamper gate en CI; WASM parse) | SPEC-0196 |
+| G4 | Métricas sin endpoint HTTP de scrape | `observability.rs` | ✅ implementado (405, registry vivo, concurrencia acotada) | SPEC-0197 |
+| G5 | Sin benchmarks macro (ANN/LDBC/SQL) | tests de recall/build/graph/SQL + `xtask bench-gate` | ✅ implementado (gate valida cobertura e integridad) | SPEC-0198 |
 
 ## 4. Verificación de algoritmos (hot paths)
 
@@ -60,19 +61,20 @@ benchmarks macro, conformance multi-binding y auditoría externa).
 | Columnar duplicados | `O(C²)` | `columns.iter().any` | `HashSet` ⇒ `O(C)` | Bajo |
 | HNSW `connect` | `O(M·k)` acotado | `list.contains` con M=16 | `SmallVec`/bitset opcional | Medio |
 | Join no-equi | `O(n·m)` | nested loop | hash join solo para equi | Medio |
-| MVCC aborted | `O(A)` memoria | `BTreeSet` sin purge | horizonte de snapshot | Bajo |
+| MVCC aborted | `O(1)` memoria tras reap | `BTreeSet` + `forget_aborted` | horizonte de snapshot histórico | Bajo |
 
 ## 5. Lo que no se pudo medir
 
 - **Cobertura local**: `cargo-llvm-cov` existe pero falta
   `llvm-tools-preview` y no hay `rustup` en la imagen. El CI sí ejecuta
   `cargo llvm-cov` con gates core≥80, txn/wal≥90.
-- **ANN-Benchmarks/LDBC/TPC-H**: requieren datasets/harness externos; se
-  especifican en SPEC-0198, no se descargan aquí.
+- **ANN-Benchmarks/LDBC/TPC-H**: requieren datasets/harness externos; los
+  gates usan fixtures deterministas (SPEC-0198) y no se descargan aquí.
 - **Jepsen/auditoría externa**: requieren infraestructura/proveedor.
+- **Cobertura local**: ver arriba; el CI sí la ejecuta.
 
 ## 6. Criterio de cierre de este informe
 
-- Specs de mejora creadas con ACs medibles y tests RED (`#[ignore]`).
-- Gates `trace`/`contract`/`audit` siguen verdes.
+- Specs de mejora con ACs medibles y tests activos (sin scaffolds `#[ignore]`).
+- Gates `trace`/`contract`/`audit` verdes: 193 specs, 640 ACs.
 - Los gaps no implementados quedan declarados en este informe y en el backlog.

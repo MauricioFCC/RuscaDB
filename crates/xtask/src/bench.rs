@@ -61,6 +61,13 @@ pub fn evaluate(
     let baseline = metrics(baseline)?;
     let head = metrics(head)?;
     let mut failures = Vec::new();
+    for name in baseline.keys() {
+        if !head.contains_key(name) {
+            failures.push(format!(
+                "benchmark '{name}' ausente en head (cobertura reducida)"
+            ));
+        }
+    }
     for (name, candidate) in &head {
         let Some(base) = baseline.get(name) else {
             failures.push(format!("benchmark '{name}' ausente en baseline"));
@@ -98,12 +105,15 @@ pub fn evaluate(
     }
 }
 
-/// Extrae `name -> BenchMetric` del JSON.
+/// Extrae `name -> BenchMetric` del JSON y valida cada entrada.
 fn metrics(value: &Value) -> Result<BTreeMap<String, BenchMetric>, String> {
     let array = value
         .get("benchmarks")
         .and_then(Value::as_array)
         .ok_or_else(|| "JSON sin 'benchmarks' array".to_string())?;
+    if array.is_empty() {
+        return Err("JSON con 'benchmarks' vacío".to_string());
+    }
     let mut out = BTreeMap::new();
     for item in array {
         let name = item
@@ -118,7 +128,20 @@ fn metrics(value: &Value) -> Result<BTreeMap<String, BenchMetric>, String> {
             .get("p95_ms")
             .and_then(Value::as_f64)
             .ok_or_else(|| format!("benchmark '{name}' sin 'p95_ms' numérico"))?;
-        out.insert(name.to_string(), BenchMetric { qps, p95_ms });
+        if !qps.is_finite() || qps < 0.0 {
+            return Err(format!("benchmark '{name}' con 'qps' inválido ({qps})"));
+        }
+        if !p95_ms.is_finite() || p95_ms < 0.0 {
+            return Err(format!(
+                "benchmark '{name}' con 'p95_ms' inválido ({p95_ms})"
+            ));
+        }
+        if out
+            .insert(name.to_string(), BenchMetric { qps, p95_ms })
+            .is_some()
+        {
+            return Err(format!("benchmark duplicado '{name}'"));
+        }
     }
     Ok(out)
 }
@@ -171,6 +194,54 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    /// AC-0198-05 — entradas inválidas o cobertura reducida fallan con detalle
+    /// en vez de aprobar en silencio.
+    #[test] // @spec AC-0198-05
+    fn test_ac_0198_05_bench_gate_robustness() {
+        let thresholds = BenchThresholds::default();
+
+        let removed = evaluate(
+            &json!({ "benchmarks": [
+                { "name": "knn", "qps": 1000.0, "p95_ms": 1.0 },
+                { "name": "sql", "qps": 500.0, "p95_ms": 2.0 }
+            ] }),
+            &report(1000.0, 1.0),
+            &thresholds,
+        )
+        .expect_err("cobertura reducida");
+        assert!(
+            removed.contains("sql") && removed.contains("ausente en head"),
+            "{removed}"
+        );
+
+        let negative = evaluate(
+            &report(1000.0, 1.0),
+            &json!({ "benchmarks": [{ "name": "knn", "qps": -1.0, "p95_ms": 1.0 }] }),
+            &thresholds,
+        )
+        .expect_err("qps negativo");
+        assert!(negative.contains("inválido"), "{negative}");
+
+        let duplicate = evaluate(
+            &report(1000.0, 1.0),
+            &json!({ "benchmarks": [
+                { "name": "knn", "qps": 1000.0, "p95_ms": 1.0 },
+                { "name": "knn", "qps": 1001.0, "p95_ms": 1.0 }
+            ] }),
+            &thresholds,
+        )
+        .expect_err("benchmark duplicado");
+        assert!(duplicate.contains("duplicado"), "{duplicate}");
+
+        let empty = evaluate(
+            &report(1000.0, 1.0),
+            &json!({ "benchmarks": [] }),
+            &thresholds,
+        )
+        .expect_err("reporte vacío");
+        assert!(empty.contains("vacío"), "{empty}");
     }
 
     /// El umbral es configurable: una caída del 15 % pasa con límite 20 %.

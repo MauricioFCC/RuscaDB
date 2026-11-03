@@ -11,7 +11,7 @@ boundaries:
     - crates/ruscadb/src/gc.rs
     - crates/ruscadb-storage/src/paged_file.rs
     - crates/ruscadb/src/columnar.rs
-    - benches/facade_smoke.rs
+    - crates/ruscadb/benches/facade_smoke.rs
   out_of_scope: [rediseño del free-list, compactación de páginas]
 fr:
   - { id: FR-0194-01, desc: "gc de páginas reclamadas usa BTreeSet y evita O(P²)" }
@@ -112,4 +112,7 @@ memoria:         O(P)/O(N)/O(C)
   preservado).
 - `columnar.rs`: `HashSet<String>` para duplicados.
 - Tests activos: AC-0194-01..04 en `gc.rs`, `paged_file.rs` y
-  `tests/gap_specs.rs`.
+  `tests/gap_specs.rs`. AC-0194-04 añade un gate determinista N/2N/4N que
+  cuenta comparaciones (`Ord`/`Eq` instrumentados) en vez de reloj: el oráculo
+  `Vec::contains` escala ~cuadrático (ratio > 12) y `BTreeSet` ~N log N
+  (ratio < 8), con equivalencia de resultados.

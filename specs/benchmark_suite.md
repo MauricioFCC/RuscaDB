@@ -8,10 +8,10 @@ appetite_days: 6
 boundaries:
   crates: [ruscadb, ruscadb-vector, ruscadb-graph, xtask]
   files:
-    - crates/ruscadb/benches/facade_smoke.rs
-    - crates/ruscadb-vector/benches/knn_latency.rs
-    - crates/ruscadb/benches/graph_algorithms.rs
-    - crates/ruscadb/benches/sql_workload.rs
+    - crates/ruscadb-vector/tests/benchmarks.rs
+    - crates/ruscadb-graph/tests/benchmarks.rs
+    - crates/ruscadb/tests/gap_specs.rs
+    - crates/xtask/src/bench.rs
     - crates/xtask/src/main.rs
   out_of_scope: [descarga de datasets ANN/LDBC/TPC-H, GPU, comparación con otros motores]
 fr:
@@ -21,7 +21,7 @@ fr:
   - { id: FR-0198-04, desc: "gate de regresion relativo (ratio N/2N/4N y QPS/recall)" }
 nf:
   - { id: NF-0198-01, desc: "datasets pequenos y deterministas versionados; sin red en CI" }
-  - { id: NF-0198-02, desc: "criterion + xtask bench-gate; umbrales declarados" }
+  - { id: NF-0198-02, desc: "tests deterministas + xtask bench-gate sobre JSON; criterion opcional (wall-clock no es gate en CI compartida)" }
 acceptance_criteria:
   - id: AC-0198-01
     given: un dataset vectorial determinista (2k x 16, seed fija)
@@ -43,6 +43,11 @@ acceptance_criteria:
     when: se aplica `xtask bench-gate`
     then: una caida > X% de QPS o > Y% de p95 falla con detalle
     test: test_ac_0198_04_regression_gate
+  - id: AC-0198-05
+    given: reportes con benchmark eliminado, métricas negativas, duplicadas o vacías
+    when: se aplica `xtask bench-gate`
+    then: falla con detalle (cobertura/entrada inválida) en vez de aprobar en silencio
+    test: test_ac_0198_05_bench_gate_robustness
 exit_criteria:
   - cargo test -p ruscadb-vector --test benchmarks
   - cargo test -p ruscadb-graph --test benchmarks
@@ -116,5 +121,9 @@ SQL scan: O(N); group: O(N); join hash: O(N + M)
   (`crates/xtask/src/bench.rs`) compara QPS y p95 con umbrales configurables;
   los tests cubren pass, caída de QPS, subida de p95, benchmark ausente y JSON
   inválido.
-- Nota: no se descargan datasets ANN/LDBC/TPC-H ni se ejecutan criterion en CI;
-  los fixtures deterministas son la fuente de verdad. Cerrada.
+- **AC-0198-05** activo: el gate falla con cobertura reducida (benchmark en
+  baseline ausente en head), `qps`/`p95_ms` negativos, nombres duplicados o
+  reporte vacío; nunca aprueba entradas inválidas en silencio.
+- Nota de diseño: criterion queda opcional y los gates no dependen de
+  wall-clock (ruidoso en CI compartida). Los fixtures deterministas y el JSON
+  de métricas son la fuente de verdad. Cerrada.
