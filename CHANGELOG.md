@@ -18,6 +18,10 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 21 (2026-11-03)**: `llvm-tools-preview` instalado vía rustup (1.97.1
+  pin y 1.99.0); cobertura local medida (core 84.9 %, txn 97.0 %, wal 94.0 %,
+  gate PASS). Fix de portabilidad en `coverage_gate.py`: normaliza `SF:` con
+  `\` de Windows, con fixture/test `windows_paths_are_normalized`.
 - **Ciclo 20 (2026-11-03)**: ronda de robustez. Métricas: nombres saneados
   contra inyección de líneas, request HTTP incremental (hasta `\r\n\r\n` con
   tope de 8 KiB) y `set_nonblocking(false)` en sockets aceptados. `bench-gate`:

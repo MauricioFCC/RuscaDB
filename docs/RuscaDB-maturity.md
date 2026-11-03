@@ -63,15 +63,16 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 | Join no-equi | `O(n·m)` | nested loop | hash join solo para equi | Medio |
 | MVCC aborted | `O(1)` memoria tras reap | `BTreeSet` + `forget_aborted` | horizonte de snapshot histórico | Bajo |
 
-## 5. Lo que no se pudo medir
+## 5. Medición local y límites
 
-- **Cobertura local**: `cargo-llvm-cov` existe pero falta
-  `llvm-tools-preview` y no hay `rustup` en la imagen. El CI sí ejecuta
-  `cargo llvm-cov` con gates core≥80, txn/wal≥90.
+- **Cobertura local (medida, 2026-11-03)**: `rustup` + toolchain 1.99.0 +
+  `llvm-tools-preview`; `cargo llvm-cov --no-clean -p ruscadb -p ruscadb-core
+  -p ruscadb-txn -p ruscadb-wal --all-features --lcov` →
+  core **84.9 %**, txn **97.0 %**, wal **94.0 %**; gate PASS. BRDA n/a porque
+  el export lcov no lleva `--branch-coverage` (igual que CI).
 - **ANN-Benchmarks/LDBC/TPC-H**: requieren datasets/harness externos; los
   gates usan fixtures deterministas (SPEC-0198) y no se descargan aquí.
 - **Jepsen/auditoría externa**: requieren infraestructura/proveedor.
-- **Cobertura local**: ver arriba; el CI sí la ejecuta.
 
 ## 6. Criterio de cierre de este informe
 

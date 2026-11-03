@@ -204,3 +204,28 @@ fn test_ac_0079_03_policy_wired_in_ci_and_docs() {
         );
     }
 }
+
+/// Regresión Windows: lcov emite `SF:` con `\`; el gate debe normalizarlo para
+/// que los scopes (`ruscadb-core/`) encuentren ficheros (bug detectado al medir
+/// cobertura local en Windows).
+#[test]
+fn windows_paths_are_normalized() {
+    let lcov = fixtures_dir().join("windows_paths.lcov");
+    let output = run_gate(
+        &lcov,
+        &[
+            "--scope",
+            "ruscadb-core/",
+            "--min-line",
+            "90",
+            "--min-branch",
+            "90",
+        ],
+    );
+    let text = combined(&output);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "las rutas lcov con '\\' deben normalizarse a '/':\n{text}"
+    );
+}

@@ -199,6 +199,8 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
   `conformance` ubuntu+windows con tamper).
 - `python scripts/check_disk.py --min-free-gb 10`: OK (preflight de espacio;
   `target/` llegó a 153.8 GiB en local).
+- `python scripts/coverage_gate.py lcov.info --scope …`: PASS en local
+  (core 84.9 %, txn 97.0 %, wal 94.0 %; rustup 1.99.0 + llvm-tools-preview).
 - `cargo xtask check-specs`: 193 specs, 63 `real`, 0 `stub`, 0 `placeholder`.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.

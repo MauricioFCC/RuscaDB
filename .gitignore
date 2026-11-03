@@ -14,6 +14,8 @@ mutants.out.old/
 
 # ── Cobertura / benchmarks ───────────────────────────────────────────────────
 /lcov.info
+/lcov-*.info
+/branch-coverage.json
 /coverage/
 *.lcov
 # Fixtures lcov versionados de los tests de SPEC-0079 (gate multi-scope).

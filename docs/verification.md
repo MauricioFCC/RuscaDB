@@ -268,6 +268,19 @@ Medición de referencia (2026-10-13, artefacto `coverage-lcov` del run verde
 `ruscadb-fts/` 99.8 % (línea; rama n/a: el export lcov no lleva BRDA, se
 activa añadiendo `--branch-coverage` a `cargo llvm-cov`).
 
+Medición local Windows (2026-11-03, rustup 1.99.0 + `llvm-tools-preview`,
+scopes core/txn/wal + tests del facade):
+
+```text
+cargo llvm-cov --no-clean -p ruscadb -p ruscadb-core -p ruscadb-txn -p ruscadb-wal \
+  --all-features --locked --lcov --output-path lcov.info
+core 84.9 % · txn 97.0 % · wal 94.0 % · gate PASS (BRDA n/a)
+```
+
+Nota: `--no-clean` es necesario si se precompilan los ejemplos en el target de
+cobertura; `cargo llvm-cov` sin él limpia artefactos y `examples_smoke` falla
+por binarios ausentes.
+
 Semántica del gate (contrato SPEC-0061, conservado por SPEC-0079): la salida
 imprime el % de línea/rama **por crate** dentro de cada scope para ver qué
 crate arrastra el número; exit `0` = todos los scopes cumplen, exit `1` =
@@ -489,6 +502,7 @@ cargo xtask contract                          OK
 cargo xtask check-architecture / check-unsafe OK
 python scripts/check_ci_config.py             OK (incluye conformance ubuntu+windows)
 python scripts/check_disk.py --min-free-gb 10  OK (preflight de espacio en target/)
+python scripts/coverage_gate.py lcov.info ...  PASS (core 84.9, txn 97.0, wal 94.0)
 cargo xtask mutation-score (parcial)          85,71 % (objetivo nightly >= 85 %)
 ```
 

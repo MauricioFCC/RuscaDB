@@ -76,7 +76,9 @@ def parse_lcov_records(text):
     for raw in text.splitlines():
         line = raw.strip()
         if line.startswith("SF:"):
-            current = line[3:]
+            # lcov en Windows emite rutas con `\`; se normalizan para que los
+            # scopes (`ruscadb-core/`) funcionen igual en Linux y Windows.
+            current = line[3:].replace("\\", "/")
             records.setdefault(current, [0, 0, 0, 0])
         elif current is not None and line.startswith("DA:"):
             parts = line[3:].split(",")
