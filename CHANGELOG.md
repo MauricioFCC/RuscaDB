@@ -18,6 +18,10 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 24 (2026-11-03)**: análisis de alternativas aplicado al backlog
+  (`hash join spill`, sort-merge, cost planner, streaming, pgwire TCP, TLS/auth,
+  KMS/HSM, mdBook/Vale/EN) con decisión, coste y disparador; research docs
+  enlazados desde el índice de documentación y el roadmap.
 - **Ciclo 23 (2026-11-03)**: hash join para igualdad sin índice en el lado
   interior (`O(n·m) → O(n+m)`), con semántica INNER/LEFT/RIGHT/FULL y `NULL`
   intacta; gate de escalado 10k×10k < 5 s (SPEC-0200, AC-0200-01/02).

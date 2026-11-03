@@ -39,7 +39,8 @@ Si un número aparece en dos sitios, es un bug de documentación.
 ## 3. Investigación y decisiones
 
 - [`research/`](research/): paper trail por ciclo (`frontier-<fecha>-<tema>.md`),
-  con URLs leídas o `[UNVERIFIED]`.
+  con URLs leídas o `[UNVERIFIED]`. Últimos: `frontier-2026-11-03-docs.md` y
+  `frontier-2026-11-03-hash-join.md`.
 - [`adr/`](adr/): decisiones arquitectónicas (ADR; local-only, no se publican).
 - [`archive/`](archive/): documentos históricos (pre-proyecto, chats de diseño,
   investigación superada). No se actualizan.

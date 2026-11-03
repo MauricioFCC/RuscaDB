@@ -101,6 +101,28 @@ Informe de madurez: `docs/RuscaDB-maturity.md`. Research:
 - Lo no aplicado sigue aquí con motivo (auditoría externa PQC, KMS/HSM,
   TLS, LIVE SELECT), no como deuda invisible.
 
+## Alternativas evaluadas y diferidas (2026-11-03)
+
+Aplicadas ya: **hash join** para igualdad sin índice (SPEC-0200) y **gate de
+documentación** con anclas (SPEC-0199). El resto se evalúa aquí para que no
+quede solo en los research docs:
+
+| Alternativa | Decisión | Coste | Disparador para retomarla |
+|---|---|---|---|
+| Hash join con spill (Grace/híbrido) | Diferida | Alto | `max_memory_bytes` real y `m > presupuesto` |
+| Sort-merge join | Rechazada | Medio | entradas ya ordenadas y necesidad de memoria O(1) |
+| Optimizador por coste + estadísticas | Próxima ola | Alto | tras recolectar selectividad/cardinalidad |
+| Streaming / cursores con estado | Diferida | Alto | resultados mayores que el presupuesto de memoria |
+| JOIN de 3+ tablas y no-equi | Diferida | Alto | demanda real; hoy 2 tablas + igualdad |
+| Servidor pgwire TCP | Diferida | Alto | adapter de servidor (fuera del core embebido) |
+| TLS/auth en `metrics-http` | Diferida | Medio | exposición del scrape fuera de loopback |
+| KMS/HSM externo | Fuera de alcance | Alto | requisito de custodia externa |
+| mdBook/MkDocs | Diferida | Medio | publicación de documentación externa |
+| Vale/spellcheck y traducción EN | Diferida | Medio | documentación pública en inglés |
+
+Research: `docs/research/frontier-2026-11-03-docs.md` y
+`docs/research/frontier-2026-11-03-hash-join.md`.
+
 ## Referencias
 
 - SurrealDB RELATE/graph docs: `docs/research/surrealdb-2026-11-02.md`.
