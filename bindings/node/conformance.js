@@ -111,6 +111,55 @@ function seed(handle) {
   }
 }
 
+/**
+ * Ejecuta los casos del fixture y alimenta el hash.
+ *
+ * @param {object} handle Handle abierto.
+ * @param {object} fixture Fixture JSON.
+ * @param {object} hash Hash SHA-256.
+ * @returns {boolean} `true` si todos los casos pasan.
+ */
+function run(handle, fixture, hash) {
+  seed(handle);
+  for (const [index, testCase] of fixture.cases.entries()) {
+    if (testCase.expect_error) {
+      let failed = false;
+      try {
+        ruscadb.execute(handle, testCase.sql);
+      } catch (error) {
+        failed = true;
+      }
+      if (!failed) {
+        console.error(`FAIL node/${testCase.name}: se esperaba error`);
+        return false;
+      }
+      hash.update(testCase.name);
+      hash.update('error');
+      continue;
+    }
+    const rows = JSON.parse(ruscadb.execute(handle, testCase.sql));
+    const got = canonicalRows(rows);
+    if (process.argv.includes('--tamper') && index === 0 && got.length > 0) {
+      for (const key of Object.keys(got[0])) {
+        if (typeof got[0][key] === 'number') {
+          got[0][key] += 1;
+          break;
+        }
+      }
+    }
+    const expected = canonicalRows(testCase.expect);
+    if (JSON.stringify(got) !== JSON.stringify(expected)) {
+      console.error(
+        `FAIL node/${testCase.name}: got=${JSON.stringify(got)} expected=${JSON.stringify(expected)}`,
+      );
+      return false;
+    }
+    hash.update(testCase.name);
+    hash.update(JSON.stringify(got));
+  }
+  return true;
+}
+
 function main() {
   const fixturePath = path.join(
     __dirname,
@@ -126,50 +175,19 @@ function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ruscadb-node-'));
   const dbPath = path.join(tmp, 'conformance.db');
   const hash = crypto.createHash('sha256');
-  const handle = ruscadb.open(dbPath, 64);
+  let ok = false;
   try {
-    seed(handle);
-    for (const [index, testCase] of fixture.cases.entries()) {
-      if (testCase.expect_error) {
-        let failed = false;
-        try {
-          ruscadb.execute(handle, testCase.sql);
-        } catch (error) {
-          failed = true;
-        }
-        if (!failed) {
-          console.error(`FAIL node/${testCase.name}: se esperaba error`);
-          process.exitCode = 1;
-          return;
-        }
-        hash.update(testCase.name);
-        hash.update('error');
-        continue;
-      }
-      const rows = JSON.parse(ruscadb.execute(handle, testCase.sql));
-      const got = canonicalRows(rows);
-      if (process.argv.includes('--tamper') && index === 0 && got.length > 0) {
-        for (const key of Object.keys(got[0])) {
-          if (typeof got[0][key] === 'number') {
-            got[0][key] += 1;
-            break;
-          }
-        }
-      }
-      const expected = canonicalRows(testCase.expect);
-      if (JSON.stringify(got) !== JSON.stringify(expected)) {
-        console.error(
-          `FAIL node/${testCase.name}: got=${JSON.stringify(got)} expected=${JSON.stringify(expected)}`,
-        );
-        process.exitCode = 1;
-        return;
-      }
-      hash.update(testCase.name);
-      hash.update(JSON.stringify(got));
-    }
+    ok = ruscadb.withDatabase(
+      dbPath,
+      (handle) => run(handle, fixture, hash),
+      64,
+    );
   } finally {
-    ruscadb.close(handle);
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  if (!ok) {
+    process.exitCode = 1;
+    return;
   }
   console.log(`node_hash=${hash.digest('hex')}`);
 }

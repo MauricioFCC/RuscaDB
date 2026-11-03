@@ -306,6 +306,24 @@ function load(explicitPath) {
   return defaultApi;
 }
 
+/**
+ * Abre una base, ejecuta `callback(handle)` y la cierra siempre.
+ *
+ * @param {string} dataPath Ruta del archivo de paginas.
+ * @param {(handle: object) => unknown} callback Trabajo a ejecutar.
+ * @param {number} [poolCapacity=8] Marcos del buffer pool.
+ * @returns {unknown} Resultado del callback.
+ */
+function withDatabase(dataPath, callback, poolCapacity) {
+  const api = load();
+  const handle = api.open(dataPath, poolCapacity);
+  try {
+    return callback(handle);
+  } finally {
+    api.close(handle);
+  }
+}
+
 const api = {
   PAGE_SIZE,
   RC_OK,
@@ -318,6 +336,7 @@ const api = {
   load,
   lastError: () => load().lastError(),
   open: (dataPath, poolCapacity) => load().open(dataPath, poolCapacity),
+  withDatabase,
   readPage: (handle, pageId) => load().readPage(handle, pageId),
   writePage: (handle, pageId, data) => load().writePage(handle, pageId, data),
   commit: (handle) => load().commit(handle),

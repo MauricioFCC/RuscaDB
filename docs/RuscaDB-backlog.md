@@ -95,7 +95,7 @@ Informe de madurez: `docs/RuscaDB-maturity.md`. Research:
 ## Criterio de aceptación de este cierre
 
 - **193 specs**: 193 `implemented` (0 `proposed`);
-  `cargo xtask audit` en 0 ACs sin test y **640 ACs trazados**.
+  `cargo xtask audit` en 0 ACs sin test y **645 ACs trazados**.
 - Cada fase conserva ACs, complejidad y tests SQL; todas las specs
   implementadas tienen gates verdes y tests activos (sin scaffolds `#[ignore]`).
 - Lo no aplicado sigue aquí con motivo (auditoría externa PQC, KMS/HSM,

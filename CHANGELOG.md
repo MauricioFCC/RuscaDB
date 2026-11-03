@@ -18,6 +18,14 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 20 (2026-11-03)**: ronda de robustez. Métricas: nombres saneados
+  contra inyección de líneas, request HTTP incremental (hasta `\r\n\r\n` con
+  tope de 8 KiB) y `set_nonblocking(false)` en sockets aceptados. `bench-gate`:
+  umbrales finitos `0..=100` y tope de 8 MiB por JSON. Bindings: context
+  manager `open_database` (Python) y `withDatabase` (Node), usados por la
+  conformance; CI de conformance en ubuntu+windows con `shell: bash`. RCU:
+  `retired_len` recupera de mutex envenenado. Tooling: `scripts/check_disk.py`
+  (preflight de disco) y guard de CI para el job `conformance`.
 - **Ciclo 19 (2026-11-03)**: auditoría frontier de SPEC-0194..0198
   (`docs/research/frontier-2026-11-03-spec-audit.md`). Aplicados los huecos:
   fixture de conformance tipado (Float/Text/Bool/NULL + error) con

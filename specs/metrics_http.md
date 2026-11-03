@@ -45,6 +45,16 @@ acceptance_criteria:
     when: se incrementan contadores después del bind y se hace scrape
     then: el scrape refleja los valores actuales (registry vivo)
     test: test_ac_0197_05_metrics_live_registry
+  - id: AC-0197-06
+    given: una petición HTTP partida en dos paquetes TCP
+    when: se ensambla hasta \r\n\r\n
+    then: responde 200 con el cuerpo de métricas (no 404 por truncado)
+    test: test_ac_0197_06_metrics_incremental_request
+  - id: AC-0197-07
+    given: un contador con un nombre con espacios/saltos de línea
+    when: se exporta el registry
+    then: el nombre se sanea y no se pueden inyectar líneas Prometheus
+    test: test_ac_0197_07_metrics_name_sanitized
 exit_criteria:
   - cargo test -p ruscadb --features metrics-http
   - cargo clippy -p ruscadb --all-targets --features metrics-http -- -D warnings
@@ -109,4 +119,5 @@ accept: O(1) por conexión
   reflejan incrementos posteriores al bind.
 - Concurrencia acotada a `MAX_IN_FLIGHT = 8` handlers; el exceso recibe
   `503 Service Unavailable` sin crear hilos (anti-slowloris).
-- Tests activos: AC-0197-01..05 en `observability.rs`.
+- Tests activos: AC-0197-01..07 en `observability.rs` (incluye request
+  incremental, saneo de nombres y registry vivo).

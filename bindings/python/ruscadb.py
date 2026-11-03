@@ -24,6 +24,7 @@ import ctypes
 import json
 import os
 import sys
+from contextlib import contextmanager
 from ctypes import POINTER, c_char_p, c_int, c_size_t, c_uint32, c_uint64, c_void_p
 from pathlib import Path
 
@@ -312,6 +313,24 @@ def create_table(handle: c_void_p, name: str, columns: list[dict[str, str]]) -> 
     _check(_lib().ruscadb_create_table(handle, name.encode("utf-8"), payload))
 
 
+@contextmanager
+def open_database(path: str | os.PathLike[str], pool_capacity: int = 8):
+    """Abre una base y garantiza ``close`` al salir del bloque ``with``.
+
+    Args:
+        path: Ruta del archivo de páginas.
+        pool_capacity: Marcos del buffer pool.
+
+    Yields:
+        Handle opaco listo para :func:`execute`, :func:`create_table`, etc.
+    """
+    handle = open(path, pool_capacity)
+    try:
+        yield handle
+    finally:
+        close(handle)
+
+
 def insert_record(handle: c_void_p, table: str, record: dict) -> None:
     """Inserta un registro ``{"scalars": {...}}``."""
     payload = json.dumps(record, separators=(",", ":")).encode("utf-8")
@@ -330,6 +349,7 @@ __all__ = [
     "load_library",
     "last_error",
     "open",
+    "open_database",
     "read_page",
     "write_page",
     "commit",

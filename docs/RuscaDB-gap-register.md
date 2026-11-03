@@ -190,12 +190,15 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
 - `cargo test --workspace --all-features -j 4`: ultimo run completo 213 suites,
-  1236 tests, 0 fallos.
-- `cargo xtask trace`: 640 AC trazados.
+  1245 tests, 0 fallos.
+- `cargo xtask trace`: 645 AC trazados.
 - `cargo xtask contract`: OK.
 - `cargo xtask check-architecture`: 0 ciclos, 0 aristas prohibidas.
 - `cargo xtask check-unsafe`: OK (presupuesto 93).
-- `scripts/check_ci_config.py`: OK (incluye el gate `mutation-score`).
+- `scripts/check_ci_config.py`: OK (incluye el gate `mutation-score` y el job
+  `conformance` ubuntu+windows con tamper).
+- `python scripts/check_disk.py --min-free-gb 10`: OK (preflight de espacio;
+  `target/` llegó a 153.8 GiB en local).
 - `cargo xtask check-specs`: 193 specs, 63 `real`, 0 `stub`, 0 `placeholder`.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
@@ -204,7 +207,7 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 
 Estado 2026-11-03: **193 specs `implemented`, 63 `real`, 0 `stub`,
 0 `placeholder`**, 0 codigo sin implementar (audit: 0
-`todo!`/`unimplemented!`, 640 ACs trazados).
+`todo!`/`unimplemented!`, 645 ACs trazados).
 
 - **RQL frontier cableado**: `SPEC-0162` (tablas derivadas), `SPEC-0163`
   (CTE y `WITH RECURSIVE`), `SPEC-0165` (ventanas `OVER`) y `SPEC-0161`

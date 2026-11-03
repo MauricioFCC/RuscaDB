@@ -42,6 +42,7 @@ cargo doc --workspace --no-deps --all-features   # RUSTDOCFLAGS=-D warnings
 cargo xtask check-architecture
 cargo xtask check-unsafe
 python scripts/check_ci_config.py
+python scripts/check_disk.py --min-free-gb 10
 cargo xtask check-specs
 cargo xtask trace
 cargo xtask contract

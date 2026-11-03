@@ -440,6 +440,41 @@ def check_mutation_diff_job(errors: list[str]) -> None:
             errors.append(f"ci.yml: {why} (chequeo textual)")
 
 
+def check_conformance_job(errors: list[str]) -> None:
+    """Valida el job `conformance` de ``ci.yml`` (SPEC-0196).
+
+    Debe correr en ubuntu y windows con `shell: bash` (los tamper gates usan
+    sintaxis POSIX) y ejecutar ambos scripts de conformance y sus tamper gates.
+    """
+    if not CI.exists():
+        errors.append(f"no existe {CI.relative_to(ROOT)}")
+        return
+    text = CI.read_text(encoding="utf-8")
+    start = text.find("  conformance:")
+    if start < 0:
+        errors.append("ci.yml: falta el job 'conformance' (SPEC-0196)")
+        return
+    end = text.find("\n  architecture:", start)
+    section = text[start:] if end < 0 else text[start:end]
+    for needle, why in [
+        ("matrix:", "el job 'conformance' debe declarar matrix de SO"),
+        ("ubuntu-latest", "el job 'conformance' debe correr en ubuntu-latest"),
+        ("windows-latest", "el job 'conformance' debe correr en windows-latest"),
+        ("shell: bash", "el job 'conformance' necesita shell bash en Windows"),
+        (
+            "bindings/python/conformance.py",
+            "el job 'conformance' debe ejecutar el runner de Python",
+        ),
+        (
+            "bindings/node/conformance.js",
+            "el job 'conformance' debe ejecutar el runner de Node",
+        ),
+        ("--tamper", "el job 'conformance' debe ejecutar los tamper gates"),
+    ]:
+        if needle not in section:
+            errors.append(f"ci.yml conformance: {why} (chequeo textual)")
+
+
 def check_coverage_job(errors: list[str]) -> None:
     """Valida el job `coverage` de ``ci.yml`` (SLO merge, SPEC-0061).
 
@@ -623,6 +658,7 @@ def main() -> int:
     check_deny(errors)
     check_publish_flags(errors)
     check_mutation_diff_job(errors)
+    check_conformance_job(errors)
     check_coverage_job(errors)
     check_branch_report_job(errors)
     check_red_first_job(errors)
@@ -637,6 +673,7 @@ def main() -> int:
 
     print(
         "[OK] check_ci_config: ci.yml (matriz rápida ubuntu/windows + "
+        "conformance py/node ubuntu/windows con tamper + "
         "mutation-diff MS>=70 en PR + commits/CHANGELOG en PR + msrv + "
         "reporte BRDA + red-first), "
         "nightly.yml (mutation/fuzz/miri/sanitizers/loom + test-macos, alert-only; "

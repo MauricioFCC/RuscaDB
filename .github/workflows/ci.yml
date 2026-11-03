@@ -80,8 +80,15 @@ jobs:
 
   # SPEC-0196: el mismo fixture debe dar el mismo hash en Rust, Python y Node.
   conformance:
-    name: Conformance (py/node)
-    runs-on: ubuntu-latest
+    name: Conformance (py/node, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable

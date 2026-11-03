@@ -155,10 +155,10 @@ impl<T> RcuCell<T> {
     /// Returns:
     ///     Longitud de la lista de retirados.
     pub fn retired_len(&self) -> usize {
-        self.retired
-            .lock()
-            .map(|retired| retired.len())
-            .unwrap_or(0)
+        self.retired.lock().map_or_else(
+            |poisoned| poisoned.into_inner().len(),
+            |retired| retired.len(),
+        )
     }
 }
 
@@ -214,5 +214,28 @@ mod tests {
         assert_eq!(cell.retired_len(), 0);
         // El snapshot sigue vivo aunque se haya sincronizado.
         assert_eq!(&*snapshot, &[1, 2, 3]);
+    }
+
+    /// Un mutex envenenado no debe ocultar los valores retirados.
+    #[test]
+    fn retired_len_survives_poisoning() {
+        use std::sync::Arc;
+
+        let cell = Arc::new(RcuCell::new(1));
+        cell.publish(2);
+        assert_eq!(cell.retired_len(), 1);
+
+        let clone = Arc::clone(&cell);
+        let _ = std::thread::spawn(move || {
+            let _guard = clone.retired.lock().expect("lock");
+            panic!("envenenar el mutex de retirados");
+        })
+        .join();
+
+        assert_eq!(
+            cell.retired_len(),
+            1,
+            "un mutex envenenado no debe devolver 0"
+        );
     }
 }

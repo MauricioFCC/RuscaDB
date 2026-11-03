@@ -98,3 +98,8 @@ robustness (fallos ruidosos vs silenciosos), reproducibility.
 - **Endurecimiento del endpoint HTTP** (405, límite de concurrencia,
   registry vivo): **aplicado** en este ciclo (AC-0197-04/05); no estaba en la
   auditoría inicial y se añadió por robustez operativa.
+- **Segunda ronda de robustez** (2026-11-03): aplicados saneo de nombres
+  Prometheus (AC-0197-07), request HTTP incremental (AC-0197-06), tope JSON
+  del gate (AC-0198-06), cierre garantizado en wrappers (AC-0196-06), RCU ante
+  mutex envenenado y preflight de disco (AC-0192-06). La conformance CI pasa a
+  ubuntu+windows.

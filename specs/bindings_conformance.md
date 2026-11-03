@@ -6,7 +6,7 @@ maturity: real
 owner: bindings-team
 appetite_days: 4
 boundaries:
-  crates: [ruscadb, ruscadb-wasm]
+  crates: [ruscadb-py, ruscadb-node, ruscadb-wasm, ruscadb]
   files:
     - crates/ruscadb/tests/conformance/basic.json
     - bindings/python/ruscadb.py
@@ -51,6 +51,11 @@ acceptance_criteria:
     when: se ejecuta en Rust, Python y Node
     then: el hash canónico coincide (números JCS) y el error esperado se detecta
     test: test_ac_0196_05_typed_fixture
+  - id: AC-0196-06
+    given: wrappers Python y Node con cierre manual
+    when: se usa su API con gestión de recursos (open_database/withDatabase)
+    then: el handle se cierra siempre y la conformance los ejercita en CI
+    test: test_ac_0196_06_binding_resource_management
 exit_criteria:
   - cargo build -p ruscadb-ffi
   - python bindings/python/conformance.py
@@ -129,6 +134,9 @@ hash:   O(bytes)
 - **Contrato Rust**: `crates/ruscadb/src/conformance.rs` define
   `canonical_number`, `scalar_json`, `canonical_rows` y `compare`; un mismatch
   devuelve `FAIL <binding>/<caso>`.
+- **AC-0196-06**: `open_database` (Python, context manager) y `withDatabase`
+  (Node) garantizan `close`; ambos runners de conformance los usan, así que CI
+  cubre el camino real.
 - **AC-0196-04/05** activos: mismatch y fixture tipado. AC-0196-01/02 verifican
   en `crates/xtask/src/main.rs` el contrato del script y su cableado en CI.
   Cerrada.

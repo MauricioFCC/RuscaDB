@@ -11,6 +11,7 @@ boundaries:
     - crates/xtask/src/gc.rs
     - crates/xtask/src/main.rs
     - scripts/clean-workspace.ps1
+    - scripts/check_disk.py
     - .github/workflows/ci.yml
   out_of_scope: [CARGO_HOME, sccache, cache de red, corpus de fuzz]
 fr:
@@ -48,6 +49,11 @@ acceptance_criteria:
     when: se evalua la allowlist
     then: ninguna es aceptada como artefacto
     test: test_ac_0192_05_protected_paths
+  - id: AC-0192-06
+    given: un disco con poco espacio libre
+    when: se ejecuta scripts/check_disk.py --min-free-gb N
+    then: falla antes de compilar e indica ejecutar cargo xtask gc
+    test: test_ac_0192_06_disk_guard
 exit_criteria:
   - cargo test -p xtask
   - cargo clippy -p xtask --all-targets -- -D warnings
@@ -121,3 +127,11 @@ memoria `O(k)` con `k` candidatos. El script anterior recorría todo el árbol
 - Cargo Book, *Build cache*: https://doc.rust-lang.org/cargo/reference/build-cache.html
 - cargo-sweep (unmaintained): https://github.com/holmgr/cargo-sweep
 - cargo-cache: https://github.com/matthiaskrgr/cargo-cache
+
+## Estado de implementación (2026-11-03)
+
+- `cargo xtask gc` con dry-run/JSON/antigüedad y allowlist (AC-0192-01..05).
+- `scripts/check_disk.py`: preflight de espacio libre (`shutil.disk_usage`) con
+  umbral configurable y JSON; falla antes de compilar e indica `cargo xtask gc`
+  (AC-0192-06). Motivo: un `target/` de 153.8 GiB llenó el disco en local y el
+  linker falló con `LNK1318`.

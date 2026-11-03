@@ -479,15 +479,16 @@ el parseo de T1/T2/T3.
 ## Última verificación de cierre (2026-11-02)
 
 ```text
-cargo test --workspace --all-features -j 4   213 suites, 1236 tests, 0 fallos
+cargo test --workspace --all-features -j 4   213 suites, 1245 tests, 0 fallos
 cargo clippy --workspace --all-targets --all-features -- -D warnings   OK
 cargo fmt --all -- --check                    OK
 cargo xtask audit                             0 ACs sin test, 0 todo!/unimplemented!
 cargo xtask check-specs                       193 specs (193 impl, 0 accepted, 0 proposed)
-cargo xtask trace                             640 AC
+cargo xtask trace                             645 AC
 cargo xtask contract                          OK
 cargo xtask check-architecture / check-unsafe OK
-python scripts/check_ci_config.py             OK
+python scripts/check_ci_config.py             OK (incluye conformance ubuntu+windows)
+python scripts/check_disk.py --min-free-gb 10  OK (preflight de espacio en target/)
 cargo xtask mutation-score (parcial)          85,71 % (objetivo nightly >= 85 %)
 ```
 

@@ -172,7 +172,7 @@ facade and filters by MVCC snapshot visibility.
 | `ruscadb-ai` | Local embeddings. |
 | `ruscadb-crypto` | XChaCha20-Poly1305 + Argon2id. |
 | `ruscadb-ffi` | Stable C-ABI. |
-| `ruscadb-py` / `ruscadb-node` | Python / Node bindings. |
+| `ruscadb-py` / `ruscadb-node` | Python / Node bindings (thin wrappers in `bindings/`). |
 | `ruscadb-wasm` | WebAssembly (browser) bindings. |
 | `ruscadb-mcp` | MCP server over stdio (tools + resources). |
 | `ruscadb-cli` | Executable `ruscadb`: RQL shell, DDL and MCP stdio server. |
@@ -275,7 +275,7 @@ RuscaDB ships optional capabilities behind feature flags. Enable with `--feature
 | `backup` | SPEC-0116 | Online backup (file copy) |
 | `fts-advanced` | SPEC-0117 | Fuzzy matching (Levenshtein), phrase matching, stemming |
 | `ts-advanced` | SPEC-0118 | Time-series downsampling (avg/max/min) |
-| `observability` | SPEC-0119 | Prometheus metrics registry + text export |
+| `observability` | SPEC-0119 / SPEC-0197 | Prometheus metrics registry + text export; optional HTTP scrape (`metrics-http`, `GET /metrics`) |
 | `incremental-backup` | SPEC-0120 | Incremental backup (timestamp-based) |
 | `metrics` | SPEC-0080 | Commit latency metrics |
 

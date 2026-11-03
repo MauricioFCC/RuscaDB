@@ -345,8 +345,26 @@ fn parse_pct(value: Option<&String>) -> Option<f64> {
     (parsed.is_finite() && (0.0..=100.0).contains(&parsed)).then_some(parsed)
 }
 
+/// Tope de tamaño para los JSON del `bench-gate` (8 MiB).
+const MAX_BENCH_JSON_BYTES: u64 = 8 * 1024 * 1024;
+
 /// Lee y parsea un JSON de un path.
 fn read_json(path: &Path) -> Result<serde_json::Value, String> {
+    read_json_with_limit(path, MAX_BENCH_JSON_BYTES)
+}
+
+/// Lee un JSON rechazando ficheros mayores que `max_bytes`.
+fn read_json_with_limit(path: &Path, max_bytes: u64) -> Result<serde_json::Value, String> {
+    let metadata = fs::metadata(path)
+        .map_err(|error| format!("no se pudo leer '{}': {error}", path.display()))?;
+    if metadata.len() > max_bytes {
+        return Err(format!(
+            "JSON '{}' demasiado grande ({} B > {} B)",
+            path.display(),
+            metadata.len(),
+            max_bytes
+        ));
+    }
     let text = fs::read_to_string(path)
         .map_err(|error| format!("no se pudo leer '{}': {error}", path.display()))?;
     serde_json::from_str(&text)
@@ -1171,6 +1189,58 @@ mod tests {
                 super::parse_pct(Some(&raw.to_string())).is_some(),
                 "'{raw}' rechazado como umbral"
             );
+        }
+    }
+
+    /// AC-0198-06: un JSON de benchmarks desmesurado se rechaza antes de
+    /// cargarlo en memoria.
+    #[test]
+    // @spec AC-0198-06
+    fn test_ac_0198_06_bench_gate_json_limit() {
+        let oversized = tempfile::NamedTempFile::new().expect("tmp");
+        oversized.as_file().set_len(32).expect("len");
+        let error = super::read_json_with_limit(oversized.path(), 8).expect_err("grande");
+        assert!(error.contains("demasiado grande"), "{error}");
+
+        let valid = tempfile::NamedTempFile::new().expect("tmp");
+        fs::write(valid.path(), "{\"benchmarks\":[]}").expect("write");
+        assert!(super::read_json_with_limit(valid.path(), 1024).is_ok());
+    }
+
+    /// AC-0196-06: los wrappers ofrecen gestión de recursos y la conformance
+    /// los ejercita (cierre garantizado).
+    #[test]
+    // @spec AC-0196-06
+    fn test_ac_0196_06_binding_resource_management() {
+        let python = read_root_file("bindings/python/ruscadb.py");
+        assert!(
+            python.contains("def open_database") && python.contains("@contextmanager"),
+            "ruscadb.py sin open_database contextmanager"
+        );
+        let python_conformance = read_root_file("bindings/python/conformance.py");
+        assert!(
+            python_conformance.contains("with ruscadb.open_database"),
+            "conformance.py no usa open_database"
+        );
+        let node = read_root_file("bindings/node/ruscadb.js");
+        assert!(
+            node.contains("function withDatabase") && node.contains("api.close(handle)"),
+            "ruscadb.js sin withDatabase con cierre"
+        );
+        let node_conformance = read_root_file("bindings/node/conformance.js");
+        assert!(
+            node_conformance.contains("ruscadb.withDatabase"),
+            "conformance.js no usa withDatabase"
+        );
+    }
+
+    /// AC-0192-06: guard de disco previo a compilar.
+    #[test]
+    // @spec AC-0192-06
+    fn test_ac_0192_06_disk_guard() {
+        let script = read_root_file("scripts/check_disk.py");
+        for needle in ["disk_usage", "--min-free-gb", "--json", "cargo xtask gc"] {
+            assert!(script.contains(needle), "check_disk.py sin '{needle}'");
         }
     }
 }

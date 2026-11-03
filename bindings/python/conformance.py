@@ -102,8 +102,7 @@ def main() -> int:
     digest = hashlib.sha256()
     with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp) / "conformance.db"
-        handle = ruscadb.open(path, pool_capacity=64)
-        try:
+        with ruscadb.open_database(path, pool_capacity=64) as handle:
             seed(handle)
             for index, case in enumerate(fixture["cases"]):
                 if case.get("expect_error"):
@@ -128,8 +127,6 @@ def main() -> int:
                     return 1
                 digest.update(case["name"].encode("utf-8"))
                 digest.update(json.dumps(got, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-        finally:
-            ruscadb.close(handle)
     print(f"python_hash={digest.hexdigest()}")
     return 0
 

@@ -36,6 +36,7 @@ impl MetricsRegistry {
     pub fn export(&self) -> String {
         let mut out = String::new();
         for (name, value) in &self.counters {
+            let name = sanitize_metric_name(name);
             out.push_str(&format!("# TYPE {name} counter\n"));
             out.push_str(&format!("{name} {value}\n"));
         }
@@ -51,6 +52,29 @@ impl MetricsRegistry {
     pub fn is_empty(&self) -> bool {
         self.counters.is_empty()
     }
+}
+
+/// Sanea un nombre de métrica al charset legacy de Prometheus.
+///
+/// Args:
+///     name: Nombre original (potencialmente con caracteres inválidos).
+///
+/// Returns:
+///     Nombre con `[a-zA-Z_:][a-zA-Z0-9_:]*`; los caracteres inválidos se
+///     sustituyen por `_` y un nombre vacío pasa a `_`.
+fn sanitize_metric_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for (index, character) in name.chars().enumerate() {
+        let valid = character.is_ascii_alphabetic()
+            || character == '_'
+            || character == ':'
+            || (index > 0 && character.is_ascii_digit());
+        out.push(if valid { character } else { '_' });
+    }
+    if out.is_empty() {
+        out.push('_');
+    }
+    out
 }
 
 /// Servidor HTTP mínimo de scrape Prometheus (SPEC-0197, opt-in).
@@ -160,17 +184,49 @@ fn respond_overloaded(mut stream: std::net::TcpStream) -> std::io::Result<()> {
     stream.write_all(response.as_bytes())
 }
 
+/// Lee la petición HTTP hasta `\r\n\r\n` (o hasta el tope de 8 KiB).
+///
+/// Una sola lectura de 1 KiB podía truncar la línea de request si el cliente
+/// la enviaba en varios paquetes TCP.
+#[cfg(feature = "metrics-http")]
+fn read_request(stream: &mut std::net::TcpStream) -> std::io::Result<String> {
+    use std::io::Read;
+    const MAX_REQUEST: usize = 8 * 1024;
+    let mut buffer = Vec::with_capacity(1024);
+    let mut chunk = [0u8; 1024];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => {
+                buffer.extend_from_slice(&chunk[..read]);
+                if buffer.windows(4).any(|window| window == b"\r\n\r\n")
+                    || buffer.len() >= MAX_REQUEST
+                {
+                    break;
+                }
+            }
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    || error.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                break;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(String::from_utf8_lossy(&buffer).into_owned())
+}
+
 /// Responde una petición HTTP de scrape (SPEC-0197).
 #[cfg(feature = "metrics-http")]
 fn handle_client(
     mut stream: std::net::TcpStream,
     registry: &std::sync::RwLock<MetricsRegistry>,
 ) -> std::io::Result<()> {
-    use std::io::{Read, Write};
+    use std::io::Write;
+    stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
-    let mut buffer = [0u8; 1024];
-    let read = stream.read(&mut buffer)?;
-    let request = String::from_utf8_lossy(&buffer[..read]);
+    let request = read_request(&mut stream)?;
     let mut parts = request
         .lines()
         .next()
@@ -349,5 +405,44 @@ mod tests {
 
         shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
         handle.join().expect("join");
+    }
+
+    /// AC-0197-06 — una request partida en dos paquetes TCP se ensambla y
+    /// responde 200 (no 404 por lectura truncada).
+    #[cfg(feature = "metrics-http")]
+    #[test]
+    // @spec AC-0197-06
+    fn test_ac_0197_06_metrics_incremental_request() {
+        use std::io::{Read, Write};
+        let (addr, shutdown, handle) = start_server();
+        let mut stream = std::net::TcpStream::connect(addr).expect("connect");
+        let request = "GET /metrics HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let split = request.len() / 2;
+        stream
+            .write_all(&request.as_bytes()[..split])
+            .expect("write1");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        stream
+            .write_all(&request.as_bytes()[split..])
+            .expect("write2");
+        let mut response = String::new();
+        stream.read_to_string(&mut response).expect("read");
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+        assert!(response.contains("queries_total 2"), "{response}");
+        shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
+        handle.join().expect("join");
+    }
+
+    /// AC-0197-07 — los nombres inválidos se sanean: no se pueden inyectar
+    /// líneas en la exposición Prometheus.
+    #[test]
+    // @spec AC-0197-07
+    fn test_ac_0197_07_metrics_name_sanitized() {
+        let mut reg = MetricsRegistry::new();
+        reg.inc("bad name\n# TYPE injected");
+        let exported = reg.export();
+        assert!(exported.contains("bad_name___TYPE_injected"), "{exported}");
+        assert_eq!(exported.lines().count(), 2, "{exported}");
+        assert!(!exported.contains("\n# TYPE injected"), "{exported}");
     }
 }

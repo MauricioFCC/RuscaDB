@@ -48,6 +48,11 @@ acceptance_criteria:
     when: se aplica `xtask bench-gate`
     then: falla con detalle (cobertura/entrada inválida) en vez de aprobar en silencio
     test: test_ac_0198_05_bench_gate_robustness
+  - id: AC-0198-06
+    given: un JSON de benchmarks mayor que el tope (8 MiB)
+    when: se aplica `xtask bench-gate`
+    then: se rechaza antes de cargarlo en memoria con error accionable
+    test: test_ac_0198_06_bench_gate_json_limit
 exit_criteria:
   - cargo test -p ruscadb-vector --test benchmarks
   - cargo test -p ruscadb-graph --test benchmarks
@@ -124,6 +129,8 @@ SQL scan: O(N); group: O(N); join hash: O(N + M)
 - **AC-0198-05** activo: el gate falla con cobertura reducida (benchmark en
   baseline ausente en head), `qps`/`p95_ms` negativos, nombres duplicados o
   reporte vacío; nunca aprueba entradas inválidas en silencio.
+- **AC-0198-06** activo: `read_json_with_limit` rechaza reportes > 8 MiB
+  antes de cargarlos en memoria.
 - Nota de diseño: criterion queda opcional y los gates no dependen de
   wall-clock (ruidoso en CI compartida). Los fixtures deterministas y el JSON
   de métricas son la fuente de verdad. Cerrada.
