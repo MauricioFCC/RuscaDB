@@ -1,4 +1,4 @@
-# Backlog real de RuscaDB — decisión de ciclo (2026-11-02)
+# Backlog real de RuscaDB — decisión de ciclo (2026-11-03)
 
 > Cierre del ciclo frontier. Cada ítem tiene spec, diseño, ACs, complejidad y
 > **motivo de no implementación** en este ciclo. Nada se marca `real` sin tests
@@ -79,7 +79,7 @@ Spec `SPEC-0193` (`specs/edge_properties.md`) **implementada**. Tabla interna
 `ON CONFLICT DO NOTHING | DO UPDATE SET payload`; `ts_unix` inmutable.
 7 tests SQL en `crates/ruscadb/tests/edge_properties.rs`.
 
-## Gaps de madurez (SPEC-0194..0198, propuestas 2026-11-02)
+## Gaps de madurez cerrados (SPEC-0194..0198, 2026-11-03)
 
 | # | Gap | Spec | Evidencia | Prioridad |
 |---|---|---|---|---|
@@ -94,8 +94,8 @@ Informe de madurez: `docs/RuscaDB-maturity.md`. Research:
 
 ## Criterio de aceptación de este cierre
 
-- **193 specs**: 193 `implemented` (0 `proposed`);
-  `cargo xtask audit` en 0 ACs sin test y **645 ACs trazados**.
+- **195 specs**: 195 `implemented` (0 `proposed`);
+  `cargo xtask audit` en 0 ACs sin test y **650 ACs trazados**.
 - Cada fase conserva ACs, complejidad y tests SQL; todas las specs
   implementadas tienen gates verdes y tests activos (sin scaffolds `#[ignore]`).
 - Lo no aplicado sigue aquí con motivo (auditoría externa PQC, KMS/HSM,

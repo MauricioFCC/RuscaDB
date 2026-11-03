@@ -1,3 +1,5 @@
+> **Documento histórico (archivado 2026-11-03).** No es fuente de verdad. Estado vigente: [índice de docs](../README.md), [specs](../specs-index.md), [madurez](../RuscaDB-maturity.md) y [gap register](../RuscaDB-gap-register.md).
+
 El documento que has compartido es un **plano maestro de nivel excepcional**. No le falta diseño, ni arquitectura, ni visión. Lo que "falta" ahora es **la ejecución rigurosa** para transformar este texto en código, siguiendo estrictamente la metodología SDAD que tú mismo definiste en el §2.
 
 Para pasar de este documento a la primera línea de código productiva, aquí tienes el desglose exacto de lo que falta y los pasos inmediatos que debes dar:

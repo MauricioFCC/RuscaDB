@@ -140,6 +140,8 @@ jobs:
       # no solo local. Valida ci.yml/nightly.yml/mutants.toml/deny.toml.
       - name: CI config consistency
         run: python scripts/check_ci_config.py
+      - name: Documentation quality
+        run: python scripts/check_docs.py
       - name: SDD spec frontmatter consistency
         run: cargo xtask check-specs
       - name: SDD traceability (spec -> test)

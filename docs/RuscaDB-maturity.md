@@ -14,8 +14,8 @@
 |---|---|
 | Specs | **193**, todas `implemented` |
 | ACs | **640** (46 specs con 1 AC; 68 con ≤2) |
-| Madurez declarada | **63 `real`**, 130 sin `maturity` |
-| Suite completa | **213 suites / 1245 tests / 0 fallos** (`-j 4`) |
+| Madurez declarada | **65 `real`**, 130 sin `maturity` |
+| Suite completa | **215 suites / 1251 tests / 0 fallos** (`-j 4`) |
 | Benchmarks | **3 micro** + tests deterministas de recall, grafos y SQL |
 | Bindings | py/node conformance con hash común + CI; wasm **14 tests** |
 | Mutación | nightly `cargo mutants --workspace` en 8 shards; gate MS ≥ 85 % (local: `gc` 85.3 %, `segmented_wal` 85.7 %) |
@@ -40,7 +40,7 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 | Bindings | **L1** | py/node wrappers finos, 0 tests unitarios; wasm 14 tests; scripts de conformance py/node con hash común + CI | cobertura unitaria de wrappers | SPEC-0196 |
 | Ops/observabilidad | **L3** | `doctor`, métricas texto, scrape HTTP opt-in, backup/restore, S3 local, OTLP local | sin TLS/auth ni OTLP remoto | SPEC-0197 |
 | CI/calidad | **L3** | fmt/clippy/doc, trace/contract/audit, fuzz, loom, MSRV, SBOM, mutación | cobertura no medible local | — |
-| Docs/specs | **L2** | 193 specs, 645 ACs; 130 sin `maturity` | profundidad de ACs y metadata | — |
+| Docs/specs | **L2** | 195 specs, 650 ACs; índice Diátaxis + gate de docs | 130 sin `maturity` | — |
 
 ## 3. Gaps priorizados
 
@@ -60,7 +60,7 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 | `seed_free_pages` | `O(N²)` | `free.iter().any` por página | `BTreeSet` ⇒ `O(N log N)` | Bajo |
 | Columnar duplicados | `O(C²)` | `columns.iter().any` | `HashSet` ⇒ `O(C)` | Bajo |
 | HNSW `connect` | `O(M·k)` acotado | `list.contains` con M=16 | `SmallVec`/bitset opcional | Medio |
-| Join no-equi | `O(n·m)` | nested loop | hash join solo para equi | Medio |
+| Join no-equi | `O(n·m)` | nested loop | solo equi usa índice/hash (SPEC-0200) | Medio |
 | MVCC aborted | `O(1)` memoria tras reap | `BTreeSet` + `forget_aborted` | horizonte de snapshot histórico | Bajo |
 
 ## 5. Medición local y límites
@@ -77,5 +77,5 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 ## 6. Criterio de cierre de este informe
 
 - Specs de mejora con ACs medibles y tests activos (sin scaffolds `#[ignore]`).
-- Gates `trace`/`contract`/`audit` verdes: 193 specs, 645 ACs.
+- Gates `trace`/`contract`/`audit` verdes: 195 specs, 650 ACs.
 - Los gaps no implementados quedan declarados en este informe y en el backlog.

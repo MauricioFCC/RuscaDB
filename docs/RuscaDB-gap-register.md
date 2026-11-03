@@ -182,16 +182,17 @@ Detalle, fuentes y plan de desbloqueo: `docs/research/frontier-2026-10-29.md`
 ## 8. Siguiente paso recomendado
 
 Quedan solo los adapters externos de §7 (Lance, pgwire TCP, KMS/HSM, OTLP
-HTTP, S3, ONNX runtime, endpoint Prometheus). El gate de mutacion nightly ya es
+HTTP, S3, ONNX runtime); el endpoint Prometheus ya está en `metrics-http`
+(SPEC-0197). El gate de mutacion nightly ya es
 bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 
 ## 9. Verificacion de gates (2026-11-02)
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test --workspace --all-features -j 4`: ultimo run completo 213 suites,
-  1245 tests, 0 fallos.
-- `cargo xtask trace`: 645 AC trazados.
+- `cargo test --workspace --all-features -j 4`: ultimo run completo 215 suites,
+  1251 tests, 0 fallos.
+- `cargo xtask trace`: 650 AC trazados.
 - `cargo xtask contract`: OK.
 - `cargo xtask check-architecture`: 0 ciclos, 0 aristas prohibidas.
 - `cargo xtask check-unsafe`: OK (presupuesto 93).
@@ -199,17 +200,18 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
   `conformance` ubuntu+windows con tamper).
 - `python scripts/check_disk.py --min-free-gb 10`: OK (preflight de espacio;
   `target/` llegó a 153.8 GiB en local).
+- `python scripts/check_docs.py`: OK (29 ficheros, 65 enlaces; índice completo).
 - `python scripts/coverage_gate.py lcov.info --scope …`: PASS en local
   (core 84.9 %, txn 97.0 %, wal 94.0 %; rustup 1.99.0 + llvm-tools-preview).
-- `cargo xtask check-specs`: 193 specs, 63 `real`, 0 `stub`, 0 `placeholder`.
+- `cargo xtask check-specs`: 195 specs, 65 `real`, 0 `stub`, 0 `placeholder`.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
 
 ## 10. Cierre de stubs y propuestas (2026-11-03)
 
-Estado 2026-11-03: **193 specs `implemented`, 63 `real`, 0 `stub`,
+Estado 2026-11-03: **195 specs `implemented`, 65 `real`, 0 `stub`,
 0 `placeholder`**, 0 codigo sin implementar (audit: 0
-`todo!`/`unimplemented!`, 645 ACs trazados).
+`todo!`/`unimplemented!`, 650 ACs trazados).
 
 - **RQL frontier cableado**: `SPEC-0162` (tablas derivadas), `SPEC-0163`
   (CTE y `WITH RECURSIVE`), `SPEC-0165` (ventanas `OVER`) y `SPEC-0161`
@@ -289,7 +291,7 @@ Pasaron a `maturity: real` en este ciclo:
 - **`cargo xtask check-specs`**: valida frontmatter (id unico, feature, status),
   `status`/`maturity` permitidos, ACs declarados con el prefijo correcto y
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
-- **`docs/specs-index.md`**: indice generado (193 specs) con
+- **`docs/specs-index.md`**: indice generado (195 specs) con
   `cargo xtask gen-specs-index`; fuente unica para ver status y madurez.
 - Estado: **193 `implemented`**, 0 `accepted`, 0 `proposed`; madurez declarada
   **58 `real`, 0 `stub`, 0 `placeholder`**.

@@ -26,11 +26,13 @@ relational, document, graph, vector and time-series data plus multimodal blobs i
 a single database directory, queried through **one extended-SQL language (RQL)**.
 
 > **Status: early development (`0.1.0`, unreleased).** The workspace spans
-> **22 crates** with **754 tests** (`cargo test --workspace -- --list`, without
-> `--all-features`). The engine is
-> under active construction; public APIs may change. Design source of truth:
-> [`docs/RuscaDB-roadmap.md`](docs/RuscaDB-roadmap.md) (see the *Estado de
-> implementación* section) and [`CHANGELOG.md`](CHANGELOG.md).
+> **23 crates**. Current spec/AC/test evidence lives in
+> [`docs/specs-index.md`](docs/specs-index.md),
+> [`docs/verification.md`](docs/verification.md) and the
+> [documentation map](docs/README.md). The engine is under active construction;
+> public APIs may change. Design source of truth:
+> [`docs/RuscaDB-roadmap.md`](docs/RuscaDB-roadmap.md) and
+> [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Highlights
 
@@ -77,7 +79,8 @@ cargo install --git https://github.com/MauricioFCC/RuscaDB --package ruscadb-cli
 ```
 
 Full matrix of targets, MCP client configuration and language bindings:
-[`docs/instalacion.md`](docs/instalacion.md).
+[`docs/instalacion.md`](docs/instalacion.md). Documentation map:
+[`docs/README.md`](docs/README.md).
 
 Add the facade crate to your project (path/git for now; not yet published):
 

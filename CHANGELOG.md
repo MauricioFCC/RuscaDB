@@ -18,6 +18,14 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 23 (2026-11-03)**: hash join para igualdad sin índice en el lado
+  interior (`O(n·m) → O(n+m)`), con semántica INNER/LEFT/RIGHT/FULL y `NULL`
+  intacta; gate de escalado 10k×10k < 5 s (SPEC-0200, AC-0200-01/02).
+- **Ciclo 22 (2026-11-03)**: documentación refactorizada con arquitectura
+  Diátaxis y fuentes canónicas (`docs/README.md`), documentos pre-proyecto
+  movidos a `docs/archive/`, roadmap con TOC y estado sin duplicar conteos, y
+  gate `scripts/check_docs.py` (enlaces, rutas personales, fences e índice)
+  cableado en CI y Gate T1 (SPEC-0199, AC-0199-01..03).
 - **Ciclo 21 (2026-11-03)**: `llvm-tools-preview` instalado vía rustup (1.97.1
   pin y 1.99.0); cobertura local medida (core 84.9 %, txn 97.0 %, wal 94.0 %,
   gate PASS). Fix de portabilidad en `coverage_gate.py`: normaliza `SF:` con

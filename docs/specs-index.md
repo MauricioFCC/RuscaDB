@@ -198,3 +198,5 @@
 | SPEC-0196 | `bindings_conformance` | implemented | real | `bindings_conformance.md` |
 | SPEC-0197 | `metrics_http` | implemented | real | `metrics_http.md` |
 | SPEC-0198 | `benchmark_suite` | implemented | real | `benchmark_suite.md` |
+| SPEC-0199 | `docs_quality` | implemented | real | `docs_quality.md` |
+| SPEC-0200 | `hash_join` | implemented | real | `hash_join.md` |

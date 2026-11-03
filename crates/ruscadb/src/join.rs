@@ -9,7 +9,7 @@
 //! fusionadas usan columnas prefijadas `tabla.columna`.
 
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use ruscadb_core::{Record, RecordId, RuscaError, ScalarValue};
 use ruscadb_query::{CompareOp, Expr, JoinClause, JoinKind, Projection, Select};
@@ -74,14 +74,23 @@ pub(crate) fn execute_join_at(
             }
         }
     } else {
+        // SPEC-0200: hash join para igualdad sin índice en el lado interior.
+        // Antes era un nested loop O(n·m); ahora O(n+m) esperado.
+        let mut buckets: HashMap<JoinKey, Vec<&Record>> = HashMap::new();
+        for inner in &inner_rows {
+            if let Some(key) = join_key(&join_value(&sides.inner, &sides.inner_column, inner)) {
+                buckets.entry(key).or_default().push(inner);
+            }
+        }
         for (index, outer) in outer_rows.iter().enumerate() {
             let key = join_value(&sides.outer, &sides.outer_column, outer);
-            for inner in &inner_rows {
-                if keys_equal(&key, &join_value(&sides.inner, &sides.inner_column, inner)) {
-                    outer_matched[index] = true;
-                    inner_matched.insert(inner.id);
-                    merged.push(merge_rows(&sides, outer, inner));
-                }
+            let Some(candidates) = join_key(&key).and_then(|key| buckets.get(&key)) else {
+                continue;
+            };
+            for inner in candidates {
+                outer_matched[index] = true;
+                inner_matched.insert(inner.id);
+                merged.push(merge_rows(&sides, outer, inner));
             }
         }
     }
@@ -322,6 +331,45 @@ fn inner_matches_indexed(
         }
     }
     Ok(matches)
+}
+
+/// Clave normalizada para el hash join (SPEC-0200).
+///
+/// Los numéricos se normalizan a `f64` para replicar la coerción de
+/// [`keys_equal`] (`Int`/`UInt`/`Float`); `NaN` y los tipos sin igualdad
+/// (`Null`, `TimestampMillis`, `Bytes`) no generan clave.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum JoinKey {
+    /// Número normalizado por sus bits IEEE-754 (`-0.0` → `0.0`).
+    Number(u64),
+    /// Texto exacto.
+    Text(String),
+    /// Booleano exacto.
+    Bool(bool),
+}
+
+/// Convierte una clave de join en su forma hashable.
+///
+/// Args:
+///     value: Valor de la columna de igualdad.
+///
+/// Returns:
+///     `Some(JoinKey)` si el valor puede emparejar; `None` si nunca iguala.
+fn join_key(value: &ScalarValue) -> Option<JoinKey> {
+    match value {
+        ScalarValue::Int(number) => Some(JoinKey::Number((*number as f64).to_bits())),
+        ScalarValue::UInt(number) => Some(JoinKey::Number((*number as f64).to_bits())),
+        ScalarValue::Float(number) => {
+            if number.is_nan() {
+                return None;
+            }
+            let normalized = if *number == 0.0 { 0.0 } else { *number };
+            Some(JoinKey::Number(normalized.to_bits()))
+        }
+        ScalarValue::Text(text) => Some(JoinKey::Text(text.clone())),
+        ScalarValue::Bool(flag) => Some(JoinKey::Bool(*flag)),
+        _ => None,
+    }
 }
 
 /// Compara dos claves de igualdad (`NULL` nunca iguala; `Int↔Float` con coerción).

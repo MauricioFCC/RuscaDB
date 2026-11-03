@@ -1,3 +1,5 @@
+> **Documento histórico (archivado 2026-11-03).** No es fuente de verdad. Estado vigente: [índice de docs](../README.md), [specs](../specs-index.md), [madurez](../RuscaDB-maturity.md) y [gap register](../RuscaDB-gap-register.md).
+
 Crear una base de datos **embebida** (como SQLite o LanceDB) que sea **multi-modelo** (documentos, grafos, relacional, vectores como SurrealDB) y **multimodal** (manejo nativo de imágenes, audio, video y texto) es uno de los proyectos más ambiciosos y necesarios en la actualidad, especialmente para aplicaciones de IA local, RAG (Retrieval-Augmented Generation) y agentes autónomos.
 
 Para lograrlo, no puedes simplemente "escribir código"; necesitas diseñar una arquitectura híbrida. Aquí tienes la hoja de ruta técnica, el stack recomendado y los pasos exactos para construirla.

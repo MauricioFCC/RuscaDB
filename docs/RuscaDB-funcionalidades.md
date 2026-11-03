@@ -357,7 +357,9 @@ cargo install --git https://github.com/MauricioFCC/RuscaDB --package ruscadb-cli
 - **Sin optimizador de consultas**: solo IndexScan por igualdad.
 - **WAL sin checkpoint en cifrado**: el WAL crece sin límite hasta checkpoint futuro.
 - **KMS/HSM externos fuera de alcance**: keystore KMS-lite local.
-- **RQL acotado**: JOIN de dos tablas con una igualdad; ORDER BY de una clave; sin subconsultas; sin MERGE (UPSERT soportado).
+- **RQL acotado**: JOIN de dos tablas con igualdad (hash join si el lado
+  interior no tiene índice, SPEC-0200); ORDER BY de una clave; subconsultas,
+  CTE y ventanas soportadas (SPEC-0161..0165); sin MERGE (UPSERT soportado).
 - **Concurrent readers**: `open_readonly` (SPEC-0109) permite lectores concurrentes sin lock.
 
 ---

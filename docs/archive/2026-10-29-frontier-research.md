@@ -1,3 +1,5 @@
+> **Documento histórico (archivado 2026-11-03).** No es fuente de verdad. Estado vigente: [índice de docs](../README.md), [specs](../specs-index.md), [madurez](../RuscaDB-maturity.md) y [gap register](../RuscaDB-gap-register.md).
+
 # RuscaDB — Investigación de frontera (estado del arte 2026)
 
 > Documento de investigación. Fecha: 2026-10-24.  

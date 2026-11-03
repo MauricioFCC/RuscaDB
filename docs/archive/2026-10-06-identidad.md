@@ -1,3 +1,5 @@
+> **Documento histórico (archivado 2026-11-03).** No es fuente de verdad. Estado vigente: [índice de docs](../README.md), [specs](../specs-index.md), [madurez](../RuscaDB-maturity.md) y [gap register](../RuscaDB-gap-register.md).
+
 Rusca: Omnívora, Indestructible, La base de datos que sobrevive a todo.
 
 Las búsquedas en registros de paquetes (como crates.io para Rust), GitHub y la web en general solo arrojan resultados sobre el apellido "Rusca", una localidad en Rumania o aplicaciones para aprender idioma ruso, pero **cero competencia en el ámbito de las bases de datos o el desarrollo de software** [[8]], [[10]].

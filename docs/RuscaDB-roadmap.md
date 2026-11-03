@@ -6,6 +6,24 @@
 >
 > Este documento es la **fuente de verdad de diseño** (spec-first): el código se
 > deriva de aquí. Identificadores en inglés; documentación en español.
+>
+> **Estado vigente (2026-11-03).** 195 specs implementadas y 650 ACs trazados;
+> cobertura local core 84.9 % / txn 97.0 % / wal 94.0 %. Este documento conserva
+> el diseño y el historial de olas; **no duplica el estado**. Fuentes canónicas:
+> [specs-index](specs-index.md) · [madurez](RuscaDB-maturity.md) ·
+> [gaps](RuscaDB-gap-register.md) · [verificación](verification.md) ·
+> [CHANGELOG](../CHANGELOG.md).
+
+**Contenido**
+
+1. [Resumen ejecutivo](#0-resumen-ejecutivo) · [Visión](#1-visión-y-alcance) ·
+   [Metodología](#2-metodología-sddsdad--tdd-adversarial--mutation)
+2. [Investigación](#3-investigación-de-frontera-rsffrs--evidencia) ·
+   [Arquitectura](#4-arquitectura) · [Storage](#5-storage-engine-y-gestión-transaccional)
+3. [Seguridad](#6-seguridad-y-hardening) · [Verificación](#7-estrategia-de-verificación-y-calidad) ·
+   [Fases](#8-hoja-de-ruta-por-fases) · [Riesgos](#9-registro-de-riesgos-técnicos)
+4. [Referencias](#10-referencias-canon-rsffrs) · Historial de olas (9–21) ·
+   [Estado actual](#estado-actual-2026-11-03)
 
 ---
 
@@ -927,6 +945,7 @@ completo + commit + CI verde antes de abrir la siguiente.
 | **Ola 6 — escritura MCP + caché persistente + BRDA + RED-first + MVP doc (SPEC-0091..0095)** | ✅ 5/5 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` + tools MCP `update`/`delete` read_write-only con RBAC delegado); SPEC-0092 (reporte de ramas BRDA por crate + artefacto JSON en CI); SPEC-0093 (sidecar `<data>.cache.json`: restauración best-effort, invalidación por mutación y omisión en bases cifradas); SPEC-0094 (`cargo xtask red` + job PR `red-first` con `scripts/red_first_gate.py`); SPEC-0095 (`docs/MVP.md` coherente con las Olas 0–6 + guard de contenido). |
 | **Ola 7 — cierre de límites del MVP (SPEC-0096…0105)** | ✅ 10/10 | 2026-10-14/16: SPEC-0096 (paginación `LIMIT/OFFSET`), SPEC-0097 (`SELECT DISTINCT`), SPEC-0098 (gate de mutación robusto; MS_diff 100 %), SPEC-0099 (`LEFT [OUTER] JOIN`), SPEC-0100 (provider LLM del harness: llama.cpp local / OpenAI prod), SPEC-0101 (compactación de índices derivados tras `reap`), SPEC-0102 (`RETURNING` en DML), SPEC-0103 (`RIGHT`/`FULL`/`CROSS JOIN`), SPEC-0104 (varios índices secundarios por tabla; catálogo v3/v4 con lectura v1/v2) y SPEC-0105 (`rollback` en modo cifrado: replay del WAL con la clave de apertura, sin tocar disco; límite retirado de `docs/MVP.md`). **448 AC trazados**. Pendiente: JOIN con `WHERE`/`ORDER BY`, KMS/HSM externo (Ola 8); `MERGE` SQL:2003 fuera de alcance. |
 | **Ola 8 — cierre de límites del MVP (SPEC-0106…0108)** | ✅ 3/3 | 2026-10-17/21: SPEC-0106 (pool acotado en modo cifrado: overlay `page_id → (lsn, offset)` + materialización perezosa desde commit records; `rollback` sin `replay()`; límite del pool retirado de `docs/MVP.md`, sustituido por «WAL sin checkpoint en cifrado») y **SPEC-0107** (`INSERT … ON CONFLICT (cols) DO NOTHING | DO UPDATE SET col = literal | excluded.col` con `RETURNING`; ambigüedad atómica; sin keywords nuevos). **464 AC trazados**. SPEC-0108 (`JOIN` con `WHERE`/`ORDER BY`) cerrado. Ola 8 completa. |
+| **Ciclo frontier 22 (docs)** | ✅ | 2026-11-03: índice Diátaxis + fuentes canónicas, archivo histórico, roadmap con TOC/estado sin duplicación, README sin conteos volátiles y gate `check_docs.py` (enlaces/rutas/fences/índice) en CI y T1 (SPEC-0199). |
 | **Ciclo frontier 21 (cobertura local)** | ✅ | 2026-11-03: rustup + `llvm-tools-preview` (1.97.1 pin y 1.99.0); `cargo llvm-cov --no-clean` sobre core/txn/wal + facade → core 84.9 %, txn 97.0 %, wal 94.0 %, gate PASS. Fix de rutas Windows en `coverage_gate.py` + test de regresión. |
 | **Ciclo frontier 20 (robustez)** | ✅ 9 ítems | 2026-11-03: saneo de nombres Prometheus + request HTTP incremental + sockets bloqueantes; `bench-gate` con umbrales validados y tope JSON 8 MiB; `open_database`/`withDatabase` con cierre garantizado; conformance CI ubuntu+windows; `retired_len` ante mutex envenenado; `scripts/check_disk.py`; guard CI del job conformance. |
 | **Ciclo frontier 19 (auditoría SPEC-0194..0198)** | ✅ 3 huecos | 2026-11-03: research trail en `docs/research/frontier-2026-11-03-spec-audit.md`. **SPEC-0196** fixture tipado Float/Text/Bool/NULL + caso de error y normalización JCS de flotantes (AC-0196-05); **SPEC-0198** gate endurecido contra cobertura reducida/entradas inválidas (AC-0198-05); **SPEC-0194** gate determinista N/2N/4N por conteo de comparaciones (AC-0194-04). **SPEC-0197** 405 + registry vivo + límite de concurrencia (AC-0197-04/05). Hash py/node `c66d25c5…`. |
@@ -972,19 +991,15 @@ SI-4 (buffer pool ≤ budget).
 - `cargo-mutants` v27.1.0 — https://mutants.rs. `proptest` 1.11 — https://docs.rs/proptest.
 - Candle (HF) — https://github.com/huggingface/candle. Rust API Guidelines — https://rust-lang.github.io/api-guidelines.
 - Skills aplicados: `atdd-spec`, `agent-rigor`, `rust-lang`, `architecture`, `security-audit`.
-- Documento base: `docs/RuscaDB-generalidades.md`.
+- Documento base (histórico): `docs/archive/2026-10-06-generalidades.md`.
 
 ---
 
-*Fin de la hoja de ruta. Fuente de verdad de diseño; toda modificación mayor
-requiere ADR y actualización de este documento antes de tocar código.*
+## Historial de olas (registro; el estado vive en las fuentes canónicas)
 
-## Estado de produccion (actualizado)
-- Ola 8: 3/3 cerradas (SPEC-0106, SPEC-0107, SPEC-0108). Todas las specs implementadas.
-- SPEC-0107 hardening: test de regresion de filas afectadas (affected count) + gates T1 verdes.
-- SPEC-0108: JOIN con WHERE/ORDER BY sobre filas fusionadas (qualificado o unico no cualificado).
-- Lineas futuras (opcionales): code review multi-agente cableado, T2 LLM-judge programado, modelo cross-encoder (requiere runtime ML), KMS/HSM externo.
-- Gates: clippy/fmt/doc/architecture/unsafe/ci-config OK, xtask trace/contract OK.
+> **Nota de lectura:** las Olas 11–13 conservan renumeraciones históricas y
+> entradas solapadas. No son fuente de verdad por spec; para el estado exacto
+> usa [specs-index](specs-index.md) y [gap-register](RuscaDB-gap-register.md).
 
 ## Ola 9 - Frontier (SPEC-0109..0112)
 
@@ -1013,7 +1028,7 @@ requiere ADR y actualización de este documento antes de tocar código.*
 
 ## Investigacion de frontera (2026-10-24)
 
-Ver `docs/RuscaDB-frontier-research.md` para el analisis completo de gaps vs.
+Ver `docs/archive/2026-10-29-frontier-research.md` para el analisis historico de gaps vs.
 estado del arte (redb, SurrealDB, LanceDB, DuckDB, SQLRite, Stoolap, MoteDB,
 LLKV, Picovolt, FFS, Turso) y el plan de Olas 10-12.
 
@@ -1193,21 +1208,24 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
 - `CAST`/`CONCAT` quedan fuera de alcance de SPEC-0161.
 
 
-## Ola 20 - Paridad SurrealDB (SPEC-0185/0186, propuestas)
+## Ola 20 - Paridad SurrealDB (SPEC-0185/0186, implementadas)
 
 - Investigación `docs/research/surrealdb-2026-11-02.md` (RELATE, graph paths,
   LET/IF/RETURN, LIVE fuera de alcance).
-- **SPEC-0185** propuesta: `RELATE` + navegación `->label->` con BFS `O(V+E)`.
-- **SPEC-0186** propuesta: `LET`/`IF`/`RETURN` con contexto por query.
-- Sin implementar aún: ninguna spec; ver estado actual.
+- **SPEC-0185** implementada: `RELATE` + navegación `->label->` con BFS `O(V+E)`.
+- **SPEC-0186** implementada: `LET`/`IF`/`RETURN` con contexto por query.
 
 ## Estado actual (2026-11-03)
 
-- 23 crates, 193 specs (`implemented`), 645 ACs trazados.
+- 23 crates, 195 specs (`implemented`), 650 ACs trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- Madurez declarada: **193 specs `implemented`, 63 `real`, 0 `stub`,
+- Madurez declarada: **195 specs `implemented`, 65 `real`, 0 `stub`,
   0 `placeholder`** (ML-KEM implementado; feature off por defecto, ver
   `docs/adr/ADR-0180-post-quantum.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).
+
+---
+
+*Fin del documento. El estado vigente se consulta en los enlaces de cabecera.*

@@ -43,6 +43,7 @@ cargo xtask check-architecture
 cargo xtask check-unsafe
 python scripts/check_ci_config.py
 python scripts/check_disk.py --min-free-gb 10
+python scripts/check_docs.py
 cargo xtask check-specs
 cargo xtask trace
 cargo xtask contract
