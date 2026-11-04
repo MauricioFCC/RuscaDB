@@ -168,3 +168,20 @@ cargo test -p ruscadb --lib encryption
 Para el detalle de cada gate de verificación y cómo correrlo localmente, consulta
 [`docs/verification.md`](verification.md). Para reportar una vulnerabilidad,
 lee [`SECURITY.md`](../SECURITY.md).
+
+## Scrape seguro de métricas (SPEC-0202)
+
+El endpoint `metrics-http` sigue siendo local por defecto. Para exponerlo fuera
+de loopback:
+
+1. **Token** (siempre disponible con `metrics-http`): define
+   `RUSCADB_METRICS_TOKEN` en el proceso o usa
+   `MetricsServer::bind_shared_with_auth`. El scrape debe enviar
+   `Authorization: Bearer <token>`; sin token responde `401`.
+2. **TLS** (feature `metrics-http-tls`): usa
+   `TlsConfig::from_paths(cert.pem, key.pem)` + `MetricsServer::bind_tls`.
+   Si falta el certificado o la clave, o el PEM no parsea, el servidor **no
+   arranca** (fail-closed), nunca cae a texto plano.
+3. Rotación de token/certificado: reinicia el servidor; no se recarga en
+   caliente. Nunca commitees tokens ni claves privadas (los fixtures de test
+   bajo `crates/ruscadb/tests/fixtures/tls/` son autofirmados y no secretos).

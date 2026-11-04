@@ -7,8 +7,7 @@
 > Este documento es la **fuente de verdad de diseño** (spec-first): el código se
 > deriva de aquí. Identificadores en inglés; documentación en español.
 >
-> **Estado vigente (2026-11-04).** 195 specs implementadas + 2 propuestas y
-> 658 ACs trazados;
+> **Estado vigente (2026-11-04).** 197 specs implementadas y 658 ACs trazados;
 > cobertura local core 84.9 % / txn 97.0 % / wal 94.0 %. Este documento conserva
 > el diseño y el historial de olas; **no duplica el estado**. Fuentes canónicas:
 > [specs-index](specs-index.md) · [madurez](RuscaDB-maturity.md) ·
@@ -946,6 +945,8 @@ completo + commit + CI verde antes de abrir la siguiente.
 | **Ola 6 — escritura MCP + caché persistente + BRDA + RED-first + MVP doc (SPEC-0091..0095)** | ✅ 5/5 | Cierra 2026-10-14: SPEC-0091 (`Database::update(table, id, scalars)` + tools MCP `update`/`delete` read_write-only con RBAC delegado); SPEC-0092 (reporte de ramas BRDA por crate + artefacto JSON en CI); SPEC-0093 (sidecar `<data>.cache.json`: restauración best-effort, invalidación por mutación y omisión en bases cifradas); SPEC-0094 (`cargo xtask red` + job PR `red-first` con `scripts/red_first_gate.py`); SPEC-0095 (`docs/MVP.md` coherente con las Olas 0–6 + guard de contenido). |
 | **Ola 7 — cierre de límites del MVP (SPEC-0096…0105)** | ✅ 10/10 | 2026-10-14/16: SPEC-0096 (paginación `LIMIT/OFFSET`), SPEC-0097 (`SELECT DISTINCT`), SPEC-0098 (gate de mutación robusto; MS_diff 100 %), SPEC-0099 (`LEFT [OUTER] JOIN`), SPEC-0100 (provider LLM del harness: llama.cpp local / OpenAI prod), SPEC-0101 (compactación de índices derivados tras `reap`), SPEC-0102 (`RETURNING` en DML), SPEC-0103 (`RIGHT`/`FULL`/`CROSS JOIN`), SPEC-0104 (varios índices secundarios por tabla; catálogo v3/v4 con lectura v1/v2) y SPEC-0105 (`rollback` en modo cifrado: replay del WAL con la clave de apertura, sin tocar disco; límite retirado de `docs/MVP.md`). **448 AC trazados**. Pendiente: JOIN con `WHERE`/`ORDER BY`, KMS/HSM externo (Ola 8); `MERGE` SQL:2003 fuera de alcance. |
 | **Ola 8 — cierre de límites del MVP (SPEC-0106…0108)** | ✅ 3/3 | 2026-10-17/21: SPEC-0106 (pool acotado en modo cifrado: overlay `page_id → (lsn, offset)` + materialización perezosa desde commit records; `rollback` sin `replay()`; límite del pool retirado de `docs/MVP.md`, sustituido por «WAL sin checkpoint en cifrado») y **SPEC-0107** (`INSERT … ON CONFLICT (cols) DO NOTHING | DO UPDATE SET col = literal | excluded.col` con `RETURNING`; ambigüedad atómica; sin keywords nuevos). **464 AC trazados**. SPEC-0108 (`JOIN` con `WHERE`/`ORDER BY`) cerrado. Ola 8 completa. |
+| **Ciclo frontier 27 (cost planner)** | ✅ | 2026-11-04: SPEC-0201 stats (`Database::analyze`, histograma, sidecar atómico, invalidación), planner por coste (`IndexScan`/`FullScan`), join `IndexNestedLoop`/`HashJoin` por coste y EXPLAIN con `ESTIMATED_ROWS`/`COST`/`STRATEGY`/`STATS`. |
+| **Ciclo frontier 26 (metrics security)** | ✅ | 2026-11-04: SPEC-0202 Bearer auth con comparación constante + TLS opcional (`metrics-http-tls`, rustls/ring, fail-closed, `close_notify`); tests AC-0202-01..04 y docs de operación. SPEC-0201 (cost planner + stats) sigue propuesta. |
 | **Ciclo frontier 22 (docs)** | ✅ | 2026-11-03: índice Diátaxis + fuentes canónicas, archivo histórico, roadmap con TOC/estado sin duplicación, README sin conteos volátiles y gate `check_docs.py` (enlaces/rutas/fences/índice) en CI y T1 (SPEC-0199). |
 | **Ciclo frontier 21 (cobertura local)** | ✅ | 2026-11-03: rustup + `llvm-tools-preview` (1.97.1 pin y 1.99.0); `cargo llvm-cov --no-clean` sobre core/txn/wal + facade → core 84.9 %, txn 97.0 %, wal 94.0 %, gate PASS. Fix de rutas Windows en `coverage_gate.py` + test de regresión. |
 | **Ciclo frontier 20 (robustez)** | ✅ 9 ítems | 2026-11-03: saneo de nombres Prometheus + request HTTP incremental + sockets bloqueantes; `bench-gate` con umbrales validados y tope JSON 8 MiB; `open_database`/`withDatabase` con cierre garantizado; conformance CI ubuntu+windows; `retired_len` ante mutex envenenado; `scripts/check_disk.py`; guard CI del job conformance. |
@@ -1218,11 +1219,11 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
 
 ## Estado actual (2026-11-03)
 
-- 23 crates, 195 specs `implemented` + 2 `proposed`, 658 ACs trazados.
+- 23 crates, 197 specs (`implemented`), 658 ACs trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- Madurez declarada: **195 specs `implemented` + 2 `proposed`, 65 `real`, 2 `stub`,
+- Madurez declarada: **197 specs `implemented`, 67 `real`, 0 `stub`,
   0 `placeholder`** (ML-KEM implementado; feature off por defecto, ver
   `docs/adr/ADR-0180-post-quantum.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).

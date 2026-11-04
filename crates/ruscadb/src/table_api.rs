@@ -25,7 +25,8 @@ use crate::edge_meta::{
     EDGE_META_TABLE, edge_key, edge_meta_scalars, lookup_edge_meta, parse_payload,
 };
 use crate::executor::{
-    Plan, Row, VirtualTable, execute_select_at_ctx, full_scan_warning, plan_for,
+    Plan, Row, VirtualTable, execute_select_at_ctx, filter_selectivity, full_scan_warning,
+    plan_for, scan_cost, strategy_name,
 };
 use crate::heap::{blank_slotted_page, heap_insert, heap_scan};
 use crate::index::index_insert;
@@ -227,6 +228,7 @@ impl Database {
         mut record: Record,
     ) -> Result<RecordId, RuscaError> {
         self.ensure_writable("insert_record")?;
+        self.mark_mutated();
         let (tx, is_auto_commit) = match self.active_tx {
             Some(tx) => (tx, false),
             None => (self.txn.begin(), true),
@@ -984,7 +986,8 @@ impl Database {
         };
         let catalog = Catalog::load(self)?;
         let table = catalog.get(&inner.from)?.clone();
-        let plan = plan_for(&inner, &catalog)?;
+        let stats = self.stats(&inner.from).cloned();
+        let plan = plan_for(&inner, &catalog, stats.as_ref())?;
         let mut lines = vec![render_plan(&plan, &inner.from)];
         if inner.filter.is_some() {
             lines.push("WHERE <predicados>".to_string());
@@ -992,11 +995,33 @@ impl Database {
         if let Some(limit) = inner.limit {
             lines.push(format!("LIMIT {limit}"));
         }
-        if matches!(plan, Plan::FullScan) {
-            let estimated = heap_scan(self, &table)?.len() as u64;
-            if let Some(warning) = full_scan_warning(&plan, estimated) {
-                lines.push(warning);
-            }
+        let estimated = match stats.as_ref() {
+            Some(stats) => (stats.rows as f64 * filter_selectivity(&inner, stats)).round() as u64,
+            None => heap_scan(self, &table)?.len() as u64,
+        };
+        let selectivity = stats
+            .as_ref()
+            .map(|stats| filter_selectivity(&inner, stats))
+            .unwrap_or(1.0);
+        lines.push(format!("ESTIMATED_ROWS {estimated}"));
+        lines.push(format!(
+            "COST {:.2}",
+            scan_cost(&plan, estimated as f64, selectivity)
+        ));
+        lines.push(format!("STRATEGY {}", strategy_name(&plan)));
+        lines.push(format!(
+            "STATS {}",
+            if stats.is_some() { "fresh" } else { "absent" }
+        ));
+        if matches!(plan, Plan::FullScan)
+            && let Some(warning) = full_scan_warning(&plan, estimated)
+        {
+            lines.push(warning);
+        }
+        if let Some(join) = &inner.join {
+            let strategy = crate::join::join_strategy_for(self, &inner, join)?;
+            lines.push(format!("JOIN {}", join.table));
+            lines.push(format!("STRATEGY {}", strategy.as_str()));
         }
         Ok(lines)
     }
@@ -1515,7 +1540,7 @@ mod tests {
 
         let select = parse("SELECT * FROM t WHERE a = 2").expect("parse");
         let catalog = database.catalog().expect("catálogo");
-        let plan = plan_for(&select, &catalog).expect("plan");
+        let plan = plan_for(&select, &catalog, None).expect("plan");
         assert_eq!(
             plan,
             Plan::IndexScan {

@@ -1,8 +1,8 @@
 ---
 id: SPEC-0202
 feature: metrics_tls_auth
-status: proposed
-maturity: stub
+status: implemented
+maturity: real
 owner: platform-team
 appetite_days: 4
 boundaries:
@@ -106,7 +106,14 @@ memoria:   O(1) adicional por conexión
 - Certificados caducados: el handshake falla; se documenta renovación.
 - TLS añade dependencias solo bajo feature; `metrics-http` puro sigue en std.
 
-## Estado
+## Estado de implementación (2026-11-04)
 
-Propuesta (2026-11-04). Sin implementación; tests scaffold `#[ignore]` en
-`crates/ruscadb/tests/proposed_specs.rs`.
+- **Auth** en `metrics-http`: `MetricsAuth::from_env()` (`RUSCADB_METRICS_TOKEN`)
+  o `bind_shared_with_auth`; comparación constante; 401 con
+  `WWW-Authenticate`; `Debug` redacta el token.
+- **TLS** en `metrics-http-tls`: `TlsConfig::from_paths` + `bind_tls` con rustls
+  (`ring`); `ServerConfig` se construye antes del bind (fail-closed);
+  `close_notify` al terminar.
+- Tests: AC-0202-01/02 en `observability.rs`; AC-0202-03/04 en
+  `crates/ruscadb/tests/metrics_security.rs` con certificado de test en
+  `tests/fixtures/tls/` (no es un secreto).

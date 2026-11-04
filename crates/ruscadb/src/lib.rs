@@ -37,6 +37,7 @@ mod join;
 mod lock;
 mod metrics;
 mod row_update;
+mod stats;
 mod table_api;
 mod ts_api;
 
@@ -251,8 +252,10 @@ pub use materialized_view::{MaterializedView, RefreshDelta};
 pub use mvcc_gc_real::{MvccGcReal, Version as MvccVersion};
 #[cfg(feature = "observability")]
 pub use observability::MetricsRegistry;
+#[cfg(feature = "metrics-http-tls")]
+pub use observability::TlsConfig;
 #[cfg(feature = "metrics-http")]
-pub use observability::MetricsServer;
+pub use observability::{MetricsAuth, MetricsServer};
 #[cfg(feature = "onnx")]
 pub use onnx::{Mlp, OnnxModel};
 #[cfg(feature = "otel")]
@@ -316,6 +319,7 @@ pub use simd::SimdOps;
 pub use sql_std::WindowFunc;
 #[cfg(feature = "ssi")]
 pub use ssi::{IsoLevel, SsiTracker};
+pub use stats::{ColumnStats, TableStats};
 #[cfg(feature = "stemming")]
 pub use stemming::SnowballStemmer;
 #[cfg(feature = "sync")]

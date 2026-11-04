@@ -97,6 +97,9 @@ zeroize = "1.9.1"
 # leer el registry en memoria en los tests.
 tracing = "0.1.44"
 metrics = "0.24.6"
+# TLS opcional del scrape Prometheus (SPEC-0202); `ring` evita aws-lc-sys.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
 metrics-util = { version = "0.20.4", default-features = false, features = ["debugging"] }
 
 # ── Lints compartidos (cada crate activa con `[lints] workspace = true`) ──────

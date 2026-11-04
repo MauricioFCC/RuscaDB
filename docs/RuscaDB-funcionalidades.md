@@ -354,7 +354,9 @@ cargo install --git https://github.com/MauricioFCC/RuscaDB --package ruscadb-cli
 
 - **Single-writer**: una única conexión de escritura por fichero (lock exclusivo).
 - **Sin cursores con estado ni streaming**: `execute` materializa todas las filas.
-- **Sin optimizador de consultas**: solo IndexScan por igualdad.
+- **Planner por coste con stats (SPEC-0201)**: `Database::analyze` y elección
+  `IndexScan`/`FullScan` + `HashJoin`/`IndexNestedLoop`; sin plan cache ni
+  correlacionadas.
 - **WAL sin checkpoint en cifrado**: el WAL crece sin límite hasta checkpoint futuro.
 - **KMS/HSM externos fuera de alcance**: keystore KMS-lite local.
 - **RQL acotado**: JOIN de dos tablas con igualdad (hash join si el lado

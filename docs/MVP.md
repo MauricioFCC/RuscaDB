@@ -93,8 +93,10 @@ cifrado.
 - **Sin cursores con estado ni streaming**: `execute` materializa todas las
   filas del resultado en memoria; la paginación es por `LIMIT`/`OFFSET`
   (SPEC-0096), no *keyset* ni cursor de servidor.
-- **Sin optimizador de consultas**: el plan solo elige `IndexScan` por igualdad
-  (la primera columna indexada del `WHERE`); sin costos, stats ni join reordering.
+- **Planner por coste con estadísticas (SPEC-0201)**: `Database::analyze`
+  calcula filas/nulos/distintos/histograma y el plan elige `IndexScan`/`FullScan`
+  y `HashJoin`/`IndexNestedLoop` por coste. Sin plan cache, join reordering ni
+  subconsultas correlacionadas.
 - **Compactación de índices derivados**: `reap` reconstruye HNSW/CSR/FTS desde
   las filas vivas (SPEC-0101), de modo que las entradas de filas purgadas
   desaparecen (sin tombstones residuales).

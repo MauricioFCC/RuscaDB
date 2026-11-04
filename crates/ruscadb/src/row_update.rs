@@ -54,6 +54,7 @@ impl Database {
         self.ensure_writable("update")?;
         // RBAC (SPEC-0066/0070): actualizar datos exige rol Write o superior.
         self.require_write("update")?;
+        self.mark_mutated();
         let mut catalog = Catalog::load(self)?;
         let definition = catalog.get(table)?.clone();
         let Some((locator, record)) = crate::delete::locate_row(self, &definition, id)? else {

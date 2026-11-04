@@ -48,6 +48,69 @@ struct JoinSides {
 ///     [`RuscaError::TableNotFound`] / [`RuscaError::ColumnNotFound`] ante
 ///     errores de esquema; [`RuscaError::TypeMismatch`] si la consulta combina
 ///     el `JOIN` con cláusulas fuera de alcance o pide columnas ambiguas.
+/// Estrategia de ejecución de un join elegida por coste (SPEC-0201).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JoinStrategy {
+    /// Lookup por índice interior por cada fila exterior.
+    IndexNestedLoop,
+    /// Build/probe con hash (SPEC-0200).
+    HashJoin,
+    /// Producto cartesiano (`CROSS JOIN`).
+    NestedLoop,
+}
+
+impl JoinStrategy {
+    /// Nombre estable para `EXPLAIN`.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::IndexNestedLoop => "IndexNestedLoop",
+            Self::HashJoin => "HashJoin",
+            Self::NestedLoop => "NestedLoop",
+        }
+    }
+}
+
+/// Elige índice interior vs hash join comparando costes estimados.
+fn choose_join_strategy(sides: &JoinSides, outer: usize, inner: usize) -> JoinStrategy {
+    if inner_is_indexed(sides) {
+        let outer_rows = outer.max(1) as f64;
+        let inner_rows = inner.max(1) as f64;
+        let indexed = outer_rows * inner_rows.log2().max(1.0);
+        let hashed = outer_rows + inner_rows;
+        if indexed < hashed {
+            return JoinStrategy::IndexNestedLoop;
+        }
+    }
+    JoinStrategy::HashJoin
+}
+
+/// Calcula la estrategia de join para `EXPLAIN` sin ejecutarlo.
+///
+/// Args:
+///     database: Base abierta.
+///     select: Consulta con la tabla exterior.
+///     join: Cláusula de join.
+///
+/// Returns:
+///     La estrategia elegida por coste.
+///
+/// Errors:
+///     Las de resolución de tablas/columnas.
+pub(crate) fn join_strategy_for(
+    database: &mut Database,
+    select: &Select,
+    join: &JoinClause,
+) -> Result<JoinStrategy, RuscaError> {
+    if join.kind == JoinKind::Cross {
+        return Ok(JoinStrategy::NestedLoop);
+    }
+    let sides = resolve_sides(database, select, join)?;
+    let snapshot = database.snapshot();
+    let outer = visible_records(database, &sides.outer, &snapshot)?.len();
+    let inner = visible_records(database, &sides.inner, &snapshot)?.len();
+    Ok(choose_join_strategy(&sides, outer, inner))
+}
+
 pub(crate) fn execute_join_at(
     database: &mut Database,
     select: &Select,
@@ -64,7 +127,8 @@ pub(crate) fn execute_join_at(
     let mut merged = Vec::new();
     let mut outer_matched = vec![false; outer_rows.len()];
     let mut inner_matched: HashSet<RecordId> = HashSet::new();
-    if inner_is_indexed(&sides) {
+    let strategy = choose_join_strategy(&sides, outer_rows.len(), inner_rows.len());
+    if strategy == JoinStrategy::IndexNestedLoop {
         for (index, outer) in outer_rows.iter().enumerate() {
             let key = join_value(&sides.outer, &sides.outer_column, outer);
             for inner in inner_matches_indexed(database, &sides, &key, snapshot)? {

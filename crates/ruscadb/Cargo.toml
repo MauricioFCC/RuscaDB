@@ -59,6 +59,9 @@ arrow = { version = "60", optional = true }
 pgwire = { version = "0.42", optional = true }
 # Métricas opcionales (SPEC-0080): solo presentes con la feature `metrics`.
 metrics = { workspace = true, optional = true }
+# SPEC-0202: TLS opcional del scrape (solo con `metrics-http-tls`).
+rustls = { workspace = true, optional = true }
+rustls-pemfile = { workspace = true, optional = true }
 
 [features]
 # Features plausibles (pure Rust, sin deps externas) activadas por defecto.
@@ -285,6 +288,8 @@ ts-advanced = []
 observability = []
 # SPEC-0197: endpoint HTTP de scrape Prometheus (std::net, OFF por defecto).
 metrics-http = ["observability"]
+# SPEC-0202: TLS del scrape (rustls; OFF por defecto).
+metrics-http-tls = ["metrics-http", "dep:rustls", "dep:rustls-pemfile"]
 # SPEC-0120: backup incremental (sin dependencias externas).
 incremental-backup = []
 

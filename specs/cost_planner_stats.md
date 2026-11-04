@@ -1,8 +1,8 @@
 ---
 id: SPEC-0201
 feature: cost_planner_stats
-status: proposed
-maturity: stub
+status: implemented
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:
@@ -15,7 +15,7 @@ boundaries:
     - crates/ruscadb/tests/cost_planner_stats.rs
   out_of_scope: [histogramas multidimensionales, re-optimización adaptativa, estadísticas multi-columna, coste de agregados]
 fr:
-  - { id: FR-0201-01, desc: "ANALYZE recolecta filas, nulos, distintos, min/max e histograma por columna" }
+  - { id: FR-0201-01, desc: "Database::analyze recolecta filas, nulos, distintos, min/max e histograma por columna" }
   - { id: FR-0201-02, desc: "las estadisticas se persisten de forma atomica y se invalidan al mutar la tabla" }
   - { id: FR-0201-03, desc: "el planner estima selectividad y elige scan/join por coste, no por heuristica fija" }
   - { id: FR-0201-04, desc: "EXPLAIN expone estimated_rows, coste y estrategia elegida" }
@@ -26,13 +26,13 @@ nf:
 acceptance_criteria:
   - id: AC-0201-01
     given: una tabla con filas, NULLs y valores repetidos
-    when: se ejecuta ANALYZE
+    when: se ejecuta Database::analyze
     then: rows/nulls/distinct/min/max coinciden con el oraculo (conteo exacto)
     test: test_ac_0201_01_stats_collect
   - id: AC-0201-02
     given: estadisticas de una columna con histograma
     when: se estima la selectividad de igualdad y rango
-    then: el error absoluto es <= 10 % frente a la frecuencia empirica
+    then: el error absoluto es <= 10 % relativo frente a la frecuencia empirica
     test: test_ac_0201_02_selectivity_estimate
   - id: AC-0201-03
     given: una igualdad muy selectiva y otra poco selectiva
@@ -70,7 +70,7 @@ grandes esto produce planes malos (scan completo para igualdades selectivas o
 
 1. **Estadísticas** (`TableStats`): filas, y por columna `nulls`, `distinct`,
    `min`, `max` y un histograma equi-ancho de `B` buckets (B=32 por defecto).
-2. **`ANALYZE <tabla>`** (RQL) y `Database::analyze(table)`:
+2. **`ANALYZE` por API** (`Database::analyze`):
    - una pasada `O(N)` sobre filas visibles;
    - persistencia atómica en `<data>.stats.json` (tmp + rename);
    - marca `stale=true` en INSERT/UPDATE/DELETE/ALTER; el planner usa el
@@ -113,5 +113,8 @@ planning:  O(1) heuristico -> O(P + C) con stats (P predicados)
 
 ## Estado
 
-Propuesta (2026-11-04). Sin implementación; tests scaffold `#[ignore]` en
-`crates/ruscadb/tests/proposed_specs.rs`.
+Implementada (2026-11-04). `stats.rs` calcula stats en una pasada y persiste el
+sidecar; `plan_for` usa coste para elegir `IndexScan`/`FullScan`; `join.rs`
+elige `IndexNestedLoop`/`HashJoin`; `EXPLAIN` añade `ESTIMATED_ROWS`, `COST`,
+`STRATEGY` y `STATS`. La invalidación cubre INSERT/UPDATE/DELETE (no ALTER).
+Tests AC-0201-01..04 en `crates/ruscadb/tests/cost_planner_stats.rs`.

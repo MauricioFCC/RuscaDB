@@ -59,7 +59,8 @@ pub(crate) fn execute_select_at_ctx(
         return execute_virtual_select(database, &effective, snapshot, &budget, ctes);
     }
     let catalog = Catalog::load(database)?;
-    let plan = plan_for(&effective, &catalog)?;
+    let stats = database.stats(&effective.from);
+    let plan = plan_for(&effective, &catalog, stats)?;
     execute_with_plan_at_ctx(database, &effective, plan, snapshot, &budget, ctes)
 }
 

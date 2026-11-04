@@ -47,6 +47,7 @@ pub(crate) use knn::*;
 pub use plan::Plan;
 pub(crate) use plan::full_scan_warning;
 pub(crate) use plan::plan_for;
+pub(crate) use plan::{filter_selectivity, scan_cost, strategy_name};
 pub(crate) use rows::*;
 pub(crate) use subquery::*;
 pub(crate) use vtable::*;

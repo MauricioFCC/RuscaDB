@@ -55,6 +55,7 @@ impl Database {
         self.ensure_writable("delete")?;
         // RBAC (SPEC-0070): borrar exige rol Write o superior.
         self.require_write("delete")?;
+        self.mark_mutated();
         let mut catalog = Catalog::load(self)?;
         let definition = catalog.get(table)?.clone();
         let Some((locator, record)) = locate_row(self, &definition, id)? else {

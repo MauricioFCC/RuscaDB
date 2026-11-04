@@ -151,6 +151,14 @@ pub struct Database {
     pub(crate) semantic_cache: SemanticCache,
     /// Coste por query acumulado (SPEC-0065).
     pub(crate) cost_report: CostReport,
+    /// Estadísticas de tabla (SPEC-0201), en memoria.
+    pub(crate) stats: BTreeMap<String, crate::stats::TableStats>,
+    /// Época en la que se analizó cada tabla.
+    pub(crate) stats_epoch: BTreeMap<String, u64>,
+    /// Contador de mutaciones para invalidar estadísticas.
+    pub(crate) mutation_epoch: u64,
+    /// Sidecar `<data>.stats.json`.
+    pub(crate) stats_path: PathBuf,
     /// Vistas materializadas persistidas en `<data>.views.json` (SPEC-0149).
     pub(crate) materialized_views: BTreeMap<String, crate::materialized_view::MaterializedView>,
     /// Ruta del sidecar de vistas materializadas.
@@ -326,6 +334,10 @@ impl Database {
             models_path: config.data_path.with_extension("models.json"),
             semantic_cache: SemanticCache::default(),
             cost_report: CostReport::default(),
+            stats: BTreeMap::new(),
+            stats_epoch: BTreeMap::new(),
+            mutation_epoch: 0,
+            stats_path: config.data_path.with_extension("stats.json"),
             materialized_views: BTreeMap::new(),
             views_path: config.data_path.with_extension("views.json"),
             query_cache: crate::query_cache::QueryCache::default(),
@@ -373,6 +385,7 @@ impl Database {
         // Caché semántico persistido (SPEC-0093): best-effort; un sidecar
         // ausente/corrupto no impide abrir la base.
         database.restore_semantic_cache();
+        database.restore_stats();
         Ok(database)
     }
 

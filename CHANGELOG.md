@@ -18,6 +18,14 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 27 (2026-11-04)**: implementada **SPEC-0201** (estadísticas de tabla
+  con histograma, sidecar atómico e invalidación; planner por coste para
+  `IndexScan`/`FullScan`; `IndexNestedLoop`/`HashJoin` por coste; EXPLAIN con
+  `ESTIMATED_ROWS`/`COST`/`STRATEGY`/`STATS`). Tests AC-0201-01..04 + persistencia.
+- **Ciclo 26 (2026-11-04)**: implementada **SPEC-0202** (Bearer auth en
+  `metrics-http` con comparación constante y TLS opcional `metrics-http-tls`
+  con rustls, fail-closed y `close_notify`); tests AC-0202-01..04 y docs de
+  operación.
 - **Ciclo 25 (2026-11-04)**: specs propuestas **SPEC-0201** (planner por coste
   y estadísticas de tabla) y **SPEC-0202** (TLS + Bearer auth en
   `metrics-http`), con ACs testeables y scaffold RED `#[ignore]`; enlazadas

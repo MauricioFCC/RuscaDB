@@ -52,6 +52,7 @@ impl Database {
     ) -> Result<Vec<RecordId>, RuscaError> {
         // RBAC (SPEC-0070): el camino del INSERT SQL también exige Write.
         self.require_write("insert")?;
+        self.mark_mutated();
         let mut catalog = Catalog::load(self)?;
         let definition = catalog.get(table)?.clone();
         // Fase 1 (sin efectos): valida el esquema de TODOS los registros antes
