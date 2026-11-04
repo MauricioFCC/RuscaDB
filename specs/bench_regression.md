@@ -2,6 +2,7 @@
 id: SPEC-0059
 feature: bench_regression
 status: implemented
+maturity: real
 owner: perf-team
 appetite_days: 4
 boundaries:

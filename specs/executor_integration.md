@@ -2,6 +2,7 @@
 id: SPEC-0017
 feature: executor_integration
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 10
 boundaries:

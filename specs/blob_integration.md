@@ -2,6 +2,7 @@
 id: SPEC-0038
 feature: blob_integration
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 6
 boundaries:

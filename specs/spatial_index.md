@@ -2,6 +2,7 @@
 id: SPEC-0114
 feature: spatial_index
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0012
 feature: query_execution
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 10
 boundaries:

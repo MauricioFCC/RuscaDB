@@ -2,6 +2,7 @@
 id: SPEC-0122
 feature: ts_retention
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:

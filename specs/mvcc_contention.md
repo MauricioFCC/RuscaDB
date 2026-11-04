@@ -2,6 +2,7 @@
 id: SPEC-0055
 feature: mvcc_contention
 status: implemented
+maturity: real
 owner: txn-team
 appetite_days: 5
 boundaries:

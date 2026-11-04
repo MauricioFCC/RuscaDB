@@ -2,6 +2,7 @@
 id: SPEC-0044
 feature: document_operators
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:

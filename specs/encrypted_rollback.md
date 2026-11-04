@@ -2,6 +2,7 @@
 id: SPEC-0105
 feature: encrypted_rollback
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 3
 boundaries:

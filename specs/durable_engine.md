@@ -2,6 +2,7 @@
 id: SPEC-0004
 feature: durable_engine
 status: implemented
+maturity: real
 owner: core-team
 appetite_days: 10
 boundaries:

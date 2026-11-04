@@ -2,6 +2,7 @@
 id: SPEC-0092
 feature: branch_coverage_report
 status: implemented
+maturity: real
 owner: quality-team
 appetite_days: 1
 boundaries:

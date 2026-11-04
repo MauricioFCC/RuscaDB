@@ -2,6 +2,7 @@
 id: SPEC-0077
 feature: schema_migration
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:

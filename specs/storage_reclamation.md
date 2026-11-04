@@ -2,6 +2,7 @@
 id: SPEC-0085
 feature: storage_reclamation
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

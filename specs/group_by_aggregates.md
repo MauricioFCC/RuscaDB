@@ -2,6 +2,7 @@
 id: SPEC-0040
 feature: group_by_aggregates
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 8
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0090
 feature: msrv_gate
 status: implemented
+maturity: real
 owner: quality-team
 appetite_days: 1
 boundaries:

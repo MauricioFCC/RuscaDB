@@ -2,6 +2,7 @@
 id: SPEC-0103
 feature: outer_cross_join
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 3
 boundaries:

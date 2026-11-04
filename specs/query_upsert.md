@@ -2,6 +2,7 @@
 id: SPEC-0107
 feature: query_upsert
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 4
 boundaries:

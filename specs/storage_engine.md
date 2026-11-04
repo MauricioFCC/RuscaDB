@@ -2,6 +2,7 @@
 id: SPEC-0003
 feature: storage_engine
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 8
 boundaries:

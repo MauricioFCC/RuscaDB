@@ -2,6 +2,7 @@
 id: SPEC-0048
 feature: ifvs_executor
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:

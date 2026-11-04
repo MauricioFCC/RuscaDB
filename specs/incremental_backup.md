@@ -2,6 +2,7 @@
 id: SPEC-0120
 feature: incremental_backup
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:

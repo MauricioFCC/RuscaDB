@@ -2,6 +2,7 @@
 id: SPEC-0081
 feature: group_commit
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

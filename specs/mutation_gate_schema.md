@@ -2,6 +2,7 @@
 id: SPEC-0098
 feature: mutation_gate_schema
 status: implemented
+maturity: real
 owner: quality-team
 appetite_days: 1
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0068
 feature: mcp_server
 status: implemented
+maturity: real
 owner: binding-team
 appetite_days: 5
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0058
 feature: hnsw_budget_pq
 status: implemented
+maturity: real
 owner: vector-team
 appetite_days: 6
 boundaries:

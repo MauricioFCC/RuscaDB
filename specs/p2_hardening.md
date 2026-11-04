@@ -2,6 +2,7 @@
 id: SPEC-0088
 feature: p2_hardening
 status: implemented
+maturity: real
 owner: security-team
 appetite_days: 3
 boundaries:

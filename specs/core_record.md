@@ -2,6 +2,7 @@
 id: SPEC-0001
 feature: core_record
 status: implemented
+maturity: real
 owner: core-team
 appetite_days: 5
 boundaries:

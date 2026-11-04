@@ -2,6 +2,7 @@
 id: SPEC-0101
 feature: derived_index_compaction
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 3
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0007
 feature: graph_store
 status: implemented
+maturity: real
 owner: index-team
 appetite_days: 6
 boundaries:

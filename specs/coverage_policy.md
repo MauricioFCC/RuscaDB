@@ -2,6 +2,7 @@
 id: SPEC-0079
 feature: coverage_policy
 status: implemented
+maturity: real
 owner: quality-team
 appetite_days: 2
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0060
 feature: datafusion_adr
 status: implemented
+maturity: real
 owner: arch-team
 appetite_days: 4
 boundaries:

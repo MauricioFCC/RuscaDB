@@ -2,6 +2,7 @@
 id: SPEC-0075
 feature: mcp_write_tools
 status: implemented
+maturity: real
 owner: binding-team
 appetite_days: 4
 boundaries:

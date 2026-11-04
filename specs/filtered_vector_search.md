@@ -2,6 +2,7 @@
 id: SPEC-0021
 feature: filtered_vector_search
 status: implemented
+maturity: real
 owner: search-team
 appetite_days: 6
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0047
 feature: ifvs_hnsw
 status: implemented
+maturity: real
 owner: search-team
 appetite_days: 6
 boundaries:

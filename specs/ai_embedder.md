@@ -2,6 +2,7 @@
 id: SPEC-0049
 feature: ai_embedder
 status: implemented
+maturity: real
 owner: ai-team
 appetite_days: 6
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0123
 feature: fts_fuzzy_scoring
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 4
 boundaries:

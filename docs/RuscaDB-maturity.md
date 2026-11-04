@@ -14,7 +14,7 @@
 |---|---|
 | Specs | **197**, todas `implemented` |
 | ACs | **658** (46 specs con 1 AC; 68 con ≤2) |
-| Madurez declarada | **67 `real`**, 130 sin `maturity` |
+| Madurez declarada | **197 `real`**, 0 sin `maturity` |
 | Suite completa | **217 suites / 1261 tests / 0 fallos** (`-j 4`) |
 | Benchmarks | **3 micro** + tests deterministas de recall, grafos y SQL |
 | Bindings | py/node conformance con hash común + CI; wasm **14 tests** |
@@ -40,7 +40,7 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 | Bindings | **L1** | py/node wrappers finos, 0 tests unitarios; wasm 14 tests; scripts de conformance py/node con hash común + CI | cobertura unitaria de wrappers | SPEC-0196 |
 | Ops/observabilidad | **L3** | `doctor`, métricas texto, scrape HTTP opt-in con TLS/auth, backup/restore, S3 local, OTLP local | sin OTLP remoto | SPEC-0197/0202 |
 | CI/calidad | **L3** | fmt/clippy/doc, trace/contract/audit, fuzz, loom, MSRV, SBOM, mutación | cobertura no medible local | — |
-| Docs/specs | **L2** | 197 specs, 658 ACs; índice Diátaxis + gate de docs | 130 sin `maturity` | — |
+| Docs/specs | **L3** | 197 specs, 658 ACs; índice Diátaxis + gate de docs + maturity completo | — | — |
 
 ## 3. Gaps priorizados
 

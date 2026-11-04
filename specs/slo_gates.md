@@ -2,6 +2,7 @@
 id: SPEC-0082
 feature: slo_gates
 status: implemented
+maturity: real
 owner: quality-team
 appetite_days: 3
 boundaries:

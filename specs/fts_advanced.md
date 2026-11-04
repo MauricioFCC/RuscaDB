@@ -2,6 +2,7 @@
 id: SPEC-0117
 feature: fts_advanced
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:

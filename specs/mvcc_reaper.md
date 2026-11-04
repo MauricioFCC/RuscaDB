@@ -2,6 +2,7 @@
 id: SPEC-0025
 feature: mvcc_reaper
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0100
 feature: llm_provider
 status: implemented
+maturity: real
 owner: harness-team
 appetite_days: 1
 boundaries:

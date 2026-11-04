@@ -2,6 +2,7 @@
 id: SPEC-0094
 feature: red_first_gate
 status: implemented
+maturity: real
 owner: quality-team
 appetite_days: 2
 boundaries:

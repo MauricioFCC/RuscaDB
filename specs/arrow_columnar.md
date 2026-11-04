@@ -2,6 +2,7 @@
 id: SPEC-0124
 feature: arrow_columnar
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

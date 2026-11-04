@@ -2,6 +2,7 @@
 id: SPEC-0099
 feature: left_join
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 3
 boundaries:

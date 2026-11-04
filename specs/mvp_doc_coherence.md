@@ -2,6 +2,7 @@
 id: SPEC-0095
 feature: mvp_doc_coherence
 status: implemented
+maturity: real
 owner: product-team
 appetite_days: 1
 boundaries:

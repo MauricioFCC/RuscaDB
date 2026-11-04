@@ -2,6 +2,7 @@
 id: SPEC-0084
 feature: ops_docs
 status: implemented
+maturity: real
 owner: docs-team
 appetite_days: 1
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0041
 feature: graph_algorithms
 status: implemented
+maturity: real
 owner: graph-team
 appetite_days: 6
 boundaries:

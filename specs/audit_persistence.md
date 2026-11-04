@@ -2,6 +2,7 @@
 id: SPEC-0073
 feature: audit_persistence
 status: implemented
+maturity: real
 owner: core-team
 appetite_days: 4
 boundaries:

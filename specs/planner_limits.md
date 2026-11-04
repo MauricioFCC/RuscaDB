@@ -2,6 +2,7 @@
 id: SPEC-0054
 feature: planner_limits
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:

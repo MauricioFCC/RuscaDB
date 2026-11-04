@@ -2,6 +2,7 @@
 id: SPEC-0056
 feature: crash_harness
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 6
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0108
 feature: join_where_order
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 3
 boundaries:

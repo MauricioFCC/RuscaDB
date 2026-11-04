@@ -2,6 +2,7 @@
 id: SPEC-0024
 feature: fvs_btree_integration
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 8
 boundaries:

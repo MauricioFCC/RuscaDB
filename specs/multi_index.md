@@ -2,6 +2,7 @@
 id: SPEC-0104
 feature: multi_index
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 3
 boundaries:

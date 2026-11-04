@@ -2,6 +2,7 @@
 id: SPEC-0076
 feature: cross_process_lock
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 3
 boundaries:

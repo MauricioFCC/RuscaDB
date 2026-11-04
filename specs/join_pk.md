@@ -2,6 +2,7 @@
 id: SPEC-0052
 feature: join_pk
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:

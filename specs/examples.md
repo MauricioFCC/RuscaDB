@@ -2,6 +2,7 @@
 id: SPEC-0087
 feature: examples
 status: implemented
+maturity: real
 owner: docs-team
 appetite_days: 2
 boundaries:

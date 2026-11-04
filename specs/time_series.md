@@ -2,6 +2,7 @@
 id: SPEC-0029
 feature: time_series
 status: implemented
+maturity: real
 owner: data-team
 appetite_days: 5
 boundaries:

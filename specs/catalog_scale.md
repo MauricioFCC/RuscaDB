@@ -2,6 +2,7 @@
 id: SPEC-0086
 feature: catalog_scale
 status: implemented
+maturity: real
 owner: catalog-team
 appetite_days: 3
 boundaries:

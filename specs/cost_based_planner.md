@@ -2,6 +2,7 @@
 id: SPEC-0142
 feature: cost_based_planner
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:

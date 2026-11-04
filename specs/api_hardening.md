@@ -2,6 +2,7 @@
 id: SPEC-0030
 feature: api_hardening
 status: implemented
+maturity: real
 owner: architecture-team
 appetite_days: 4
 boundaries:

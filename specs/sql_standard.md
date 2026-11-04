@@ -2,6 +2,7 @@
 id: SPEC-0141
 feature: sql_standard
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 8
 boundaries:

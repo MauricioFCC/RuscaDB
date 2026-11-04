@@ -2,6 +2,7 @@
 id: SPEC-0009
 feature: ai_embed
 status: implemented
+maturity: real
 owner: ai-team
 appetite_days: 5
 boundaries:

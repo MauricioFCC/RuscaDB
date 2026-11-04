@@ -2,6 +2,7 @@
 id: SPEC-0045
 feature: differential_tests
 status: implemented
+maturity: real
 owner: quality-team
 appetite_days: 5
 boundaries:

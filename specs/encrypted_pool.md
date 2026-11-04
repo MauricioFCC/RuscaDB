@@ -2,6 +2,7 @@
 id: SPEC-0106
 feature: encrypted_pool
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:

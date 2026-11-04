@@ -2,6 +2,7 @@
 id: SPEC-0121
 feature: zstd_compression
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0097
 feature: query_distinct
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 2
 boundaries:

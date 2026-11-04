@@ -2,6 +2,7 @@
 id: SPEC-0061
 feature: t2_judge_gate
 status: implemented
+maturity: real
 owner: qa-team
 appetite_days: 5
 boundaries:

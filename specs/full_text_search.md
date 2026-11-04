@@ -2,6 +2,7 @@
 id: SPEC-0014
 feature: full_text_search
 status: implemented
+maturity: real
 owner: search-team
 appetite_days: 8
 boundaries:

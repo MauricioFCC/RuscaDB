@@ -2,6 +2,7 @@
 id: SPEC-0127
 feature: pgwire_real
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:

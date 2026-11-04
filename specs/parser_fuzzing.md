@@ -2,6 +2,7 @@
 id: SPEC-0042
 feature: parser_fuzzing
 status: implemented
+maturity: real
 owner: quality-team
 appetite_days: 4
 boundaries:

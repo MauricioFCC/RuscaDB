@@ -2,6 +2,7 @@
 id: SPEC-0062
 feature: operational_hardening
 status: implemented
+maturity: real
 owner: core-team
 appetite_days: 5
 boundaries:

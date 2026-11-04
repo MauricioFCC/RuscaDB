@@ -2,6 +2,7 @@
 id: SPEC-0053
 feature: loom_mvcc
 status: implemented
+maturity: real
 owner: txn-team
 appetite_days: 5
 boundaries:

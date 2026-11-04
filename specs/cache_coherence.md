@@ -2,6 +2,7 @@
 id: SPEC-0069
 feature: cache_coherence
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:

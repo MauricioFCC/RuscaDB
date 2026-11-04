@@ -2,6 +2,7 @@
 id: SPEC-0067
 feature: blob_pipeline
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

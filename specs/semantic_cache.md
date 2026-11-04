@@ -2,6 +2,7 @@
 id: SPEC-0065
 feature: semantic_cache
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:

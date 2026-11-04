@@ -2,6 +2,7 @@
 id: SPEC-0011
 feature: crypto
 status: implemented
+maturity: real
 owner: security-team
 appetite_days: 6
 boundaries:

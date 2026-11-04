@@ -2,6 +2,7 @@
 id: SPEC-0036
 feature: order_by
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:

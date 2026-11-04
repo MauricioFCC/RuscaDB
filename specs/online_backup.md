@@ -2,6 +2,7 @@
 id: SPEC-0116
 feature: online_backup
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:

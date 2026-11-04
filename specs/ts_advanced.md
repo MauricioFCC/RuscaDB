@@ -2,6 +2,7 @@
 id: SPEC-0039
 feature: ts_advanced
 status: implemented
+maturity: real
 owner: data-team
 appetite_days: 4
 boundaries:

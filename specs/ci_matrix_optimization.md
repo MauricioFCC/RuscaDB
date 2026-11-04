@@ -2,6 +2,7 @@
 id: SPEC-0046
 feature: ci_matrix_optimization
 status: implemented
+maturity: real
 owner: platform-team
 appetite_days: 3
 boundaries:

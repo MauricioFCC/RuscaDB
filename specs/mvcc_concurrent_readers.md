@@ -2,6 +2,7 @@
 id: SPEC-0109
 feature: mvcc_concurrent_readers
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:

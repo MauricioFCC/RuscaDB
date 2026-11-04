@@ -2,6 +2,7 @@
 id: SPEC-0019
 feature: mvcc_integration
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 8
 boundaries:

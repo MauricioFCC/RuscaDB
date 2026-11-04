@@ -2,6 +2,7 @@
 id: SPEC-0096
 feature: query_pagination
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 2
 boundaries:

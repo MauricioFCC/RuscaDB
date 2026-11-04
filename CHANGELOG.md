@@ -18,6 +18,9 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 28 (2026-11-04)**: completado el metadata de specs: 130 specs
+  `implemented` sin `maturity` pasan a `real`; `check-specs` ahora **exige**
+  `maturity` (197/197 reales). Índice regenerado y madurez de docs a L3.
 - **Ciclo 27 (2026-11-04)**: implementada **SPEC-0201** (estadísticas de tabla
   con histograma, sidecar atómico e invalidación; planner por coste para
   `IndexScan`/`FullScan`; `IndexNestedLoop`/`HashJoin` por coste; EXPLAIN con

@@ -2,6 +2,7 @@
 id: SPEC-0008
 feature: multimodal
 status: implemented
+maturity: real
 owner: index-team
 appetite_days: 6
 boundaries:

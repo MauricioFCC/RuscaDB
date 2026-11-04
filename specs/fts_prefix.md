@@ -2,6 +2,7 @@
 id: SPEC-0037
 feature: fts_prefix
 status: implemented
+maturity: real
 owner: search-team
 appetite_days: 4
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0078
 feature: api_stability
 status: implemented
+maturity: real
 owner: api-team
 appetite_days: 2
 boundaries:

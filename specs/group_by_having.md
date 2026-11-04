@@ -2,6 +2,7 @@
 id: SPEC-0051
 feature: group_by_having
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 5
 boundaries:

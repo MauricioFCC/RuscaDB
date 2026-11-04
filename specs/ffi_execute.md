@@ -2,6 +2,7 @@
 id: SPEC-0026
 feature: ffi_execute
 status: implemented
+maturity: real
 owner: platform-team
 appetite_days: 5
 boundaries:

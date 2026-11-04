@@ -2,6 +2,7 @@
 id: SPEC-0074
 feature: heap_overflow_pages
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 8
 boundaries:

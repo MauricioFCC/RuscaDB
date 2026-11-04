@@ -2,6 +2,7 @@
 id: SPEC-0140
 feature: geospatial_projections
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 5
 boundaries:

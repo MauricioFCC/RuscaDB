@@ -2,6 +2,7 @@
 id: SPEC-0152
 feature: fts_proximity
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 4
 boundaries:

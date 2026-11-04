@@ -2,6 +2,7 @@
 id: SPEC-0089
 feature: release_automation
 status: implemented
+maturity: real
 owner: release-team
 appetite_days: 2
 boundaries:

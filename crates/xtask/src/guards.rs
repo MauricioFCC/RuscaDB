@@ -156,6 +156,11 @@ pub fn check_specs(root: &Path) -> Result<(), String> {
                     row.id, row.file, row.maturity
                 ));
             }
+        } else {
+            errors.push(format!(
+                "{} ({}): falta 'maturity' (real|stub|placeholder)",
+                row.id, row.file
+            ));
         }
         if let Some(previous) = seen.insert(row.id.clone(), row.file.clone()) {
             errors.push(format!(

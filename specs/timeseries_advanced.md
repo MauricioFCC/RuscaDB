@@ -2,6 +2,7 @@
 id: SPEC-0118
 feature: timeseries_advanced
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 4
 boundaries:

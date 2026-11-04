@@ -203,13 +203,13 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 - `python scripts/check_docs.py`: OK (29 ficheros, 65 enlaces; índice completo).
 - `python scripts/coverage_gate.py lcov.info --scope …`: PASS en local
   (core 84.9 %, txn 97.0 %, wal 94.0 %; rustup 1.99.0 + llvm-tools-preview).
-- `cargo xtask check-specs`: 197 specs (197 implemented), 67 `real`, 0 `stub`, 0 `placeholder`.
+- `cargo xtask check-specs`: 197 specs (197 implemented), 197 `real`, 0 `stub`, 0 `placeholder`.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
 
 ## 10. Cierre de stubs y propuestas (2026-11-03)
 
-Estado 2026-11-04: **197 specs `implemented`, 67 `real`, 0 `stub`,
+Estado 2026-11-04: **197 specs `implemented`, 197 `real`, 0 `stub`,
 0 `placeholder`**, 0 codigo sin implementar (audit: 0
 `todo!`/`unimplemented!`, 658 ACs trazados).
 

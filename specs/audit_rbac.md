@@ -2,6 +2,7 @@
 id: SPEC-0066
 feature: audit_rbac
 status: implemented
+maturity: real
 owner: core-team
 appetite_days: 5
 boundaries:

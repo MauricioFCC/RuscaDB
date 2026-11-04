@@ -2,6 +2,7 @@
 id: SPEC-0083
 feature: static_embeddings
 status: implemented
+maturity: real
 owner: ai-team
 appetite_days: 3
 boundaries:

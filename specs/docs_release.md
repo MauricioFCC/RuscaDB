@@ -2,6 +2,7 @@
 id: SPEC-0050
 feature: docs_release
 status: implemented
+maturity: real
 owner: product-team
 appetite_days: 4
 boundaries:

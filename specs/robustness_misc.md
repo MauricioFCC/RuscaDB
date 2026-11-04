@@ -2,6 +2,7 @@
 id: SPEC-0071
 feature: robustness_misc
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 3
 boundaries:

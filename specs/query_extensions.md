@@ -2,6 +2,7 @@
 id: SPEC-0015
 feature: query_extensions
 status: implemented
+maturity: real
 owner: query-team
 appetite_days: 6
 boundaries:

@@ -2,6 +2,7 @@
 id: SPEC-0002
 feature: wal_durability
 status: implemented
+maturity: real
 owner: storage-team
 appetite_days: 10
 boundaries:
