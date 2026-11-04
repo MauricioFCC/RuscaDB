@@ -7,6 +7,16 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- **Ciclo 14 (2026-11-04)**: `scripts/install.py`, instalador del ejecutable
+  equivalente a `install.ps1`/`install.sh` ejecutable con
+  `python scripts/install.py` (sin depender de la ExecutionPolicy de
+  PowerShell). Detecta target, resuelve versión, verifica SHA-256 del binario,
+  extrae con protección anti path-traversal, instala atómico y soporta
+  `--dry-run`, `--version`, `--install-dir`, `--repo` (y sus env vars).
+- `docs/instalacion.md`: sección Windows/Linux/macOS con el instalador Python.
+
 ### Fixed
 
 - **Guardrail COST-001 (presupuesto)**: el agente avisaba "No se definio

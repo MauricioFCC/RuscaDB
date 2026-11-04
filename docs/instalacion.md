@@ -53,6 +53,20 @@ curl -fsSL https://raw.githubusercontent.com/MauricioFCC/RuscaDB/main/scripts/in
 powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 ```
 
+### Windows / Linux / macOS (Python, sin PowerShell)
+
+Si la política de ejecución bloquea los `.ps1`, usa el instalador Python
+(equivalente, con verificación SHA-256 del binario):
+
+```bash
+python scripts/install.py
+python scripts/install.py --version 0.1.0 --install-dir C:\tools\ruscadb
+python scripts/install.py --dry-run   # solo resuelve target/versión/URL
+```
+
+Variables de entorno equivalentes: `RUSCADB_VERSION`, `INSTALL_DIR`,
+`RUSCADB_REPO`.
+
 ### Compilar desde fuente
 
 ```bash
