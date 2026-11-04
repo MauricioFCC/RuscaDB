@@ -496,8 +496,8 @@ cargo test --workspace --all-features -j 4   215 suites, 1251 tests, 0 fallos
 cargo clippy --workspace --all-targets --all-features -- -D warnings   OK
 cargo fmt --all -- --check                    OK
 cargo xtask audit                             0 ACs sin test, 0 todo!/unimplemented!
-cargo xtask check-specs                       195 specs (195 impl, 0 accepted, 0 proposed)
-cargo xtask trace                             650 AC
+cargo xtask check-specs                       197 specs (195 impl, 0 accepted, 2 proposed)
+cargo xtask trace                             658 AC
 cargo xtask contract                          OK
 cargo xtask check-architecture / check-unsafe OK
 python scripts/check_ci_config.py             OK (incluye conformance ubuntu+windows)

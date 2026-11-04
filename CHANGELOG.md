@@ -18,6 +18,10 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 25 (2026-11-04)**: specs propuestas **SPEC-0201** (planner por coste
+  y estadísticas de tabla) y **SPEC-0202** (TLS + Bearer auth en
+  `metrics-http`), con ACs testeables y scaffold RED `#[ignore]`; enlazadas
+  desde el backlog y el roadmap.
 - **Ciclo 24 (2026-11-03)**: análisis de alternativas aplicado al backlog
   (`hash join spill`, sort-merge, cost planner, streaming, pgwire TCP, TLS/auth,
   KMS/HSM, mdBook/Vale/EN) con decisión, coste y disparador; research docs

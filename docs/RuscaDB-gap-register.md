@@ -192,7 +192,7 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
 - `cargo test --workspace --all-features -j 4`: ultimo run completo 215 suites,
   1251 tests, 0 fallos.
-- `cargo xtask trace`: 650 AC trazados.
+- `cargo xtask trace`: 658 AC trazados.
 - `cargo xtask contract`: OK.
 - `cargo xtask check-architecture`: 0 ciclos, 0 aristas prohibidas.
 - `cargo xtask check-unsafe`: OK (presupuesto 93).
@@ -203,15 +203,15 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
 - `python scripts/check_docs.py`: OK (29 ficheros, 65 enlaces; índice completo).
 - `python scripts/coverage_gate.py lcov.info --scope …`: PASS en local
   (core 84.9 %, txn 97.0 %, wal 94.0 %; rustup 1.99.0 + llvm-tools-preview).
-- `cargo xtask check-specs`: 195 specs, 65 `real`, 0 `stub`, 0 `placeholder`.
+- `cargo xtask check-specs`: 197 specs (195 implemented + 2 proposed), 65 `real`, 2 `stub`, 0 `placeholder`.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
 
 ## 10. Cierre de stubs y propuestas (2026-11-03)
 
-Estado 2026-11-03: **195 specs `implemented`, 65 `real`, 0 `stub`,
+Estado 2026-11-04: **195 specs `implemented` + 2 `proposed` (SPEC-0201/0202), 65 `real`, 2 `stub`,
 0 `placeholder`**, 0 codigo sin implementar (audit: 0
-`todo!`/`unimplemented!`, 650 ACs trazados).
+`todo!`/`unimplemented!`, 658 ACs trazados).
 
 - **RQL frontier cableado**: `SPEC-0162` (tablas derivadas), `SPEC-0163`
   (CTE y `WITH RECURSIVE`), `SPEC-0165` (ventanas `OVER`) y `SPEC-0161`
@@ -291,7 +291,7 @@ Pasaron a `maturity: real` en este ciclo:
 - **`cargo xtask check-specs`**: valida frontmatter (id unico, feature, status),
   `status`/`maturity` permitidos, ACs declarados con el prefijo correcto y
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
-- **`docs/specs-index.md`**: indice generado (195 specs) con
+- **`docs/specs-index.md`**: indice generado (197 specs) con
   `cargo xtask gen-specs-index`; fuente unica para ver status y madurez.
 - Estado: **193 `implemented`**, 0 `accepted`, 0 `proposed`; madurez declarada
   **58 `real`, 0 `stub`, 0 `placeholder`**.

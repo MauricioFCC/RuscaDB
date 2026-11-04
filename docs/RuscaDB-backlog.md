@@ -94,8 +94,8 @@ Informe de madurez: `docs/RuscaDB-maturity.md`. Research:
 
 ## Criterio de aceptación de este cierre
 
-- **195 specs**: 195 `implemented` (0 `proposed`);
-  `cargo xtask audit` en 0 ACs sin test y **650 ACs trazados**.
+- **197 specs**: 195 `implemented` + 2 `proposed` (SPEC-0201/0202);
+  `cargo xtask audit` en 0 ACs sin test y **658 ACs trazados**.
 - Cada fase conserva ACs, complejidad y tests SQL; todas las specs
   implementadas tienen gates verdes y tests activos (sin scaffolds `#[ignore]`).
 - Lo no aplicado sigue aquí con motivo (auditoría externa PQC, KMS/HSM,
@@ -111,11 +111,11 @@ quede solo en los research docs:
 |---|---|---|---|
 | Hash join con spill (Grace/híbrido) | Diferida | Alto | `max_memory_bytes` real y `m > presupuesto` |
 | Sort-merge join | Rechazada | Medio | entradas ya ordenadas y necesidad de memoria O(1) |
-| Optimizador por coste + estadísticas | Próxima ola | Alto | tras recolectar selectividad/cardinalidad |
+| Optimizador por coste + estadísticas | Propuesta (SPEC-0201) | Alto | tras recolectar selectividad/cardinalidad |
 | Streaming / cursores con estado | Diferida | Alto | resultados mayores que el presupuesto de memoria |
 | JOIN de 3+ tablas y no-equi | Diferida | Alto | demanda real; hoy 2 tablas + igualdad |
 | Servidor pgwire TCP | Diferida | Alto | adapter de servidor (fuera del core embebido) |
-| TLS/auth en `metrics-http` | Diferida | Medio | exposición del scrape fuera de loopback |
+| TLS/auth en `metrics-http` | Propuesta (SPEC-0202) | Medio | exposición del scrape fuera de loopback |
 | KMS/HSM externo | Fuera de alcance | Alto | requisito de custodia externa |
 | mdBook/MkDocs | Diferida | Medio | publicación de documentación externa |
 | Vale/spellcheck y traducción EN | Diferida | Medio | documentación pública en inglés |

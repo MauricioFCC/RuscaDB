@@ -12,9 +12,9 @@
 
 | Métrica | Valor |
 |---|---|
-| Specs | **193**, todas `implemented` |
-| ACs | **640** (46 specs con 1 AC; 68 con ≤2) |
-| Madurez declarada | **65 `real`**, 130 sin `maturity` |
+| Specs | **197** (195 `implemented`, 2 `proposed`) |
+| ACs | **658** (46 specs con 1 AC; 68 con ≤2) |
+| Madurez declarada | **65 `real`, 2 `stub`**, 130 sin `maturity` |
 | Suite completa | **215 suites / 1251 tests / 0 fallos** (`-j 4`) |
 | Benchmarks | **3 micro** + tests deterministas de recall, grafos y SQL |
 | Bindings | py/node conformance con hash común + CI; wasm **14 tests** |
@@ -40,7 +40,7 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 | Bindings | **L1** | py/node wrappers finos, 0 tests unitarios; wasm 14 tests; scripts de conformance py/node con hash común + CI | cobertura unitaria de wrappers | SPEC-0196 |
 | Ops/observabilidad | **L3** | `doctor`, métricas texto, scrape HTTP opt-in, backup/restore, S3 local, OTLP local | sin TLS/auth ni OTLP remoto | SPEC-0197 |
 | CI/calidad | **L3** | fmt/clippy/doc, trace/contract/audit, fuzz, loom, MSRV, SBOM, mutación | cobertura no medible local | — |
-| Docs/specs | **L2** | 195 specs, 650 ACs; índice Diátaxis + gate de docs | 130 sin `maturity` | — |
+| Docs/specs | **L2** | 197 specs, 658 ACs; índice Diátaxis + gate de docs | 130 sin `maturity` | — |
 
 ## 3. Gaps priorizados
 
@@ -77,5 +77,5 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 ## 6. Criterio de cierre de este informe
 
 - Specs de mejora con ACs medibles y tests activos (sin scaffolds `#[ignore]`).
-- Gates `trace`/`contract`/`audit` verdes: 195 specs, 650 ACs.
+- Gates `trace`/`contract`/`audit` verdes: 197 specs, 658 ACs.
 - Los gaps no implementados quedan declarados en este informe y en el backlog.

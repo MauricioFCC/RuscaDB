@@ -200,3 +200,5 @@
 | SPEC-0198 | `benchmark_suite` | implemented | real | `benchmark_suite.md` |
 | SPEC-0199 | `docs_quality` | implemented | real | `docs_quality.md` |
 | SPEC-0200 | `hash_join` | implemented | real | `hash_join.md` |
+| SPEC-0201 | `cost_planner_stats` | proposed | stub | `cost_planner_stats.md` |
+| SPEC-0202 | `metrics_tls_auth` | proposed | stub | `metrics_tls_auth.md` |

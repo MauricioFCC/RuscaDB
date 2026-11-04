@@ -7,7 +7,8 @@
 > Este documento es la **fuente de verdad de diseño** (spec-first): el código se
 > deriva de aquí. Identificadores en inglés; documentación en español.
 >
-> **Estado vigente (2026-11-03).** 195 specs implementadas y 650 ACs trazados;
+> **Estado vigente (2026-11-04).** 195 specs implementadas + 2 propuestas y
+> 658 ACs trazados;
 > cobertura local core 84.9 % / txn 97.0 % / wal 94.0 %. Este documento conserva
 > el diseño y el historial de olas; **no duplica el estado**. Fuentes canónicas:
 > [specs-index](specs-index.md) · [madurez](RuscaDB-maturity.md) ·
@@ -952,7 +953,7 @@ completo + commit + CI verde antes de abrir la siguiente.
 | **Ciclo frontier 17 (SPEC-0194..0198)** | ✅ 5/5 | Auditoría de madurez (`docs/RuscaDB-maturity.md`): **SPEC-0194** sets en hot paths (O(n²)→O(n log n)), **SPEC-0195** reclaim `aborted` MVCC vía `reap`, **SPEC-0196** conformance Python/Node con hash común + tamper gate en CI y WASM parse-level, **SPEC-0197** endpoint HTTP Prometheus, **SPEC-0198** recall@10/grafos/SQL y gate `xtask bench-gate`. |
 | **Ciclo frontier 16 (SPEC-0180, SPEC-0193)** | ✅ 2/2 | SPEC-0180 (ML-KEM-768 FIPS 203 con libcrux-ml-kem verificado + híbrido X25519 + keystore + KAT ACVP; feature OFF por defecto) y SPEC-0193 (aristas con payload JSON + `ts_unix`, `ON CONFLICT`, tabla interna `__ruscadb_edge_meta` y rollback MVCC observable). |
 | **Ciclo frontier 10–14 (SPEC-0187..0192)** | ✅ 6/6 | 2026-11-02: SPEC-0187 (CRDT bytes + `last_tx_id` + manifiesto `FEATURES`), SPEC-0188 (`doctor` + métricas), SPEC-0189 (`max_result_rows` + `query_timeout_ms`), SPEC-0190 (conformance baseline), SPEC-0191 (`migrate --db check`), SPEC-0192 (`cargo xtask gc` de artefactos regenerables). Además SPEC-0162/0163/0165/0185/0186 pasan a `implemented`: tablas derivadas, CTE recursivo, ventanas `OVER`, `RELATE` + paths BFS y `execute_script` (`LET`/`IF`/`RETURN`). |
-| Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0 — resto)**: code review multi-agente cableado (FF-11); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083). **Alternativas evaluadas 2026-11-03** (spill hash join, cost planner, streaming, pgwire TCP, TLS/auth, KMS/HSM, mdBook/Vale/EN): ver `docs/RuscaDB-backlog.md` § Alternativas. |
+| Líneas futuras (sin spec aún) | ⏳ | **Flujos (análisis 2026-10-13, P0 — resto)**: code review multi-agente cableado (FF-11); retro T2-LLM-judge programada. **Producto**: modelo cross-encoder entrenado (requiere runtime ML, ver ADR-016; alternativa estática en SPEC-0083). **Alternativas evaluadas 2026-11-03** (spill hash join, sort-merge, streaming, pgwire TCP, KMS/HSM, mdBook/Vale/EN): ver `docs/RuscaDB-backlog.md` § Alternativas. **Propuestas formales**: SPEC-0201 (cost planner + stats) y SPEC-0202 (TLS/auth del scrape). |
 | Fachada `ruscadb` (ergonomía + GC) | ✅ | SPEC-0028 |
 | Documentación de estado y release | ✅ | SPEC-0050 |
 | **Motor SQL DataFusion (ADR-001)** | ✅ | **Resuelto (ADR-013)**: el motor propio RQL se mantiene como decisión consciente y el overlap con ADR-001 se cierra con un spike `TableProvider` opcional (feature `datafusion`, OFF por defecto, SPEC-0060) que demuestra paridad SQL sin cambiar el runtime por defecto. |
@@ -1217,11 +1218,11 @@ con tests de aceptacion que verifican comportamiento (no solo la firma):
 
 ## Estado actual (2026-11-03)
 
-- 23 crates, 195 specs (`implemented`), 650 ACs trazados.
+- 23 crates, 195 specs `implemented` + 2 `proposed`, 658 ACs trazados.
 - **Fuente de verdad de madurez**: `docs/RuscaDB-gap-register.md` (tabla por
   spec, stubs declarados y gaps residuales). Este documento no duplica ese
   estado para evitar drift.
-- Madurez declarada: **195 specs `implemented`, 65 `real`, 0 `stub`,
+- Madurez declarada: **195 specs `implemented` + 2 `proposed`, 65 `real`, 2 `stub`,
   0 `placeholder`** (ML-KEM implementado; feature off por defecto, ver
   `docs/adr/ADR-0180-post-quantum.md`).
 - Contratos de dependencia declarados en `architecture.toml` (obligatorio).
