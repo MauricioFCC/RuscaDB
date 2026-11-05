@@ -180,6 +180,20 @@ impl TableStats {
         }
         stats.nulls as f64 / self.rows as f64
     }
+
+    /// Cardinalidad estimada de un join de igualdad (SPEC-0201-05).
+    ///
+    /// Usa `filas_izq · filas_der / max(distinct)` (independencia + containment).
+    pub fn join_cardinality(&self, column: &str, other: &TableStats, other_column: &str) -> u64 {
+        let (Some(left), Some(right)) = (self.columns.get(column), other.columns.get(other_column))
+        else {
+            return self.rows.saturating_mul(other.rows).max(1);
+        };
+        let non_null_left = self.rows.saturating_sub(left.nulls) as f64;
+        let non_null_right = other.rows.saturating_sub(right.nulls) as f64;
+        let distinct = left.distinct.max(right.distinct).max(1) as f64;
+        ((non_null_left * non_null_right) / distinct).round() as u64
+    }
 }
 
 /// Selectividad conservadora sin estadísticas.
@@ -264,6 +278,8 @@ impl Database {
     ///     [`RuscaError::TableNotFound`] si la tabla no existe; errores de heap
     ///     o E/S al persistir el sidecar.
     pub fn analyze(&mut self, table: &str) -> Result<TableStats, RuscaError> {
+        self.ensure_writable("analyze")?;
+        self.require_write("analyze")?;
         let definition = Catalog::load(self)?.get(table)?.clone();
         let snapshot = self.snapshot();
         let records: Vec<ruscadb_core::Record> = heap_scan(self, &definition)?
@@ -275,6 +291,10 @@ impl Database {
         self.stats.insert(table.to_string(), stats.clone());
         self.stats_epoch
             .insert(table.to_string(), self.mutation_epoch);
+        // Las stats cambian el plan: invalida la caché sin invalidar las stats
+        // del resto de tablas (la época de mutaciones no cambia).
+        self.plan_cache.clear();
+        self.plan_cache_order.clear();
         self.save_stats()?;
         Ok(stats)
     }
@@ -312,7 +332,7 @@ impl Database {
     }
 
     /// Escribe el sidecar de forma atómica (tmp + rename).
-    fn save_stats(&self) -> Result<(), RuscaError> {
+    pub(crate) fn save_stats(&self) -> Result<(), RuscaError> {
         let file = StatsFile {
             epoch: self.mutation_epoch,
             tables: self.stats.clone(),

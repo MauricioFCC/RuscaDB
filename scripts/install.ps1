@@ -75,6 +75,11 @@ try {
         Write-Log "agrega $InstallDir al PATH (setx PATH `"%PATH%;$InstallDir`")"
     }
     Write-Log "prueba: ruscadb version"
+} catch {
+    Write-Error ("[ruscadb] no se pudo resolver/descargar el release: " + $_.Exception.Message + "`n" +
+        "  publica un tag v* o usa:`n" +
+        "  cargo install --git https://github.com/$Repo --package ruscadb-cli --locked")
+    exit 1
 }
 finally {
     if ($work -and (Test-Path $work)) { Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue }

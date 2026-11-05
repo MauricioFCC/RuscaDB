@@ -331,9 +331,27 @@ impl Catalog {
     }
 }
 
-impl TableDef {
-    /// Tipo declarado de una columna.
+impl Catalog {
+    /// Elimina el índice de una columna; `true` si existía (SPEC-0205).
     ///
+    /// Las páginas del índice quedan no referenciadas (asignador *bump*).
+    pub fn remove_index(&mut self, table: &str, column: &str) -> Result<bool, RuscaError> {
+        let definition = self.get_mut(table)?;
+        let before = definition.indexes.len();
+        definition.indexes.retain(|index| index.column != column);
+        Ok(definition.indexes.len() != before)
+    }
+
+    /// Elimina una tabla del catálogo; `true` si existía (SPEC-0207).
+    ///
+    /// Las páginas (heap e índices) quedan no referenciadas (asignador *bump*).
+    pub fn remove_table(&mut self, table: &str) -> Result<bool, RuscaError> {
+        Ok(self.tables.remove(table).is_some())
+    }
+}
+
+impl TableDef {
+    /// Tipo declarado de una columna.    ///
     /// Args:
     ///     column: Nombre de la columna.
     ///

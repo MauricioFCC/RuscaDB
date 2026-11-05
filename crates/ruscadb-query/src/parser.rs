@@ -74,6 +74,7 @@ pub fn parse(input: &str) -> Result<Select, RuscaError> {
         Statement::Insert(_)
         | Statement::Update(_)
         | Statement::Delete(_)
+        | Statement::Analyze { .. }
         | Statement::SetOp { .. }
         | Statement::With { .. }
         | Statement::Relate { .. }
@@ -312,6 +313,11 @@ impl Parser {
                 Ok(Statement::Explain(Explain {
                     inner: Box::new(inner),
                 }))
+            }
+            Some(Token::Keyword(Keyword::Analyze)) => {
+                self.advance();
+                let table = self.expect_ident()?;
+                Ok(Statement::Analyze { table })
             }
             Some(Token::Keyword(Keyword::Insert)) => Ok(Statement::Insert(self.parse_insert()?)),
             Some(Token::Keyword(Keyword::Update)) => Ok(Statement::Update(self.parse_update()?)),

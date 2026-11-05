@@ -28,6 +28,25 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 34 (2026-11-05)**: **SPEC-0208** disponibilidad de
+  release/instalación: validador offline de matriz target→asset, fallback
+  `cargo install --git ... --locked` en instaladores, docs con `--dry-run`.
+- **Ciclo 33 (2026-11-04)**: **SPEC-0207** `Database::drop_table` (catálogo,
+  idempotente, limpia índices/primary/stats/plan cache); recrear empieza limpio.
+  Tests AC-0207-01/02.
+- **Ciclo 32 (2026-11-04)**: **SPEC-0206** `ANALYZE <tabla>` en RQL
+  (lexer/AST/parser/executor/WASM), requiere write y reusa `Database::analyze`;
+  tests AC-0206-01/02.
+- **Ciclo 31 (2026-11-04)**: **SPEC-0205** `Database::drop_index` elimina el
+  índice del catálogo (idempotente), invalida stats/plan cache y el planner cae
+  a `FullScan`; tests AC-0205-01/02.
+- **Ciclo 30 (2026-11-04)**: **SPEC-0204** `Database::explain_analyze`
+  (`ACTUAL_ROWS`/`ACTUAL_TIME_MS`); cardinalidad de join con stats
+  (`JOIN_ESTIMATED_ROWS`, AC-0201-05) y ANALYZE invalida solo la caché de
+  planes, no las stats de otras tablas.
+- **Ciclo 29 (2026-11-04)**: implementada **SPEC-0203** (caché de planes LRU
+  acotada a 64, invalidada por DML/ANALYZE/DDL vía época, contadores
+  hits/misses; `EXPLAIN` no la consume). Tests AC-0203-01..03.
 - **Ciclo 28 (2026-11-04)**: completado el metadata de specs: 130 specs
   `implemented` sin `maturity` pasan a `real`; `check-specs` ahora **exige**
   `maturity` (197/197 reales). Índice regenerado y madurez de docs a L3.

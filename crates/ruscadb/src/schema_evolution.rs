@@ -82,6 +82,7 @@ impl Database {
         column_type: ColumnType,
     ) -> Result<(), RuscaError> {
         self.ensure_writable("alter_table_add_column")?;
+        self.mark_mutated();
         if column.trim().is_empty() {
             return Err(RuscaError::InvalidConfig(
                 "ALTER TABLE: la columna no puede estar vacia".to_string(),

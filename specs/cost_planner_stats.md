@@ -19,6 +19,7 @@ fr:
   - { id: FR-0201-02, desc: "las estadisticas se persisten de forma atomica y se invalidan al mutar la tabla" }
   - { id: FR-0201-03, desc: "el planner estima selectividad y elige scan/join por coste, no por heuristica fija" }
   - { id: FR-0201-04, desc: "EXPLAIN expone estimated_rows, coste y estrategia elegida" }
+  - { id: FR-0201-05, desc: "la cardinalidad de join se estima con distinct de las columnas" }
 nf:
   - { id: NF-0201-01, desc: "recoleccion O(N) en una pasada; memoria O(C·B) (C columnas, B buckets)" }
   - { id: NF-0201-02, desc: "sin estadisticas o stale: fallback conservador al heuristico actual, nunca error" }
@@ -44,6 +45,11 @@ acceptance_criteria:
     when: se planifica y ejecuta
     then: el planner elige IndexNestedLoop o HashJoin por coste y EXPLAIN lo declara
     test: test_ac_0201_04_join_strategy_cost
+  - id: AC-0201-05
+    given: estadisticas de dos tablas con claves conocidas
+    when: se explica un join de igualdad
+    then: JOIN_ESTIMATED_ROWS se aproxima (±20 %) al resultado real
+    test: test_ac_0201_05_join_cardinality
 exit_criteria:
   - cargo test -p ruscadb --test cost_planner_stats
   - cargo test -p ruscadb --all-features

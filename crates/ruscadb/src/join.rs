@@ -100,15 +100,21 @@ pub(crate) fn join_strategy_for(
     database: &mut Database,
     select: &Select,
     join: &JoinClause,
-) -> Result<JoinStrategy, RuscaError> {
+) -> Result<(JoinStrategy, u64), RuscaError> {
     if join.kind == JoinKind::Cross {
-        return Ok(JoinStrategy::NestedLoop);
+        return Ok((JoinStrategy::NestedLoop, 0));
     }
     let sides = resolve_sides(database, select, join)?;
     let snapshot = database.snapshot();
     let outer = visible_records(database, &sides.outer, &snapshot)?.len();
     let inner = visible_records(database, &sides.inner, &snapshot)?.len();
-    Ok(choose_join_strategy(&sides, outer, inner))
+    let estimated = match (database.stats(&select.from), database.stats(&join.table)) {
+        (Some(outer_stats), Some(inner_stats)) => {
+            outer_stats.join_cardinality(&sides.outer_column, inner_stats, &sides.inner_column)
+        }
+        _ => (outer as u64).saturating_mul(inner as u64).max(1),
+    };
+    Ok((choose_join_strategy(&sides, outer, inner), estimated))
 }
 
 pub(crate) fn execute_join_at(

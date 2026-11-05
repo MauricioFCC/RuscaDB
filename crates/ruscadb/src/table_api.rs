@@ -46,6 +46,7 @@ impl Database {
     ///     o la tabla ya existe.
     pub fn create_table(&mut self, name: &str, columns: Vec<ColumnDef>) -> Result<(), RuscaError> {
         self.ensure_writable("create_table")?;
+        self.mark_mutated();
         validate_schema(name, &columns)?;
         let mut catalog = Catalog::load(self)?;
         catalog.register_table(name, columns)?;
@@ -259,6 +260,66 @@ impl Database {
         Ok(record.id)
     }
 
+    /// Elimina el índice secundario de `table.column` (SPEC-0205).
+    ///
+    /// Args:
+    ///     table: Tabla destino.
+    ///     column: Columna indexada.
+    ///
+    /// Returns:
+    ///     `Ok(true)` si se eliminó; `false` si no existía.
+    ///
+    /// Errors:
+    ///     [`RuscaError::TableNotFound`] si la tabla no existe; errores de E/S.
+    pub fn drop_index(&mut self, table: &str, column: &str) -> Result<bool, RuscaError> {
+        self.ensure_writable("drop_index")?;
+        self.require_write("drop_index")?;
+        self.mark_mutated();
+        let mut catalog = Catalog::load(self)?;
+        let removed = catalog.remove_index(table, column)?;
+        if removed {
+            if self.active_tx.is_some() {
+                catalog.save_pages(self)?;
+            } else {
+                catalog.save(self)?;
+            }
+        }
+        Ok(removed)
+    }
+
+    /// Elimina una tabla y sus metadatos en memoria (SPEC-0207).
+    ///
+    /// Args:
+    ///     table: Tabla a eliminar.
+    ///
+    /// Returns:
+    ///     `Ok(true)` si se eliminó; `false` si no existía.
+    ///
+    /// Errors:
+    ///     Errores de E/S al persistir el catálogo.
+    pub fn drop_table(&mut self, table: &str) -> Result<bool, RuscaError> {
+        self.ensure_writable("drop_table")?;
+        self.require_write("drop_table")?;
+        self.mark_mutated();
+        let mut catalog = Catalog::load(self)?;
+        let removed = catalog.remove_table(table)?;
+        if removed {
+            if self.active_tx.is_some() {
+                catalog.save_pages(self)?;
+            } else {
+                catalog.save(self)?;
+            }
+            self.indexes.remove(table);
+            self.primary.remove(table);
+            self.stats.remove(table);
+            self.stats_epoch.remove(table);
+            self.plan_cache.clear();
+            self.plan_cache_order.clear();
+            let _ = self.save_stats();
+        }
+        Ok(removed)
+    }
+
     /// Crea un índice secundario sobre una columna y lo construye desde el heap.
     ///
     /// Una tabla puede tener varios índices (uno por columna, SPEC-0104); se
@@ -274,6 +335,7 @@ impl Database {
     ///     [`RuscaError::ColumnNotFound`] si la columna no existe;
     ///     [`RuscaError::InvalidConfig`] si esa columna ya está indexada.
     pub fn create_index(&mut self, table: &str, column: &str) -> Result<(), RuscaError> {
+        self.mark_mutated();
         let mut catalog = Catalog::load(self)?;
         {
             let definition = catalog.get(table)?;
@@ -397,7 +459,68 @@ impl Database {
         snapshot: &Snapshot,
     ) -> Result<Vec<Row>, RuscaError> {
         let statement = parse_statement(query)?;
+        // SPEC-0203: plan cache para SELECT simples (sin tabla derivada).
+        if let Statement::Select(select) = &statement
+            && select.from_derived.is_none()
+        {
+            if let Some(plan) = self.plan_cache_get(query) {
+                return crate::executor::execute_select_with_plan(self, select, plan, snapshot);
+            }
+            let catalog = Catalog::load(self)?;
+            let stats = self.stats(&select.from);
+            if let Ok(plan) = plan_for(select, &catalog, stats) {
+                self.plan_cache_store(query, plan.clone());
+                return crate::executor::execute_select_with_plan(self, select, plan, snapshot);
+            }
+        }
         self.execute_statement(statement, snapshot)
+    }
+
+    /// Consulta la caché de planes y actualiza el LRU/contadores.
+    fn plan_cache_get(&mut self, query: &str) -> Option<crate::executor::Plan> {
+        let fresh = self
+            .plan_cache
+            .get(query)
+            .is_some_and(|entry| entry.epoch == self.mutation_epoch);
+        if !fresh {
+            self.plan_cache.remove(query);
+            self.plan_cache_order.retain(|key| key != query);
+            self.plan_cache_misses = self.plan_cache_misses.wrapping_add(1);
+            return None;
+        }
+        let plan = self.plan_cache.get(query)?.plan.clone();
+        self.plan_cache_order.retain(|key| key != query);
+        self.plan_cache_order.push_back(query.to_string());
+        self.plan_cache_hits = self.plan_cache_hits.wrapping_add(1);
+        Some(plan)
+    }
+
+    /// Inserta un plan y evicta el LRU si hace falta.
+    fn plan_cache_store(&mut self, query: &str, plan: crate::executor::Plan) {
+        while self.plan_cache.len() >= crate::database::PLAN_CACHE_CAPACITY {
+            let Some(oldest) = self.plan_cache_order.pop_front() else {
+                break;
+            };
+            self.plan_cache.remove(&oldest);
+        }
+        self.plan_cache_order.retain(|key| key != query);
+        self.plan_cache_order.push_back(query.to_string());
+        self.plan_cache.insert(
+            query.to_string(),
+            crate::database::CachedPlan {
+                plan,
+                epoch: self.mutation_epoch,
+            },
+        );
+    }
+
+    /// `(hits, misses, entradas)` de la caché de planes (SPEC-0203).
+    pub fn plan_cache_stats(&self) -> (u64, u64, usize) {
+        (
+            self.plan_cache_hits,
+            self.plan_cache_misses,
+            self.plan_cache.len(),
+        )
     }
 
     /// Ejecuta una sentencia ya parseada (incluye set ops recursivas).
@@ -509,6 +632,10 @@ impl Database {
                 let expr = substitute_expr_vars(&expr, vars)?;
                 let value = crate::executor::eval_scalar(&expr, &ScalarMap::new())?;
                 Ok(vec![Row::from([("value".to_string(), value)])])
+            }
+            Statement::Analyze { table } => {
+                self.analyze(&table)?;
+                Ok(Vec::new())
             }
             Statement::Explain(_) => Err(RuscaError::ParseError {
                 message:
@@ -973,6 +1100,7 @@ impl Database {
             Statement::Insert(_)
             | Statement::Update(_)
             | Statement::Delete(_)
+            | Statement::Analyze { .. }
             | Statement::SetOp { .. }
             | Statement::With { .. }
             | Statement::Relate { .. }
@@ -1019,10 +1147,39 @@ impl Database {
             lines.push(warning);
         }
         if let Some(join) = &inner.join {
-            let strategy = crate::join::join_strategy_for(self, &inner, join)?;
+            let (strategy, estimated) = crate::join::join_strategy_for(self, &inner, join)?;
             lines.push(format!("JOIN {}", join.table));
+            lines.push(format!("JOIN_ESTIMATED_ROWS {estimated}"));
             lines.push(format!("STRATEGY {}", strategy.as_str()));
         }
+        Ok(lines)
+    }
+
+    /// Ejecuta `EXPLAIN ANALYZE`: plan + filas/tiempo reales (SPEC-0204).
+    ///
+    /// Args:
+    ///     query: Texto `EXPLAIN <select>`.
+    ///
+    /// Returns:
+    ///     Líneas del plan más `ACTUAL_ROWS` y `ACTUAL_TIME_MS`.
+    ///
+    /// Errors:
+    ///     Las de [`Self::explain`] o las de la ejecución del `SELECT`.
+    pub fn explain_analyze(&mut self, query: &str) -> Result<Vec<String>, RuscaError> {
+        let mut lines = self.explain(query)?;
+        let sql = query
+            .trim_start()
+            .split_once(char::is_whitespace)
+            .map(|(_, rest)| rest.trim_start())
+            .unwrap_or_default();
+        let started = std::time::Instant::now();
+        let rows = self.execute(sql)?;
+        let elapsed = started.elapsed();
+        lines.push(format!("ACTUAL_ROWS {}", rows.len()));
+        lines.push(format!(
+            "ACTUAL_TIME_MS {:.3}",
+            elapsed.as_secs_f64() * 1000.0
+        ));
         Ok(lines)
     }
 
@@ -1236,6 +1393,7 @@ fn is_write_statement(statement: &Statement) -> bool {
         Statement::Insert(_)
         | Statement::Update(_)
         | Statement::Delete(_)
+        | Statement::Analyze { .. }
         | Statement::Relate { .. } => true,
         Statement::SetOp { left, right, .. } => {
             is_write_statement(left) || is_write_statement(right)

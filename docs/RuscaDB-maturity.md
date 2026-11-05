@@ -12,10 +12,10 @@
 
 | Métrica | Valor |
 |---|---|
-| Specs | **197**, todas `implemented` |
-| ACs | **658** (46 specs con 1 AC; 68 con ≤2) |
-| Madurez declarada | **197 `real`**, 0 sin `maturity` |
-| Suite completa | **217 suites / 1261 tests / 0 fallos** (`-j 4`) |
+| Specs | **203**, todas `implemented` |
+| ACs | **674** (46 specs con 1 AC; 68 con ≤2) |
+| Madurez declarada | **203 `real`**, 0 sin `maturity` |
+| Suite completa | **223 suites / 1277 tests / 0 fallos** (`-j 4`) |
 | Benchmarks | **3 micro** + tests deterministas de recall, grafos y SQL |
 | Bindings | py/node conformance con hash común + CI; wasm **14 tests** |
 | Mutación | nightly `cargo mutants --workspace` en 8 shards; gate MS ≥ 85 % (local: `gc` 85.3 %, `segmented_wal` 85.7 %) |
@@ -32,7 +32,7 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 | Core record/catalog | **L3** | 4 archivos, 7 tests; catálogo v1–v4 con overflow | `drop_column`/`rename_column` ausentes | — |
 | Storage/page/buffer | **L3** | 4 archivos, 27 tests; LRU-K, free-list, checksums, sets en hot paths | compactación de páginas | SPEC-0194 |
 | WAL/MVCC | **L3** | 7 archivos, 148 marcadores; group commit, segmented, cifrado, crash harness, loom, SSI | sin Jepsen externo | SPEC-0195 (reclaim) |
-| Query/RQL | **L3** | 6 archivos, 105 marcadores; SELECT/DML/joins/CTE/ventanas/subconsultas/set-ops; planner por coste + stats (SPEC-0201) | plan cache, correlacionadas/laterales | — |
+| Query/RQL | **L3** | 6 archivos, 105 marcadores; SELECT/DML/joins/CTE/ventanas/subconsultas/set-ops; planner por coste + stats + plan cache + EXPLAIN ANALYZE (SPEC-0201/0203/0204) | correlacionadas/laterales | — |
 | Índices B-tree/HNSW/IVF/FVS/FTS | **L3** | 13 archivos, 187 marcadores; recall, ACORN, RaBitQ, BM25; recall@10 determinista | sin ANN-Benchmarks externo | SPEC-0198 |
 | Grafo | **L2** | CSR, algoritmos, `RELATE`, BFS; 50 marcadores | sin LDBC Graphalytics ni edge delete | SPEC-0198 |
 | Multimodal/AI | **L2** | CAS blobs, embeddings estáticos, MLP ONNX-like | sin runtime ONNX real/GPU | — |
@@ -40,7 +40,7 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 | Bindings | **L1** | py/node wrappers finos, 0 tests unitarios; wasm 14 tests; scripts de conformance py/node con hash común + CI | cobertura unitaria de wrappers | SPEC-0196 |
 | Ops/observabilidad | **L3** | `doctor`, métricas texto, scrape HTTP opt-in con TLS/auth, backup/restore, S3 local, OTLP local | sin OTLP remoto | SPEC-0197/0202 |
 | CI/calidad | **L3** | fmt/clippy/doc, trace/contract/audit, fuzz, loom, MSRV, SBOM, mutación | cobertura no medible local | — |
-| Docs/specs | **L3** | 197 specs, 658 ACs; índice Diátaxis + gate de docs + maturity completo | — | — |
+| Docs/specs | **L3** | 203 specs, 674 ACs; índice Diátaxis + gate de docs + maturity completo | — | — |
 
 ## 3. Gaps priorizados
 
@@ -77,5 +77,5 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 ## 6. Criterio de cierre de este informe
 
 - Specs de mejora con ACs medibles y tests activos (sin scaffolds `#[ignore]`).
-- Gates `trace`/`contract`/`audit` verdes: 197 specs, 658 ACs.
+- Gates `trace`/`contract`/`audit` verdes: 203 specs, 674 ACs.
 - Los gaps no implementados quedan declarados en este informe y en el backlog.

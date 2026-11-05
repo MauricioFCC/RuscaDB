@@ -175,6 +175,50 @@ fn test_ac_0201_04_join_strategy_cost() {
     assert!(text.contains("STRATEGY IndexNestedLoop"), "{text}");
 }
 
+/// AC-0201-05 — la cardinalidad estimada del join se aproxima al resultado real.
+#[test] // @spec AC-0201-05
+fn test_ac_0201_05_join_cardinality() {
+    let dir = tempfile::tempdir().expect("dir");
+    let path = dir.path().join("join-cardinality.db");
+    let mut db = Database::open(DbConfig::new(&path, 256)).expect("open");
+    for table in ["a", "b"] {
+        db.create_table(
+            table,
+            vec![column("id", ColumnType::Int), column("k", ColumnType::Int)],
+        )
+        .expect("create");
+    }
+    db.begin();
+    for value in 0..100 {
+        db.insert("a", ints(value, value)).expect("insert a");
+    }
+    for value in 0..1_000 {
+        db.insert("b", ints(value, value % 10)).expect("insert b");
+    }
+    db.commit().expect("commit");
+    db.analyze("a").expect("analyze a");
+    db.analyze("b").expect("analyze b");
+
+    let lines = db
+        .explain("EXPLAIN SELECT * FROM a JOIN b ON a.k = b.k")
+        .expect("explain join");
+    let estimated: u64 = lines
+        .iter()
+        .find_map(|line| line.strip_prefix("JOIN_ESTIMATED_ROWS "))
+        .and_then(|value| value.parse().ok())
+        .expect("JOIN_ESTIMATED_ROWS");
+    let actual = db
+        .execute("SELECT * FROM a JOIN b ON a.k = b.k LIMIT 100000")
+        .expect("join")
+        .len() as u64;
+    assert_eq!(actual, 1_000, "100 claves × 10 filas por clave");
+    let error = estimated.abs_diff(actual) as f64 / actual as f64;
+    assert!(
+        error <= 0.20,
+        "estimado {estimated}, real {actual}, error {error:.2}"
+    );
+}
+
 /// Las stats persisten y se invalidan al mutar la tabla.
 #[test]
 fn stats_persist_and_invalidate() {

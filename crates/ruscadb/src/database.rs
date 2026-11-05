@@ -83,6 +83,18 @@ impl DbConfig {
     }
 }
 
+/// Entrada de la caché de planes (SPEC-0203).
+#[derive(Debug, Clone)]
+pub(crate) struct CachedPlan {
+    /// Plan de acceso elegido.
+    pub(crate) plan: crate::executor::Plan,
+    /// Época de mutaciones al planificar.
+    pub(crate) epoch: u64,
+}
+
+/// Capacidad máxima de la caché de planes.
+pub(crate) const PLAN_CACHE_CAPACITY: usize = 64;
+
 /// Base de datos embebida con durabilidad WAL-first.
 pub struct Database {
     file: PagedFile,
@@ -159,6 +171,11 @@ pub struct Database {
     pub(crate) mutation_epoch: u64,
     /// Sidecar `<data>.stats.json`.
     pub(crate) stats_path: PathBuf,
+    /// Caché de planes por SQL (SPEC-0203), acotada y con LRU.
+    pub(crate) plan_cache: BTreeMap<String, CachedPlan>,
+    pub(crate) plan_cache_order: std::collections::VecDeque<String>,
+    pub(crate) plan_cache_hits: u64,
+    pub(crate) plan_cache_misses: u64,
     /// Vistas materializadas persistidas en `<data>.views.json` (SPEC-0149).
     pub(crate) materialized_views: BTreeMap<String, crate::materialized_view::MaterializedView>,
     /// Ruta del sidecar de vistas materializadas.
@@ -338,6 +355,10 @@ impl Database {
             stats_epoch: BTreeMap::new(),
             mutation_epoch: 0,
             stats_path: config.data_path.with_extension("stats.json"),
+            plan_cache: BTreeMap::new(),
+            plan_cache_order: std::collections::VecDeque::new(),
+            plan_cache_hits: 0,
+            plan_cache_misses: 0,
             materialized_views: BTreeMap::new(),
             views_path: config.data_path.with_extension("views.json"),
             query_cache: crate::query_cache::QueryCache::default(),

@@ -3,6 +3,12 @@
 RuscaDB es una libreria embebida: no hay servidor ni red. Se anexa al proyecto
 como dependencia (Rust) o se instala el ejecutable `ruscadb` (CLI + servidor MCP).
 
+> **Sin release publicado todavía.** `releases/latest` devuelve 404 hasta crear
+> un tag `v*`, así que los instaladores por binario fallarán. Usa el fallback
+> reproducible `cargo install --git https://github.com/MauricioFCC/RuscaDB
+> --package ruscadb-cli --locked` (añade `--dry-run` para validar target/URL sin
+> instalar).
+
 ## 1. Rust (crate `ruscadb`)
 
 Anadir desde GitHub (un solo comando):

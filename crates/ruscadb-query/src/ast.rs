@@ -726,6 +726,11 @@ pub enum Statement {
     Select(Select),
     /// `EXPLAIN <select>`.
     Explain(Explain),
+    /// `ANALYZE <tabla>`: refresca estadísticas (SPEC-0206).
+    Analyze {
+        /// Tabla a analizar.
+        table: String,
+    },
     /// `INSERT INTO ... VALUES ...` (SPEC-0043).
     Insert(Insert),
     /// `UPDATE ... SET ... [WHERE ...]` (SPEC-0043).
@@ -1350,6 +1355,7 @@ impl fmt::Display for Statement {
         match self {
             Self::Select(select) => write!(formatter, "{select}"),
             Self::Explain(explain) => write!(formatter, "{explain}"),
+            Self::Analyze { table } => write!(formatter, "ANALYZE {table}"),
             Self::Insert(insert) => write!(formatter, "{insert}"),
             Self::Update(update) => write!(formatter, "{update}"),
             Self::Delete(delete) => write!(formatter, "{delete}"),

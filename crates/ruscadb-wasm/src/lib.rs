@@ -180,6 +180,7 @@ fn statement_json(statement: &Statement) -> Value {
         Statement::Explain(explain) => {
             json!({ "kind": "explain", "inner": select_json(&explain.inner) })
         }
+        Statement::Analyze { table } => json!({ "kind": "analyze", "table": table }),
         Statement::Insert(insert) => json!({
             "kind": "insert",
             "table": &insert.table,

@@ -78,6 +78,11 @@ powershell -ExecutionPolicy Bypass -File scripts/install.ps1
 cargo install --git https://github.com/MauricioFCC/RuscaDB --package ruscadb-cli --locked
 ```
 
+> **No release published yet.** `releases/latest` returns 404, so the binary
+> installers above fail until a `v*` tag is published. Use the source fallback
+> and validate target/URL without installing:
+> `cargo install --git https://github.com/MauricioFCC/RuscaDB --package ruscadb-cli --locked --dry-run`.
+
 Full matrix of targets, MCP client configuration and language bindings:
 [`docs/instalacion.md`](docs/instalacion.md). Documentation map:
 [`docs/README.md`](docs/README.md).

@@ -47,8 +47,8 @@ resolve_version() {
     return
   fi
   version="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-    | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1)"
-  [ -n "$version" ] || die "no se pudo resolver la ultima version"
+    | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1)" || true
+  [ -n "$version" ] || die "no se pudo resolver la ultima version de ${REPO} (¿tag v* publicado?). Mientras tanto: cargo install --git https://github.com/${REPO} --package ruscadb-cli --locked"
   printf '%s' "$version"
 }
 
@@ -60,7 +60,7 @@ main() {
   trap 'rm -rf "$workdir"' EXIT
 
   log "instalando ruscadb ${version} para ${target}"
-  curl -fsSL "$url" -o "${workdir}/ruscadb.tar.gz" || die "fallo la descarga: $url"
+  curl -fsSL "$url" -o "${workdir}/ruscadb.tar.gz" || die "fallo la descarga: $url (¿release v${version} publicado?). Fallback: cargo install --git https://github.com/${REPO} --package ruscadb-cli --locked"
   tar -xzf "${workdir}/ruscadb.tar.gz" -C "$workdir"
 
   if [ -f "${workdir}/ruscadb-${target}.sha256" ]; then

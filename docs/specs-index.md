@@ -202,3 +202,9 @@
 | SPEC-0200 | `hash_join` | implemented | real | `hash_join.md` |
 | SPEC-0201 | `cost_planner_stats` | implemented | real | `cost_planner_stats.md` |
 | SPEC-0202 | `metrics_tls_auth` | implemented | real | `metrics_tls_auth.md` |
+| SPEC-0203 | `plan_cache` | implemented | real | `plan_cache.md` |
+| SPEC-0204 | `explain_analyze` | implemented | real | `explain_analyze.md` |
+| SPEC-0205 | `drop_index` | implemented | real | `drop_index.md` |
+| SPEC-0206 | `analyze_rql` | implemented | real | `analyze_rql.md` |
+| SPEC-0207 | `drop_table` | implemented | real | `drop_table.md` |
+| SPEC-0208 | `release_availability` | implemented | real | `release_availability.md` |

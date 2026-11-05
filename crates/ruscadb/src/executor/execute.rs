@@ -43,6 +43,27 @@ pub(crate) fn execute_select_at_ctx(
     snapshot: &Snapshot,
     ctes: &BTreeMap<String, VirtualTable>,
 ) -> Result<Vec<Row>, RuscaError> {
+    execute_select_inner(database, select, snapshot, ctes, None)
+}
+
+/// Ejecuta un `SELECT` con un plan ya calculado (caché, SPEC-0203).
+pub(crate) fn execute_select_with_plan(
+    database: &mut Database,
+    select: &Select,
+    plan: Plan,
+    snapshot: &Snapshot,
+) -> Result<Vec<Row>, RuscaError> {
+    execute_select_inner(database, select, snapshot, &BTreeMap::new(), Some(plan))
+}
+
+/// Núcleo de un `SELECT`: presupuesto, subconsultas, límite y plan.
+fn execute_select_inner(
+    database: &mut Database,
+    select: &Select,
+    snapshot: &Snapshot,
+    ctes: &BTreeMap<String, VirtualTable>,
+    plan_override: Option<Plan>,
+) -> Result<Vec<Row>, RuscaError> {
     // Planner (SPEC-0054): budget pre-ejecución + LIMIT implícito + deadline.
     check_budget(select)?;
     let mut effective = select.clone();
@@ -58,9 +79,14 @@ pub(crate) fn execute_select_at_ctx(
     if effective.from_derived.is_some() || ctes.contains_key(&effective.from) {
         return execute_virtual_select(database, &effective, snapshot, &budget, ctes);
     }
-    let catalog = Catalog::load(database)?;
-    let stats = database.stats(&effective.from);
-    let plan = plan_for(&effective, &catalog, stats)?;
+    let plan = match plan_override {
+        Some(plan) => plan,
+        None => {
+            let catalog = Catalog::load(database)?;
+            let stats = database.stats(&effective.from);
+            plan_for(&effective, &catalog, stats)?
+        }
+    };
     execute_with_plan_at_ctx(database, &effective, plan, snapshot, &budget, ctes)
 }
 

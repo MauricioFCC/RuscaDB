@@ -51,6 +51,8 @@ pub enum Keyword {
     Depth,
     /// `EXPLAIN`
     Explain,
+    /// `ANALYZE` (refresca estadísticas de tabla, SPEC-0206).
+    Analyze,
     /// `MATCH` (búsqueda full-text dentro del `WHERE`).
     Match,
     /// `ORDER`
@@ -162,6 +164,7 @@ impl Keyword {
             Self::Traverse => "TRAVERSE",
             Self::Depth => "DEPTH",
             Self::Explain => "EXPLAIN",
+            Self::Analyze => "ANALYZE",
             Self::Match => "MATCH",
             Self::Order => "ORDER",
             Self::By => "BY",
@@ -238,6 +241,7 @@ impl Keyword {
             "traverse" => Some(Self::Traverse),
             "depth" => Some(Self::Depth),
             "explain" => Some(Self::Explain),
+            "analyze" => Some(Self::Analyze),
             "match" => Some(Self::Match),
             "order" => Some(Self::Order),
             "by" => Some(Self::By),

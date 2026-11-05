@@ -94,8 +94,8 @@ Informe de madurez: `docs/RuscaDB-maturity.md`. Research:
 
 ## Criterio de aceptación de este cierre
 
-- **197 specs**: 197 `implemented` (0 `proposed`);
-  `cargo xtask audit` en 0 ACs sin test y **658 ACs trazados**.
+- **203 specs**: 203 `implemented` (0 `proposed`);
+  `cargo xtask audit` en 0 ACs sin test y **674 ACs trazados**.
 - Cada fase conserva ACs, complejidad y tests SQL; todas las specs
   implementadas tienen gates verdes y tests activos (sin scaffolds `#[ignore]`).
 - Lo no aplicado sigue aquí con motivo (auditoría externa PQC, KMS/HSM,
@@ -112,6 +112,10 @@ quede solo en los research docs:
 | Hash join con spill (Grace/híbrido) | Diferida | Alto | `max_memory_bytes` real y `m > presupuesto` |
 | Sort-merge join | Rechazada | Medio | entradas ya ordenadas y necesidad de memoria O(1) |
 | Optimizador por coste + estadísticas | Implementado (SPEC-0201) | Alto | stats + planner + EXPLAIN con coste |
+| Plan cache / correlacionadas / laterales | Plan cache implementado (SPEC-0203); correlacionadas/laterales pendientes | Alto | siguiente ola de query |
+| ANALYZE en RQL | Implementado (SPEC-0206) | Bajo | stats refrescables desde SQL |
+| Release/instalación | Implementado (SPEC-0208): validador offline, fallback git, docs `--dry-run` | Bajo | crear tag `v*` para publicar |
+| DROP INDEX / DROP TABLE | Implementados (SPEC-0205/0207); reclamación de páginas pendiente | Medio | siguiente ola de schema |
 | Streaming / cursores con estado | Diferida | Alto | resultados mayores que el presupuesto de memoria |
 | JOIN de 3+ tablas y no-equi | Diferida | Alto | demanda real; hoy 2 tablas + igualdad |
 | Servidor pgwire TCP | Diferida | Alto | adapter de servidor (fuera del core embebido) |
