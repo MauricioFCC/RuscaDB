@@ -94,8 +94,8 @@ Informe de madurez: `docs/RuscaDB-maturity.md`. Research:
 
 ## Criterio de aceptación de este cierre
 
-- **204 specs**: 204 `implemented` (0 `proposed`);
-  `cargo xtask audit` en 0 ACs sin test y **676 ACs trazados**.
+- **205 specs**: 205 `implemented` (0 `proposed`);
+  `cargo xtask audit` en 0 ACs sin test y **680 ACs trazados**.
 - Cada fase conserva ACs, complejidad y tests SQL; todas las specs
   implementadas tienen gates verdes y tests activos (sin scaffolds `#[ignore]`).
 - Lo no aplicado sigue aquí con motivo (auditoría externa PQC, KMS/HSM,
@@ -116,7 +116,7 @@ quede solo en los research docs:
 | ANALYZE en RQL | Implementado (SPEC-0206) | Bajo | stats refrescables desde SQL |
 | Release/instalación | Implementado (SPEC-0208): validador offline, fallback git, docs `--dry-run` | Bajo | crear tag `v*` para publicar |
 | DROP INDEX / DROP TABLE | Implementados en RQL (SPEC-0205/0207/0209); reclamación de páginas y CASCADE pendientes | Medio | siguiente ola de schema |
-| Streaming / cursores con estado | Diferida | Alto | resultados mayores que el presupuesto de memoria |
+| Streaming / cursores con estado | Streaming simple implementado (SPEC-0210); cursores reanudables y streaming de JOIN/agregados/ORDER BY pendientes | Medio | resultados mayores que el presupuesto de memoria |
 | JOIN de 3+ tablas y no-equi | Diferida | Alto | demanda real; hoy 2 tablas + igualdad |
 | Servidor pgwire TCP | Diferida | Alto | adapter de servidor (fuera del core embebido) |
 | TLS/auth en `metrics-http` | Implementado (SPEC-0202) | Medio | Bearer + rustls con fail-closed |

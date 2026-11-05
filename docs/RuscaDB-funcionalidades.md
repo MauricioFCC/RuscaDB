@@ -353,7 +353,9 @@ cargo install --git https://github.com/MauricioFCC/RuscaDB --package ruscadb-cli
 ## 11. Límites conocidos
 
 - **Single-writer**: una única conexión de escritura por fichero (lock exclusivo).
-- **Sin cursores con estado ni streaming**: `execute` materializa todas las filas.
+- **Streaming simple (SPEC-0210)**: `execute_stream` entrega filas por callback
+  (memoria O(1) y parada temprana) para `SELECT` sin JOIN/agregados/orden; no hay
+  cursores con estado ni cursor de servidor.
 - **Planner por coste con stats (SPEC-0201)**: `Database::analyze` y elección
   `IndexScan`/`FullScan` + `HashJoin`/`IndexNestedLoop`; sin plan cache ni
   correlacionadas.

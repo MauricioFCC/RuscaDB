@@ -13,6 +13,7 @@ use ruscadb_core::{
     Edge, EdgeSet, Embedding, EmbeddingMeta, Metric, Record, RecordId, RecordMeta, RuscaError,
     ScalarMap, ScalarValue,
 };
+use ruscadb_query::limits::IMPLICIT_LIMIT;
 use ruscadb_query::{
     Cte, Expr, RecordRef, RelateConflict, Select, SetOpKind, Statement, parse_script,
     parse_statement,
@@ -26,11 +27,30 @@ use crate::edge_meta::{
 };
 use crate::executor::{
     Plan, Row, VirtualTable, execute_select_at_ctx, filter_selectivity, full_scan_warning,
-    plan_for, scan_cost, strategy_name,
+    is_visible, keeps_row, materialize_subqueries_ctx, plan_for, project_row, scan_cost,
+    strategy_name,
 };
-use crate::heap::{blank_slotted_page, heap_insert, heap_scan};
+use crate::heap::{blank_slotted_page, heap_for_each, heap_insert, heap_scan};
 use crate::index::index_insert;
 use crate::indexes::TableIndexes;
+
+/// Indica si un filtro contiene `MATCH` en cualquier nivel lógico.
+///
+/// Args:
+///     expression: Filtro `WHERE` (opcional).
+///
+/// Returns:
+///     `true` si hay un `MATCH` bajo `AND`/`OR`/`NOT`.
+fn has_match(expression: Option<&Expr>) -> bool {
+    match expression {
+        Some(Expr::Match { .. }) => true,
+        Some(Expr::And(left, right) | Expr::Or(left, right)) => {
+            has_match(Some(left)) || has_match(Some(right))
+        }
+        Some(Expr::Not(inner)) => has_match(Some(inner)),
+        _ => false,
+    }
+}
 
 impl Database {
     /// Crea una tabla con su esquema y reserva su primera página de heap.
@@ -440,6 +460,147 @@ impl Database {
         self.note_execution(rows.len(), nanos);
         self.note_audit("execute", query);
         Ok(rows)
+    }
+
+    /// Ejecuta un `SELECT` simple en streaming, sin materializar el resultado.
+    ///
+    /// Recorre el heap fila a fila aplicando visibilidad MVCC, `WHERE`,
+    /// `OFFSET`, proyección y `LIMIT`; entrega cada fila proyectada al callback
+    /// y solo retiene una fila a la vez (memoria O(1) en filas). Si el callback
+    /// devuelve `Ok(false)` se corta el recorrido (parada temprana).
+    ///
+    /// Solo admite `SELECT` sin `JOIN`, tabla derivada, `KNN`, `TRAVERSE`,
+    /// agregados/`GROUP BY`/`HAVING`, `ORDER BY`, `DISTINCT`, ventanas,
+    /// expresiones ni paths; esas formas necesitan materializar y deben
+    /// ejecutarse con [`Database::execute`].
+    ///
+    /// Args:
+    ///     query: Texto RQL de un `SELECT` simple.
+    ///     visit: Callback por fila; `Ok(false)` corta el recorrido.
+    ///
+    /// Returns:
+    ///     Número de filas entregadas al callback.
+    ///
+    /// Errors:
+    ///     [`RuscaError::ParseError`] si el texto no parsea;
+    ///     [`RuscaError::TypeMismatch`] si la sentencia no es un `SELECT`
+    ///     simple (mensaje accionable con `execute()`);
+    ///     errores de esquema/ejecución del pipeline de filas.
+    ///
+    /// Example:
+    ///     ```no_run
+    ///     # use ruscadb::{Database, RuscaError};
+    ///     # fn demo(db: &mut Database) -> Result<(), RuscaError> {
+    ///     let mut seen = 0usize;
+    ///     db.execute_stream("SELECT * FROM t WHERE k > 0", |_row| {
+    ///         seen += 1;
+    ///         Ok(seen < 10)
+    ///     })?;
+    ///     # Ok(())
+    ///     # }
+    ///     ```
+    pub fn execute_stream<F>(&mut self, query: &str, mut visit: F) -> Result<usize, RuscaError>
+    where
+        F: FnMut(&Row) -> Result<bool, RuscaError>,
+    {
+        let started = std::time::Instant::now();
+        let statement = parse_statement(query)?;
+        let Statement::Select(select) = statement else {
+            return Err(RuscaError::TypeMismatch {
+                message: format!(
+                    "execute_stream solo admite SELECT simple; usa execute() para: {query}"
+                ),
+            });
+        };
+        Self::reject_non_streamable(&select)?;
+        let snapshot = self.snapshot();
+        let catalog = Catalog::load(self)?;
+        let table = catalog.get(&select.from)?.clone();
+        let filter = match select.filter.clone() {
+            Some(filter) => Some(materialize_subqueries_ctx(
+                self,
+                &filter,
+                &snapshot,
+                &BTreeMap::new(),
+            )?),
+            None => None,
+        };
+        let limit = usize::try_from(select.limit.unwrap_or(IMPLICIT_LIMIT))
+            .unwrap_or(usize::MAX)
+            .min(self.max_result_rows.unwrap_or(usize::MAX));
+        let budget = self.query_budget();
+        let mut pending_offset = select.offset.unwrap_or(0) as usize;
+        let mut delivered = 0usize;
+        let mut scanned = 0u64;
+        heap_for_each(self, &table, |_locator, record| {
+            budget.check(scanned)?;
+            scanned += 1;
+            if !is_visible(&snapshot, &record) || !keeps_row(&table, filter.as_ref(), &record)? {
+                return Ok(true);
+            }
+            if pending_offset > 0 {
+                pending_offset -= 1;
+                return Ok(true);
+            }
+            if delivered >= limit {
+                return Ok(false);
+            }
+            let row = project_row(&table, &select.projection, &record.scalars)?;
+            delivered += 1;
+            visit(&row)
+        })?;
+        let nanos = started.elapsed().as_nanos() as u64;
+        self.note_execution(delivered, nanos);
+        self.note_audit("execute_stream", query);
+        Ok(delivered)
+    }
+
+    /// Rechaza las formas que requieren materializar el resultado.
+    ///
+    /// Args:
+    ///     select: Consulta analizada.
+    ///
+    /// Returns:
+    ///     `Ok(())` si el streaming puede resolverla fila a fila.
+    ///
+    /// Errors:
+    ///     [`RuscaError::TypeMismatch`] con la cláusula causante y la
+    ///     alternativa `execute()`.
+    fn reject_non_streamable(select: &Select) -> Result<(), RuscaError> {
+        let reason = if select.from_derived.is_some() {
+            Some("tabla derivada FROM (subquery)")
+        } else if select.join.is_some() {
+            Some("JOIN")
+        } else if select.knn.is_some() {
+            Some("KNN")
+        } else if select.traverse.is_some() {
+            Some("TRAVERSE")
+        } else if has_match(select.filter.as_ref()) {
+            Some("MATCH full-text")
+        } else if !select.aggregates.is_empty()
+            || !select.group_by.is_empty()
+            || !select.having.is_empty()
+        {
+            Some("agregados/GROUP BY/HAVING")
+        } else if select.order_by.is_some() {
+            Some("ORDER BY")
+        } else if select.distinct {
+            Some("DISTINCT")
+        } else if !select.windows.is_empty() {
+            Some("ventanas")
+        } else if !select.expressions.is_empty() {
+            Some("expresiones proyectadas")
+        } else if !select.paths.is_empty() {
+            Some("paths de grafo")
+        } else {
+            None
+        };
+        match reason {
+            Some(reason) => Err(RuscaError::TypeMismatch {
+                message: format!("execute_stream no soporta {reason}; materializa con execute()"),
+            }),
+            None => Ok(()),
+        }
     }
 
     /// Despacha la sentencia RQL (SELECT/INSERT/UPDATE/DELETE).

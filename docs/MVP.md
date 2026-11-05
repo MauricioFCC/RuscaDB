@@ -90,9 +90,10 @@ cifrado.
 - **Single-writer**: una única conexión de escritura por fichero, garantizada
   por un lock exclusivo cross-proceso `<data>.lock` (SPEC-0076): otra apertura
   (proceso o misma app) falla con `DatabaseInUse`. Sin modo servidor.
-- **Sin cursores con estado ni streaming**: `execute` materializa todas las
-  filas del resultado en memoria; la paginación es por `LIMIT`/`OFFSET`
-  (SPEC-0096), no *keyset* ni cursor de servidor.
+- **Streaming simple (SPEC-0210)**: `execute_stream` entrega filas por callback
+  con memoria O(1) y parada temprana para `SELECT` sin JOIN/agregados/orden;
+  no hay cursores reanudables ni paginación *keyset* (se usa `LIMIT`/`OFFSET`,
+  SPEC-0096).
 - **Planner por coste con estadísticas (SPEC-0201)**: `Database::analyze`
   calcula filas/nulos/distintos/histograma y el plan elige `IndexScan`/`FullScan`
   y `HashJoin`/`IndexNestedLoop` por coste. Sin plan cache, join reordering ni

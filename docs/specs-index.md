@@ -209,3 +209,4 @@
 | SPEC-0207 | `drop_table` | implemented | real | `drop_table.md` |
 | SPEC-0208 | `release_availability` | implemented | real | `release_availability.md` |
 | SPEC-0209 | `ddl_rql` | implemented | real | `ddl_rql.md` |
+| SPEC-0210 | `result_streaming` | implemented | real | `result_streaming.md` |

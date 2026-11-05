@@ -597,16 +597,31 @@ pub(crate) fn blank_slotted_page(id: PageId) -> Page {
     page
 }
 
-/// Lee las filas de una página y las añade al acumulador.
-fn collect_page_rows(
+/// Recorre las filas de una página sin acumularlas.
+///
+/// Args:
+///     database: Base abierta.
+///     id: Página de datos a recorrer.
+///     visit: Callback por fila; devuelve `false` para cortar el recorrido.
+///
+/// Returns:
+///     `true` si se recorrió la página completa; `false` si el callback cortó.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si una página o fila es inválida;
+///     el error que devuelva `visit`.
+fn for_each_page_row<F>(
     database: &mut Database,
     id: PageId,
-    rows: &mut Vec<(RowLocator, Record)>,
-) -> Result<(), RuscaError> {
+    visit: &mut F,
+) -> Result<bool, RuscaError>
+where
+    F: FnMut(RowLocator, Record) -> Result<bool, RuscaError>,
+{
     let page = database.read_page(id)?;
     // Las páginas de desbordamiento no contienen filas (SPEC-0074).
     if is_overflow_page(page.data()) {
-        return Ok(());
+        return Ok(true);
     }
     let slots = parse_slots(page.data())?;
     for (slot, (offset, length)) in slots.iter().enumerate() {
@@ -629,7 +644,55 @@ fn collect_page_rows(
         } else {
             decode_row(page.data(), *offset, *length)?
         };
-        rows.push(((id, slot as u32), record));
+        if !visit((id, slot as u32), record)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Lee las filas de una página y las añade al acumulador.
+fn collect_page_rows(
+    database: &mut Database,
+    id: PageId,
+    rows: &mut Vec<(RowLocator, Record)>,
+) -> Result<(), RuscaError> {
+    for_each_page_row(database, id, &mut |locator, record| {
+        rows.push((locator, record));
+        Ok(true)
+    })?;
+    Ok(())
+}
+
+/// Recorre el heap completo en streaming, sin materializar las filas.
+///
+/// A diferencia de [`heap_scan`], que devuelve `Vec<(RowLocator, Record)>`,
+/// esta variante entrega cada fila al callback y permite cortar el recorrido
+/// devolviendo `false` (SPEC-0210), manteniendo memoria O(1) en filas.
+///
+/// Args:
+///     database: Base abierta.
+///     table: Definición de la tabla.
+///     visit: Callback por fila; `false` corta el recorrido.
+///
+/// Returns:
+///     `()`; el callback decide cuándo parar.
+///
+/// Errors:
+///     [`RuscaError::CorruptManifest`] si una página del heap es inválida;
+///     el error que devuelva `visit`.
+pub(crate) fn heap_for_each<F>(
+    database: &mut Database,
+    table: &crate::catalog::TableDef,
+    mut visit: F,
+) -> Result<(), RuscaError>
+where
+    F: FnMut(RowLocator, Record) -> Result<bool, RuscaError>,
+{
+    for raw in &table.pages {
+        if !for_each_page_row(database, PageId(*raw), &mut visit)? {
+            break;
+        }
     }
     Ok(())
 }

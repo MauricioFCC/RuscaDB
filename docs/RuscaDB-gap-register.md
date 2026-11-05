@@ -115,9 +115,13 @@ existentes (page manager, HNSW, planner, TS, columnar).
 
 ### Pendiente (no bloqueante)
 
-- Endpoint HTTP de scrape Prometheus (el registry y el export de texto son
-  reales; el transporte es adapter).
+- ~~Endpoint HTTP de scrape Prometheus~~: **cerrado** con `metrics-http`
+  (SPEC-0197): `GET /metrics`, Bearer/TLS fail-closed (SPEC-0202) y
+  `POST/otros` → 405.
 - Aplicar zstd al formato fisico de pagina columnar (hoy ALP/FOR propios).
+- Streaming de JOIN/agregados/`ORDER BY` y cursores reanudables (SPEC-0210
+  cubre solo `SELECT` simple).
+- Reclamacion de paginas tras `DROP INDEX`/`DROP TABLE` (asignador bump).
 
 ## 6. Mutation testing (modulos nuevos)
 
@@ -181,18 +185,20 @@ Detalle, fuentes y plan de desbloqueo: `docs/research/frontier-2026-10-29.md`
 
 ## 8. Siguiente paso recomendado
 
-Quedan solo los adapters externos de §7 (Lance, pgwire TCP, KMS/HSM, OTLP
-HTTP, S3, ONNX runtime); el endpoint Prometheus ya está en `metrics-http`
-(SPEC-0197). El gate de mutacion nightly ya es
-bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
+Quedan adapters externos de §7 (Lance, pgwire TCP, KMS/HSM, OTLP HTTP, S3
+real, ONNX runtime), el **spill de hash join**, los **cursores reanudables y
+streaming de JOIN/agregados/ORDER BY** y la **reclamacion de paginas tras
+DROP**. El endpoint Prometheus ya está en `metrics-http` (SPEC-0197). El gate de
+mutacion nightly ya es bloqueante (>= 85 %) y la cuantizacion/filtrado ya se
+exponen en RQL y ABI.
 
 ## 9. Verificacion de gates (2026-11-02)
 
 - `cargo fmt --all -- --check`: OK.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: OK.
-- `cargo test --workspace --all-features -j 4`: ultimo run completo 224 suites,
-  1279 tests, 0 fallos.
-- `cargo xtask trace`: 676 AC trazados.
+- `cargo test --workspace --all-features -j 4`: ultimo run completo 225 suites,
+  1283 tests, 0 fallos.
+- `cargo xtask trace`: 680 AC trazados.
 - `cargo xtask contract`: OK.
 - `cargo xtask check-architecture`: 0 ciclos, 0 aristas prohibidas.
 - `cargo xtask check-unsafe`: OK (presupuesto 93).
@@ -200,18 +206,18 @@ bloqueante (>= 85 %) y la cuantizacion/filtrado ya se exponen en RQL y ABI.
   `conformance` ubuntu+windows con tamper).
 - `python scripts/check_disk.py --min-free-gb 10`: OK (preflight de espacio;
   `target/` llegó a 153.8 GiB en local).
-- `python scripts/check_docs.py`: OK (29 ficheros, 65 enlaces; índice completo).
+- `python scripts/check_docs.py`: OK (35 ficheros, 65 enlaces; índice completo).
 - `python scripts/coverage_gate.py lcov.info --scope …`: PASS en local
   (core 84.9 %, txn 97.0 %, wal 94.0 %; rustup 1.99.0 + llvm-tools-preview).
-- `cargo xtask check-specs`: 204 specs (204 implemented), 204 `real`, 0 `stub`, 0 `placeholder`.
+- `cargo xtask check-specs`: 205 specs (205 implemented), 205 `real`, 0 `stub`, 0 `placeholder`.
 - `cargo xtask mutation-score`: 85,71 % sobre el run parcial de `segmented_wal`
   (objetivo 85 %); fixture 1/3 -> exit 1.
 
 ## 10. Cierre de stubs y propuestas (2026-11-03)
 
-Estado 2026-11-05: **204 specs `implemented`, 204 `real`, 0 `stub`,
+Estado 2026-11-05: **205 specs `implemented`, 205 `real`, 0 `stub`,
 0 `placeholder`**, 0 codigo sin implementar (audit: 0
-`todo!`/`unimplemented!`, 676 ACs trazados).
+`todo!`/`unimplemented!`, 680 ACs trazados).
 
 - **RQL frontier cableado**: `SPEC-0162` (tablas derivadas), `SPEC-0163`
   (CTE y `WITH RECURSIVE`), `SPEC-0165` (ventanas `OVER`) y `SPEC-0161`
@@ -291,7 +297,7 @@ Pasaron a `maturity: real` en este ciclo:
 - **`cargo xtask check-specs`**: valida frontmatter (id unico, feature, status),
   `status`/`maturity` permitidos, ACs declarados con el prefijo correcto y
   `implemented` con al menos un AC. Integrado en el job `architecture` de CI.
-- **`docs/specs-index.md`**: indice generado (204 specs) con
+- **`docs/specs-index.md`**: indice generado (205 specs) con
   `cargo xtask gen-specs-index`; fuente unica para ver status y madurez.
 - Estado: **193 `implemented`**, 0 `accepted`, 0 `proposed`; madurez declarada
   **58 `real`, 0 `stub`, 0 `placeholder`**.

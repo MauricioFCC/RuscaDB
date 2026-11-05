@@ -28,6 +28,13 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 36 (2026-11-05)**: **SPEC-0210** streaming de resultados:
+  `Database::execute_stream(query, callback)` recorre el heap fila a fila
+  (memoria O(1), parada temprana con `Ok(false)`) aplicando visibilidad MVCC,
+  `WHERE`, `OFFSET`, proyección y `LIMIT`; `heap_for_each` comparte el parseo de
+  páginas con `heap_scan`. Las formas materializantes (JOIN, agregados,
+  `ORDER BY`, `DISTINCT`, KNN/TRAVERSE, ventanas, derivadas) se rechazan con un
+  error que remite a `execute()`.
 - **Ciclo 35 (2026-11-05)**: **SPEC-0209** DDL en RQL: `DROP INDEX
   tabla.columna` y `DROP TABLE tabla` (lexer/AST/parser/executor/WASM),
   reutilizando `drop_index`/`drop_table`; tests AC-0209-01/02.
