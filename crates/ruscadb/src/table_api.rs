@@ -637,6 +637,14 @@ impl Database {
                 self.analyze(&table)?;
                 Ok(Vec::new())
             }
+            Statement::DropIndex { table, column } => {
+                self.drop_index(&table, &column)?;
+                Ok(Vec::new())
+            }
+            Statement::DropTable { table } => {
+                self.drop_table(&table)?;
+                Ok(Vec::new())
+            }
             Statement::Explain(_) => Err(RuscaError::ParseError {
                 message:
                     "EXPLAIN no es una sentencia ejecutable; inspecciónala con parse_statement"
@@ -1101,6 +1109,8 @@ impl Database {
             | Statement::Update(_)
             | Statement::Delete(_)
             | Statement::Analyze { .. }
+            | Statement::DropIndex { .. }
+            | Statement::DropTable { .. }
             | Statement::SetOp { .. }
             | Statement::With { .. }
             | Statement::Relate { .. }
@@ -1394,6 +1404,8 @@ fn is_write_statement(statement: &Statement) -> bool {
         | Statement::Update(_)
         | Statement::Delete(_)
         | Statement::Analyze { .. }
+        | Statement::DropIndex { .. }
+        | Statement::DropTable { .. }
         | Statement::Relate { .. } => true,
         Statement::SetOp { left, right, .. } => {
             is_write_statement(left) || is_write_statement(right)

@@ -12,10 +12,10 @@
 
 | Métrica | Valor |
 |---|---|
-| Specs | **203**, todas `implemented` |
-| ACs | **674** (46 specs con 1 AC; 68 con ≤2) |
-| Madurez declarada | **203 `real`**, 0 sin `maturity` |
-| Suite completa | **223 suites / 1277 tests / 0 fallos** (`-j 4`) |
+| Specs | **204**, todas `implemented` |
+| ACs | **676** (46 specs con 1 AC; 68 con ≤2) |
+| Madurez declarada | **204 `real`**, 0 sin `maturity` |
+| Suite completa | **224 suites / 1279 tests / 0 fallos** (`-j 4`) |
 | Benchmarks | **3 micro** + tests deterministas de recall, grafos y SQL |
 | Bindings | py/node conformance con hash común + CI; wasm **14 tests** |
 | Mutación | nightly `cargo mutants --workspace` en 8 shards; gate MS ≥ 85 % (local: `gc` 85.3 %, `segmented_wal` 85.7 %) |
@@ -40,7 +40,7 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 | Bindings | **L1** | py/node wrappers finos, 0 tests unitarios; wasm 14 tests; scripts de conformance py/node con hash común + CI | cobertura unitaria de wrappers | SPEC-0196 |
 | Ops/observabilidad | **L3** | `doctor`, métricas texto, scrape HTTP opt-in con TLS/auth, backup/restore, S3 local, OTLP local | sin OTLP remoto | SPEC-0197/0202 |
 | CI/calidad | **L3** | fmt/clippy/doc, trace/contract/audit, fuzz, loom, MSRV, SBOM, mutación | cobertura no medible local | — |
-| Docs/specs | **L3** | 203 specs, 674 ACs; índice Diátaxis + gate de docs + maturity completo | — | — |
+| Docs/specs | **L3** | 204 specs, 676 ACs; índice Diátaxis + gate de docs + maturity completo | — | — |
 
 ## 3. Gaps priorizados
 
@@ -77,5 +77,5 @@ auditoría externa PQC/Jepsen y datasets ANN-Benchmarks/LDBC completos).
 ## 6. Criterio de cierre de este informe
 
 - Specs de mejora con ACs medibles y tests activos (sin scaffolds `#[ignore]`).
-- Gates `trace`/`contract`/`audit` verdes: 203 specs, 674 ACs.
+- Gates `trace`/`contract`/`audit` verdes: 204 specs, 676 ACs.
 - Los gaps no implementados quedan declarados en este informe y en el backlog.

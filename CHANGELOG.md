@@ -28,6 +28,9 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Ciclo 35 (2026-11-05)**: **SPEC-0209** DDL en RQL: `DROP INDEX
+  tabla.columna` y `DROP TABLE tabla` (lexer/AST/parser/executor/WASM),
+  reutilizando `drop_index`/`drop_table`; tests AC-0209-01/02.
 - **Ciclo 34 (2026-11-05)**: **SPEC-0208** disponibilidad de
   release/instalación: validador offline de matriz target→asset, fallback
   `cargo install --git ... --locked` en instaladores, docs con `--dry-run`.

@@ -75,6 +75,8 @@ pub fn parse(input: &str) -> Result<Select, RuscaError> {
         | Statement::Update(_)
         | Statement::Delete(_)
         | Statement::Analyze { .. }
+        | Statement::DropIndex { .. }
+        | Statement::DropTable { .. }
         | Statement::SetOp { .. }
         | Statement::With { .. }
         | Statement::Relate { .. }
@@ -318,6 +320,27 @@ impl Parser {
                 self.advance();
                 let table = self.expect_ident()?;
                 Ok(Statement::Analyze { table })
+            }
+            Some(Token::Keyword(Keyword::Drop)) => {
+                self.advance();
+                match self.peek() {
+                    Some(Token::Keyword(Keyword::Index)) => {
+                        self.advance();
+                        let table = self.expect_ident()?;
+                        self.expect_token(
+                            &Token::Dot,
+                            &format!("{EXPECTED_PREFIX}'.' en DROP INDEX tabla.columna"),
+                        )?;
+                        let column = self.expect_ident()?;
+                        Ok(Statement::DropIndex { table, column })
+                    }
+                    Some(Token::Keyword(Keyword::Table)) => {
+                        self.advance();
+                        let table = self.expect_ident()?;
+                        Ok(Statement::DropTable { table })
+                    }
+                    _ => Err(self.error(format!("{EXPECTED_PREFIX}'INDEX' o 'TABLE' tras DROP"))),
+                }
             }
             Some(Token::Keyword(Keyword::Insert)) => Ok(Statement::Insert(self.parse_insert()?)),
             Some(Token::Keyword(Keyword::Update)) => Ok(Statement::Update(self.parse_update()?)),

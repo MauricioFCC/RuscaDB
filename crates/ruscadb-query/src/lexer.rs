@@ -89,6 +89,12 @@ pub enum Keyword {
     Set,
     /// `DELETE` (DML).
     Delete,
+    /// `DROP` (SPEC-0209: DROP INDEX/TABLE).
+    Drop,
+    /// `INDEX` (SPEC-0209).
+    Index,
+    /// `TABLE` (SPEC-0209).
+    Table,
     /// `JOIN` (SPEC-0052: solo `INNER JOIN` con una igualdad).
     Join,
     /// `ON` (condición del `JOIN`, SPEC-0052).
@@ -183,6 +189,9 @@ impl Keyword {
             Self::Update => "UPDATE",
             Self::Set => "SET",
             Self::Delete => "DELETE",
+            Self::Drop => "DROP",
+            Self::Index => "INDEX",
+            Self::Table => "TABLE",
             Self::Join => "JOIN",
             Self::On => "ON",
             Self::Having => "HAVING",
@@ -260,6 +269,9 @@ impl Keyword {
             "update" => Some(Self::Update),
             "set" => Some(Self::Set),
             "delete" => Some(Self::Delete),
+            "drop" => Some(Self::Drop),
+            "index" => Some(Self::Index),
+            "table" => Some(Self::Table),
             "join" => Some(Self::Join),
             "on" => Some(Self::On),
             "having" => Some(Self::Having),

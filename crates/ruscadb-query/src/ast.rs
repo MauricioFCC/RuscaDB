@@ -731,6 +731,18 @@ pub enum Statement {
         /// Tabla a analizar.
         table: String,
     },
+    /// `DROP INDEX <tabla>.<columna>` (SPEC-0209).
+    DropIndex {
+        /// Tabla del índice.
+        table: String,
+        /// Columna indexada.
+        column: String,
+    },
+    /// `DROP TABLE <tabla>` (SPEC-0209).
+    DropTable {
+        /// Tabla a eliminar.
+        table: String,
+    },
     /// `INSERT INTO ... VALUES ...` (SPEC-0043).
     Insert(Insert),
     /// `UPDATE ... SET ... [WHERE ...]` (SPEC-0043).
@@ -1356,6 +1368,10 @@ impl fmt::Display for Statement {
             Self::Select(select) => write!(formatter, "{select}"),
             Self::Explain(explain) => write!(formatter, "{explain}"),
             Self::Analyze { table } => write!(formatter, "ANALYZE {table}"),
+            Self::DropIndex { table, column } => {
+                write!(formatter, "DROP INDEX {table}.{column}")
+            }
+            Self::DropTable { table } => write!(formatter, "DROP TABLE {table}"),
             Self::Insert(insert) => write!(formatter, "{insert}"),
             Self::Update(update) => write!(formatter, "{update}"),
             Self::Delete(delete) => write!(formatter, "{delete}"),

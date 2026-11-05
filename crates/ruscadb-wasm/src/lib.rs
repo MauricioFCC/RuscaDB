@@ -181,6 +181,10 @@ fn statement_json(statement: &Statement) -> Value {
             json!({ "kind": "explain", "inner": select_json(&explain.inner) })
         }
         Statement::Analyze { table } => json!({ "kind": "analyze", "table": table }),
+        Statement::DropIndex { table, column } => {
+            json!({ "kind": "drop_index", "table": table, "column": column })
+        }
+        Statement::DropTable { table } => json!({ "kind": "drop_table", "table": table }),
         Statement::Insert(insert) => json!({
             "kind": "insert",
             "table": &insert.table,

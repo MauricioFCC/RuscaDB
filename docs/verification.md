@@ -492,12 +492,12 @@ el parseo de T1/T2/T3.
 ## Última verificación de cierre (2026-11-02)
 
 ```text
-cargo test --workspace --all-features -j 4   223 suites, 1277 tests, 0 fallos
+cargo test --workspace --all-features -j 4   224 suites, 1279 tests, 0 fallos
 cargo clippy --workspace --all-targets --all-features -- -D warnings   OK
 cargo fmt --all -- --check                    OK
 cargo xtask audit                             0 ACs sin test, 0 todo!/unimplemented!
-cargo xtask check-specs                       203 specs (203 impl, 0 accepted, 0 proposed)
-cargo xtask trace                             674 AC
+cargo xtask check-specs                       204 specs (204 impl, 0 accepted, 0 proposed)
+cargo xtask trace                             676 AC
 cargo xtask contract                          OK
 cargo xtask check-architecture / check-unsafe OK
 python scripts/check_ci_config.py             OK (incluye conformance ubuntu+windows)
