@@ -9,6 +9,13 @@ proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ### Added
 
+- **Integración Swarmind (2026-11-06)**: `docs/RECOMENDACIONES-SWARMIND.md`
+  documenta el contrato C-ABI consumido, benchmarks de KNN exacto/binario/
+  cuantizado/filtrado y recomendaciones upstream (prepared en FFI, tipo de id
+  para `search_filtered`, versión/capabilities, blobs y MCP).
+
+### Added
+
 - **Ciclo 14 (2026-11-04)**: `scripts/install.py`, instalador del ejecutable
   equivalente a `install.ps1`/`install.sh` ejecutable con
   `python scripts/install.py` (sin depender de la ExecutionPolicy de
