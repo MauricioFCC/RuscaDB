@@ -95,7 +95,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build FFI
         run: cargo build -p ruscadb-ffi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Python conformance
